@@ -1,0 +1,487 @@
+// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    classes = {
+    };
+    objectVersion = 56;
+    objects = {
+
+/* Begin PBXBuildFile section */
+        029F6253E0F5CDC5B291ED79 /* ReflectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7141BD01F69FA19D68CD23 /* ReflectionView.swift */; };
+        0E1F52C1F0D0AB37AD268A05 /* StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34191824CA5D84892229698E /* StorageService.swift */; };
+        2ABB1EAABB2C457C759A4ED9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 825473780CCF565309E59996 /* HomeView.swift */; };
+        31EA0E76E4C1A150D615DC6F /* WeeklyReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A927AC28F9838387580E5F7C /* WeeklyReportView.swift */; };
+        36E209E3016E99C04CA79F09 /* OnboardingCalibrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00AD3F6DBBFDA083CC9797 /* OnboardingCalibrationView.swift */; };
+        3A0008733F86C281C8D46ABA /* PatternsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924B7B2827ECD025106C3BC8 /* PatternsView.swift */; };
+        3BF38CFF771C4B42265F053C /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A180955A0A07FDEFC1A0BFF /* AIService.swift */; };
+        3E02A7708F6BD08E765E5128 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A63C4EAD8A83BB91C7DC04 /* Models.swift */; };
+        3E40F9E61D2A7209F6154DA8 /* InterventionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7227F4AB3D4438B50D9AD672 /* InterventionsView.swift */; };
+        3EA3BEDC05636F5EBA124415 /* FocusTimerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32F88595EE93F7622346254 /* FocusTimerView.swift */; };
+        484E1553E2D16A1334C5B534 /* OnboardingWhyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A5B5AD5658BBDC54B49C03 /* OnboardingWhyView.swift */; };
+        5306BDEDDBAF577A5C71D040 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 643C4A985B67F5A8D604FE4F /* AppViewModel.swift */; };
+        5CA7645304E43E1E7ED6FBC7 /* MivoComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645D07F841D313203C4ECDFC /* MivoComponents.swift */; };
+        6C0340F1A79DDBDE74E67D9E /* OnboardingWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */; };
+        8490515CD6AF2AED0400D0CA /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C7B8AED77B857F5C728E43 /* MainTabView.swift */; };
+        A51906C752905075915C480C /* ActiveSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */; };
+        A79AFA1D32903E9CBBF9E905 /* InterventionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FFED9B21B799AA832E6CD87 /* InterventionView.swift */; };
+        AD94D9CF1B8E20453FB159CF /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE58C1D450B8A8660731280 /* RegisterView.swift */; };
+        C6C3DD0E863A2F8D790AA962 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1980145C72773894696A7D /* Colors.swift */; };
+        D7312060C644D124B483BC72 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 635CBBF06E2D93C93BEFA108 /* Assets.xcassets */; };
+        DBBAED45E4F10CBB5AA82D31 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58E201ADEE8016C4085FCEE3 /* LoginView.swift */; };
+        E8CE5CE448C77CB1FCA80F35 /* OnboardingAppsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBCED7FB0532BE876C8C5A7D /* OnboardingAppsView.swift */; };
+        E8D2538B41FAE8FD031C2BB2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F01D06356BA2A931BF8D65 /* SettingsView.swift */; };
+        F20554EA95609C4F4D4BC140 /* FocusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FEF55053D9F94D84531716 /* FocusView.swift */; };
+        F36E8F0BEF32F3B1A9711946 /* MivoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A68937D8073A75CA7497EFB /* MivoApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+        13E4501CD3B1197981AC3649 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+        203EE6C12F8672FF00CF2F60 /* Mivo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mivo.entitlements; sourceTree = "<group>"; };
+        34191824CA5D84892229698E /* StorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageService.swift; sourceTree = "<group>"; };
+        37143BCF1E6FA4015CC8CB5B /* Mivo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mivo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+        4DE58C1D450B8A8660731280 /* RegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterView.swift; sourceTree = "<group>"; };
+        55FEF55053D9F94D84531716 /* FocusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusView.swift; sourceTree = "<group>"; };
+        58E201ADEE8016C4085FCEE3 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+        5FFED9B21B799AA832E6CD87 /* InterventionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterventionView.swift; sourceTree = "<group>"; };
+        635CBBF06E2D93C93BEFA108 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+        643C4A985B67F5A8D604FE4F /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
+        645D07F841D313203C4ECDFC /* MivoComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoComponents.swift; sourceTree = "<group>"; };
+        7227F4AB3D4438B50D9AD672 /* InterventionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterventionsView.swift; sourceTree = "<group>"; };
+        7A180955A0A07FDEFC1A0BFF /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
+        7D7141BD01F69FA19D68CD23 /* ReflectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectionView.swift; sourceTree = "<group>"; };
+        7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomeView.swift; sourceTree = "<group>"; };
+        825473780CCF565309E59996 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+        924B7B2827ECD025106C3BC8 /* PatternsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatternsView.swift; sourceTree = "<group>"; };
+        9A68937D8073A75CA7497EFB /* MivoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoApp.swift; sourceTree = "<group>"; };
+        A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionView.swift; sourceTree = "<group>"; };
+        A32F88595EE93F7622346254 /* FocusTimerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerView.swift; sourceTree = "<group>"; };
+        A927AC28F9838387580E5F7C /* WeeklyReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyReportView.swift; sourceTree = "<group>"; };
+        AA1980145C72773894696A7D /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+        B1C7B8AED77B857F5C728E43 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+        B6A5B5AD5658BBDC54B49C03 /* OnboardingWhyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWhyView.swift; sourceTree = "<group>"; };
+        B6F01D06356BA2A931BF8D65 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+        BB00AD3F6DBBFDA083CC9797 /* OnboardingCalibrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingCalibrationView.swift; sourceTree = "<group>"; };
+        E5A63C4EAD8A83BB91C7DC04 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+        EBCED7FB0532BE876C8C5A7D /* OnboardingAppsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingAppsView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+        398BE0EC45AC19E6DD0962F3 /* Frameworks */ = {
+            isa = PBXFrameworksBuildPhase;
+            buildActionMask = 2147483647;
+            files = (
+            );
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+        048F4804EED2B58C3E9D6D8C /* Products */ = {
+            isa = PBXGroup;
+            children = (
+                37143BCF1E6FA4015CC8CB5B /* Mivo.app */,
+            );
+            name = Products;
+            sourceTree = "<group>";
+        };
+        0CF8D34C4B1696AF7B69AA55 = {
+            isa = PBXGroup;
+            children = (
+                93D943C899C8008A77329327 /* Mivo */,
+                048F4804EED2B58C3E9D6D8C /* Products */,
+            );
+            sourceTree = "<group>";
+        };
+        1A968DCE56935E2C49EAB331 /* Models */ = {
+            isa = PBXGroup;
+            children = (
+                E5A63C4EAD8A83BB91C7DC04 /* Models.swift */,
+            );
+            path = Models;
+            sourceTree = "<group>";
+        };
+        36E0194512D0FF39478C220E /* Components */ = {
+            isa = PBXGroup;
+            children = (
+                645D07F841D313203C4ECDFC /* MivoComponents.swift */,
+            );
+            path = Components;
+            sourceTree = "<group>";
+        };
+        440BD239FF1AF2128A821007 /* Session */ = {
+            isa = PBXGroup;
+            children = (
+                A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */,
+                7D7141BD01F69FA19D68CD23 /* ReflectionView.swift */,
+            );
+            path = Session;
+            sourceTree = "<group>";
+        };
+        4FD5475CAD15E7E7C0B6F2B1 /* Services */ = {
+            isa = PBXGroup;
+            children = (
+                34191824CA5D84892229698E /* StorageService.swift */,
+                7A180955A0A07FDEFC1A0BFF /* AIService.swift */,
+            );
+            path = Services;
+            sourceTree = "<group>";
+        };
+        6929B9B39B4980B6F6AE30F6 /* Onboarding */ = {
+            isa = PBXGroup;
+            children = (
+                7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */,
+                B6A5B5AD5658BBDC54B49C03 /* OnboardingWhyView.swift */,
+                BB00AD3F6DBBFDA083CC9797 /* OnboardingCalibrationView.swift */,
+                EBCED7FB0532BE876C8C5A7D /* OnboardingAppsView.swift */,
+            );
+            path = Onboarding;
+            sourceTree = "<group>";
+        };
+        86D31FF5DF9632C8AC79518F /* Constants */ = {
+            isa = PBXGroup;
+            children = (
+                AA1980145C72773894696A7D /* Colors.swift */,
+            );
+            path = Constants;
+            sourceTree = "<group>";
+        };
+        93D943C899C8008A77329327 /* Mivo */ = {
+            isa = PBXGroup;
+            children = (
+                203EE6C12F8672FF00CF2F60 /* Mivo.entitlements */,
+                36E0194512D0FF39478C220E /* Components */,
+                86D31FF5DF9632C8AC79518F /* Constants */,
+                1A968DCE56935E2C49EAB331 /* Models */,
+                4FD5475CAD15E7E7C0B6F2B1 /* Services */,
+                FFBB6A3704CF8B785343AA08 /* ViewModels */,
+                F96AB50F694CDEA3436098FB /* Views */,
+                9A68937D8073A75CA7497EFB /* MivoApp.swift */,
+                635CBBF06E2D93C93BEFA108 /* Assets.xcassets */,
+                13E4501CD3B1197981AC3649 /* Info.plist */,
+            );
+            path = Mivo;
+            sourceTree = "<group>";
+        };
+        BA40A8AAE9E6CF28F75CF32B /* Focus */ = {
+            isa = PBXGroup;
+            children = (
+                55FEF55053D9F94D84531716 /* FocusView.swift */,
+                A32F88595EE93F7622346254 /* FocusTimerView.swift */,
+            );
+            path = Focus;
+            sourceTree = "<group>";
+        };
+        DAEBA79036D7B52729EB125C /* Auth */ = {
+            isa = PBXGroup;
+            children = (
+                58E201ADEE8016C4085FCEE3 /* LoginView.swift */,
+                4DE58C1D450B8A8660731280 /* RegisterView.swift */,
+            );
+            path = Auth;
+            sourceTree = "<group>";
+        };
+        ED529998DF4C3C3859C7D0FC /* Tabs */ = {
+            isa = PBXGroup;
+            children = (
+                825473780CCF565309E59996 /* HomeView.swift */,
+                924B7B2827ECD025106C3BC8 /* PatternsView.swift */,
+                7227F4AB3D4438B50D9AD672 /* InterventionsView.swift */,
+                B6F01D06356BA2A931BF8D65 /* SettingsView.swift */,
+            );
+            path = Tabs;
+            sourceTree = "<group>";
+        };
+        F96AB50F694CDEA3436098FB /* Views */ = {
+            isa = PBXGroup;
+            children = (
+                DAEBA79036D7B52729EB125C /* Auth */,
+                BA40A8AAE9E6CF28F75CF32B /* Focus */,
+                6929B9B39B4980B6F6AE30F6 /* Onboarding */,
+                440BD239FF1AF2128A821007 /* Session */,
+                ED529998DF4C3C3859C7D0FC /* Tabs */,
+                B1C7B8AED77B857F5C728E43 /* MainTabView.swift */,
+                5FFED9B21B799AA832E6CD87 /* InterventionView.swift */,
+                A927AC28F9838387580E5F7C /* WeeklyReportView.swift */,
+            );
+            path = Views;
+            sourceTree = "<group>";
+        };
+        FFBB6A3704CF8B785343AA08 /* ViewModels */ = {
+            isa = PBXGroup;
+            children = (
+                643C4A985B67F5A8D604FE4F /* AppViewModel.swift */,
+            );
+            path = ViewModels;
+            sourceTree = "<group>";
+        };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+        65C4AA6A8E422295B136D3FC /* Mivo */ = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = 54CD7788651D3D73A39F62B3 /* Build configuration list for PBXNativeTarget "Mivo" */;
+            buildPhases = (
+                49F7A5B419344F1A23090987 /* Sources */,
+                B44F92287D83F473B5597CC4 /* Resources */,
+                398BE0EC45AC19E6DD0962F3 /* Frameworks */,
+            );
+            buildRules = (
+            );
+            dependencies = (
+            );
+            name = Mivo;
+            productName = Mivo;
+            productReference = 37143BCF1E6FA4015CC8CB5B /* Mivo.app */;
+            productType = "com.apple.product-type.application";
+        };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+        3CEAA518FD9FE3C7D2DC52B6 /* Project object */ = {
+            isa = PBXProject;
+            attributes = {
+                BuildIndependentTargetsInParallel = 1;
+                LastSwiftUpdateCheck = 1500;
+                LastUpgradeCheck = 2620;
+                TargetAttributes = {
+                    65C4AA6A8E422295B136D3FC = {
+                        CreatedOnToolsVersion = 15.0;
+                    };
+                };
+            };
+            buildConfigurationList = AD36FB36602DF327CFE6755B /* Build configuration list for PBXProject "mivoreplitapp" */;
+            compatibilityVersion = "Xcode 14.0";
+            developmentRegion = en;
+            hasScannedForEncodings = 0;
+            knownRegions = (
+                en,
+                Base,
+            );
+            mainGroup = 0CF8D34C4B1696AF7B69AA55;
+            productRefGroup = 048F4804EED2B58C3E9D6D8C /* Products */;
+            projectDirPath = "";
+            projectRoot = "";
+            targets = (
+                65C4AA6A8E422295B136D3FC /* Mivo */,
+            );
+        };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+        B44F92287D83F473B5597CC4 /* Resources */ = {
+            isa = PBXResourcesBuildPhase;
+            buildActionMask = 2147483647;
+            files = (
+                D7312060C644D124B483BC72 /* Assets.xcassets in Resources */,
+            );
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+        49F7A5B419344F1A23090987 /* Sources */ = {
+            isa = PBXSourcesBuildPhase;
+            buildActionMask = 2147483647;
+            files = (
+                F36E8F0BEF32F3B1A9711946 /* MivoApp.swift in Sources */,
+                3E02A7708F6BD08E765E5128 /* Models.swift in Sources */,
+                C6C3DD0E863A2F8D790AA962 /* Colors.swift in Sources */,
+                0E1F52C1F0D0AB37AD268A05 /* StorageService.swift in Sources */,
+                3BF38CFF771C4B42265F053C /* AIService.swift in Sources */,
+                5306BDEDDBAF577A5C71D040 /* AppViewModel.swift in Sources */,
+                5CA7645304E43E1E7ED6FBC7 /* MivoComponents.swift in Sources */,
+                DBBAED45E4F10CBB5AA82D31 /* LoginView.swift in Sources */,
+                AD94D9CF1B8E20453FB159CF /* RegisterView.swift in Sources */,
+                6C0340F1A79DDBDE74E67D9E /* OnboardingWelcomeView.swift in Sources */,
+                484E1553E2D16A1334C5B534 /* OnboardingWhyView.swift in Sources */,
+                36E209E3016E99C04CA79F09 /* OnboardingCalibrationView.swift in Sources */,
+                E8CE5CE448C77CB1FCA80F35 /* OnboardingAppsView.swift in Sources */,
+                8490515CD6AF2AED0400D0CA /* MainTabView.swift in Sources */,
+                2ABB1EAABB2C457C759A4ED9 /* HomeView.swift in Sources */,
+                3A0008733F86C281C8D46ABA /* PatternsView.swift in Sources */,
+                3E40F9E61D2A7209F6154DA8 /* InterventionsView.swift in Sources */,
+                E8D2538B41FAE8FD031C2BB2 /* SettingsView.swift in Sources */,
+                A79AFA1D32903E9CBBF9E905 /* InterventionView.swift in Sources */,
+                A51906C752905075915C480C /* ActiveSessionView.swift in Sources */,
+                029F6253E0F5CDC5B291ED79 /* ReflectionView.swift in Sources */,
+                F20554EA95609C4F4D4BC140 /* FocusView.swift in Sources */,
+                3EA3BEDC05636F5EBA124415 /* FocusTimerView.swift in Sources */,
+                31EA0E76E4C1A150D615DC6F /* WeeklyReportView.swift in Sources */,
+            );
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+        11090D863AD413E64078C686 /* Release */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+                ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+                CODE_SIGN_STYLE = Automatic;
+                CURRENT_PROJECT_VERSION = 1;
+                GENERATE_INFOPLIST_FILE = NO;
+                INFOPLIST_FILE = Mivo/Info.plist;
+                IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+                LD_RUNPATH_SEARCH_PATHS = (
+                    "$(inherited)",
+                    "@executable_path/Frameworks",
+                );
+                MARKETING_VERSION = 1.0;
+                PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SDKROOT = iphoneos;
+                SUPPORTED_PLATFORMS = iphoneos;
+                SWIFT_EMIT_LOC_STRINGS = YES;
+                SWIFT_VERSION = 5.0;
+                TARGETED_DEVICE_FAMILY = "1,2";
+            };
+            name = Release;
+        };
+        89DD08DE054C7C66B68DCB11 /* Debug */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+                ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+                CODE_SIGN_STYLE = Automatic;
+                CURRENT_PROJECT_VERSION = 1;
+                GENERATE_INFOPLIST_FILE = NO;
+                INFOPLIST_FILE = Mivo/Info.plist;
+                IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+                LD_RUNPATH_SEARCH_PATHS = (
+                    "$(inherited)",
+                    "@executable_path/Frameworks",
+                );
+                MARKETING_VERSION = 1.0;
+                PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SDKROOT = iphoneos;
+                SUPPORTED_PLATFORMS = iphoneos;
+                SWIFT_EMIT_LOC_STRINGS = YES;
+                SWIFT_VERSION = 5.0;
+                TARGETED_DEVICE_FAMILY = "1,2";
+            };
+            name = Debug;
+        };
+        D8257AF867AF152B35ADE7C2 /* Release */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                CLANG_ANALYZER_NONNULL = YES;
+                CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+                CLANG_ENABLE_MODULES = YES;
+                CLANG_ENABLE_OBJC_ARC = YES;
+                CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+                CLANG_WARN_BOOL_CONVERSION = YES;
+                CLANG_WARN_COMMA = YES;
+                CLANG_WARN_CONSTANT_CONVERSION = YES;
+                CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+                CLANG_WARN_EMPTY_BODY = YES;
+                CLANG_WARN_ENUM_CONVERSION = YES;
+                CLANG_WARN_INFINITE_RECURSION = YES;
+                CLANG_WARN_INT_CONVERSION = YES;
+                CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+                CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+                CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+                CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+                CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+                CLANG_WARN_STRICT_PROTOTYPES = YES;
+                CLANG_WARN_SUSPICIOUS_MOVE = YES;
+                CLANG_WARN_UNREACHABLE_CODE = YES;
+                CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+                DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+                DEVELOPMENT_TEAM = 45UT26F58Q;
+                ENABLE_NS_ASSERTIONS = NO;
+                ENABLE_STRICT_OBJC_MSGSEND = YES;
+                ENABLE_USER_SCRIPT_SANDBOXING = YES;
+                GCC_C_LANGUAGE_STANDARD = gnu17;
+                GCC_NO_COMMON_BLOCKS = YES;
+                GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+                GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+                GCC_WARN_UNDECLARED_SELECTOR = YES;
+                GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+                GCC_WARN_UNUSED_FUNCTION = YES;
+                GCC_WARN_UNUSED_VARIABLE = YES;
+                IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+                SDKROOT = iphoneos;
+                STRING_CATALOG_GENERATE_SYMBOLS = YES;
+                SWIFT_COMPILATION_MODE = wholemodule;
+                SWIFT_VERSION = 5.0;
+                VALIDATE_PRODUCT = YES;
+            };
+            name = Release;
+        };
+        E5B2449E11553FE249CD9524 /* Debug */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                CLANG_ANALYZER_NONNULL = YES;
+                CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+                CLANG_ENABLE_MODULES = YES;
+                CLANG_ENABLE_OBJC_ARC = YES;
+                CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+                CLANG_WARN_BOOL_CONVERSION = YES;
+                CLANG_WARN_COMMA = YES;
+                CLANG_WARN_CONSTANT_CONVERSION = YES;
+                CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+                CLANG_WARN_EMPTY_BODY = YES;
+                CLANG_WARN_ENUM_CONVERSION = YES;
+                CLANG_WARN_INFINITE_RECURSION = YES;
+                CLANG_WARN_INT_CONVERSION = YES;
+                CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+                CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+                CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+                CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+                CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+                CLANG_WARN_STRICT_PROTOTYPES = YES;
+                CLANG_WARN_SUSPICIOUS_MOVE = YES;
+                CLANG_WARN_UNREACHABLE_CODE = YES;
+                CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+                DEBUG_INFORMATION_FORMAT = dwarf;
+                DEVELOPMENT_TEAM = 45UT26F58Q;
+                ENABLE_STRICT_OBJC_MSGSEND = YES;
+                ENABLE_TESTABILITY = YES;
+                ENABLE_USER_SCRIPT_SANDBOXING = YES;
+                GCC_C_LANGUAGE_STANDARD = gnu17;
+                GCC_NO_COMMON_BLOCKS = YES;
+                GCC_OPTIMIZATION_LEVEL = 0;
+                GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+                GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+                GCC_WARN_UNDECLARED_SELECTOR = YES;
+                GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+                GCC_WARN_UNUSED_FUNCTION = YES;
+                GCC_WARN_UNUSED_VARIABLE = YES;
+                IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+                ONLY_ACTIVE_ARCH = YES;
+                SDKROOT = iphoneos;
+                STRING_CATALOG_GENERATE_SYMBOLS = YES;
+                SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+                SWIFT_VERSION = 5.0;
+            };
+            name = Debug;
+        };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+        54CD7788651D3D73A39F62B3 /* Build configuration list for PBXNativeTarget "Mivo" */ = {
+            isa = XCConfigurationList;
+            buildConfigurations = (
+                89DD08DE054C7C66B68DCB11 /* Debug */,
+                11090D863AD413E64078C686 /* Release */,
+            );
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
+        AD36FB36602DF327CFE6755B /* Build configuration list for PBXProject "mivoreplitapp" */ = {
+            isa = XCConfigurationList;
+            buildConfigurations = (
+                E5B2449E11553FE249CD9524 /* Debug */,
+                D8257AF867AF152B35ADE7C2 /* Release */,
+            );
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
+/* End XCConfigurationList section */
+    };
+    rootObject = 3CEAA518FD9FE3C7D2DC52B6 /* Project object */;
+}
