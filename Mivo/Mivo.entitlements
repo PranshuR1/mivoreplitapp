@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+    <!-- Family Controls entitlement for development/testing -->
+    <key>com.apple.developer.family-controls</key>
+    <true/>
+    <!-- App Groups (must match the App Group configured in Apple Developer portal)
+         Replace group.com.mivo.mivoapp with the App Group you register for your Team. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.mivo.mivoapp</string>
+    </array>
+</dict>
 </plist>

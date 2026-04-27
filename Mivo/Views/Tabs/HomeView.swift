@@ -34,13 +34,20 @@ struct HomeView: View {
                         Text("You have scrolled")
                             .font(.system(size: 15))
                             .foregroundColor(MivoColors.textSecondary)
-                        Text(formatDuration(appVM.todaysTotalMinutes))
+                        Text(formatDuration(appVM.deviceActivityMinutesToday ?? appVM.todaysTotalMinutes))
                             .font(.system(size: 56, weight: .bold))
                             .foregroundColor(MivoColors.textPrimary)
                             .tracking(-2)
-                        Text("\(appVM.todaysSessions.count) \(appVM.todaysSessions.count == 1 ? "unlock" : "unlocks")")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(MivoColors.textPrimary)
+                        HStack {
+                            Text("\(appVM.todaysSessions.count) \(appVM.todaysSessions.count == 1 ? "unlock" : "unlocks")")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(MivoColors.textPrimary)
+                            if appVM.deviceActivityMinutesToday != nil {
+                                Text("(device)")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(MivoColors.textMuted)
+                            }
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(24)

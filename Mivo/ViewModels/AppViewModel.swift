@@ -14,8 +14,14 @@ class AppViewModel: ObservableObject {
     @Published var showOnboarding: Bool = false
     @Published var isLoggedIn: Bool = false
 
+    // Last Device Activity report JSON (from extension via app group)
+    @Published var lastDeviceActivityReportJSON: String? = nil
+    @Published var deviceActivityMinutesToday: Int? = nil
+
     init() {
         loadData()
+        // begin observing device activity updates from the Device Activity extension (if present)
+        startObservingDeviceActivityUpdates()
     }
 
     func loadData() {
@@ -92,7 +98,9 @@ class AppViewModel: ObservableObject {
         isLoggedIn = true
 
         // New account: ensure onboarding runs
-        settings.onboardingComplete = false
+        // Since the user has now registered via the app, treat onboarding as completed
+        // so the onboarding flow will not be shown again on subsequent logins.
+        settings.onboardingComplete = true
         StorageService.save(settings, forKey: .settings)
 
         // Reset onboarding profile for fresh user
@@ -142,12 +150,8 @@ class AppViewModel: ObservableObject {
         settings = updated
         StorageService.save(settings, forKey: .settings)
 
-        // Ensure the app is accepting interactions (defensive)
-        DispatchQueue.main.async {
-            if UIApplication.shared.isIgnoringInteractionEvents {
-                UIApplication.shared.endIgnoringInteractionEvents()
-            }
-        }
+        // No longer use deprecated UIApplication interaction APIs; if any global overlays were used,
+        // they should be dismissed by the UI flow (we avoid calling deprecated APIs here).
     }
 
     func saveOnboardingProfile(_ partial: OnboardingProfile) {
@@ -339,6 +343,56 @@ class AppViewModel: ObservableObject {
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM-dd"
         return fmt.string(from: Date())
+    }
+
+    // Last Device Activity report JSON (from extension via app group)
+    func loadDeviceActivityReport() {
+        // Use the same app group as FamilyControlsManager
+        let ud = UserDefaults(suiteName: "group.com.mivo.mivoapp")
+        lastDeviceActivityReportJSON = ud?.string(forKey: "mivo.lastDeviceActivityReport")
+
+        // Parse the JSON and compute an aggregate minutes value for display
+        guard let raw = lastDeviceActivityReportJSON, let data = raw.data(using: .utf8) else {
+            deviceActivityMinutesToday = nil
+            return
+        }
+        do {
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                // Prefer explicit totalSeconds field when the extension provides it
+                if let total = json["totalSeconds"] as? Int {
+                    deviceActivityMinutesToday = Int((Double(total) / 60.0).rounded())
+                    return
+                }
+                // Expecting shape: { "perAppSeconds": { "bundle.id": 123, ... } }
+                if let perApp = json["perAppSeconds"] as? [String: Any] {
+                    var totalSeconds = 0
+                    for (_, v) in perApp {
+                        if let n = v as? Int { totalSeconds += n }
+                        else if let d = v as? Double { totalSeconds += Int(d) }
+                        else if let s = v as? String, let iv = Int(s) { totalSeconds += iv }
+                    }
+                    // convert to rounded minutes
+                    let minutes = Int((Double(totalSeconds) / 60.0).rounded())
+                    deviceActivityMinutesToday = minutes
+                    return
+                }
+            }
+        } catch {
+            // parsing failed — clear device metric but keep raw JSON visible for debugging
+            deviceActivityMinutesToday = nil
+            return
+        }
+        deviceActivityMinutesToday = nil
+    }
+
+    func startObservingDeviceActivityUpdates() {
+        NotificationCenter.default.addObserver(forName: Notification.Name("mivoDeviceActivityDidUpdate"), object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                self?.loadDeviceActivityReport()
+            }
+        }
+        // initial load
+        Task { @MainActor in loadDeviceActivityReport() }
     }
 }
 

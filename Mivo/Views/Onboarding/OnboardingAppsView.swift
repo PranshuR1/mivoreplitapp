@@ -492,7 +492,7 @@ private struct LifeBreakdownView_Internal: View {
 
                             // ensure freeYears respects any small rounding differences by forcing sum == boxes
                             var s = counts.sleepYears, w = counts.workYears, e = counts.eatYears, b = counts.basicsYears, sc = counts.scrollYears, f = counts.freeYears
-                            var total = s + w + e + b + sc + f
+                            let total = s + w + e + b + sc + f
                             if total != boxes {
                                 let diff = boxes - total
                                 f += diff

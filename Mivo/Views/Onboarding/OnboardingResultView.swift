@@ -58,9 +58,13 @@ struct OnboardingResultView: View {
                 Spacer()
 
                 Button {
-                    // Immediately mark onboarding complete so RootView swaps to the main UI
-                    appVM.completeOnboarding()
-                    HapticsService.success()
+                    // Dismiss first, then mark onboarding complete to avoid the onboarding navigation remaining on top
+                    dismiss()
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+                        appVM.completeOnboarding()
+                        HapticsService.success()
+                    }
                 } label: {
                     Text("Finish setup")
                         .font(.system(size: 16, weight: .semibold))
