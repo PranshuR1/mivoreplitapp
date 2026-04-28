@@ -75,6 +75,13 @@ struct SettingsView: View {
                     // Preferences
                     SectionHeader(title: "Preferences")
                         .padding(.bottom, 10)
+                    
+                    // Screen Time Tracking
+                    if #available(iOS 16.0, *) {
+                        screenTimeSection
+                            .padding(.bottom, 12)
+                    }
+                    
                     settingsCard {
                         HStack {
                             HStack(spacing: 12) {
@@ -635,6 +642,168 @@ struct SettingsView: View {
         let totalSeconds = appVM.sessions.reduce(0) { $0 + $1.actualDuration }
         return totalSeconds.secondsToHoursMinutesSeconds()
      }
+    
+    // Screen Time Section (iOS 16+)
+    @available(iOS 16.0, *)
+    @ViewBuilder
+    private var screenTimeSection: some View {
+        let collector = ScreenTimeDataCollector.shared
+        
+        settingsCard {
+            Button {
+                if collector.authorizationStatus == .authorized {
+                    // Show Screen Time usage view
+                    showScreenTimeGuide = true
+                } else {
+                    // Show authorization prompt
+                    showScreenTimeGuide = true
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(statusColor(for: collector.authorizationStatus).opacity(0.14))
+                            .frame(width: 40, height: 40)
+                        
+                        Image(systemName: statusIcon(for: collector.authorizationStatus))
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(statusColor(for: collector.authorizationStatus))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Screen Time Tracking")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(MivoColors.textPrimary)
+                        Text(statusText(for: collector.authorizationStatus))
+                            .font(.system(size: 12))
+                            .foregroundColor(MivoColors.textSecondary)
+                    }
+                    
+                    Spacer()
+                    
+                    if collector.isMonitoring {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 8, height: 8)
+                            Text("Active")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.green)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.green.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.textMuted)
+                }
+                .padding(16)
+            }
+            .buttonStyle(.plain)
+        }
+        .sheet(isPresented: $showScreenTimeGuide) {
+            if collector.authorizationStatus == .authorized {
+                NavigationStack {
+                    ScreenTimeUsageView()
+                        .environmentObject(appVM)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") {
+                                    showScreenTimeGuide = false
+                                }
+                            }
+                        }
+                }
+            } else {
+                NavigationStack {
+                    VStack(spacing: 18) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.system(size: 36, weight: .semibold))
+                            .foregroundColor(MivoColors.accent)
+                        Text("Enable Screen Time")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundColor(MivoColors.textPrimary)
+                        Text("Mivo uses Apple’s Family Controls permission to show real Screen Time reports.")
+                            .font(.system(size: 15))
+                            .foregroundColor(MivoColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(4)
+                        Button {
+                            Task {
+                                _ = await appVM.requestScreenTimeAccessAndRefresh()
+                                showScreenTimeGuide = false
+                            }
+                        } label: {
+                            Text("Allow Screen Time")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(MivoColors.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 15)
+                                .background(MivoColors.accent)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(MivoColors.background)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") {
+                                showScreenTimeGuide = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    @available(iOS 16.0, *)
+    private func statusColor(for status: MivoScreenTimeAuthorizationStatus) -> Color {
+        switch status {
+        case .authorized:
+            return MivoColors.blue
+        case .denied:
+            return Color.red
+        case .notDetermined:
+            return MivoColors.accent
+        case .unavailable:
+            return MivoColors.muted
+        }
+    }
+    
+    @available(iOS 16.0, *)
+    private func statusIcon(for status: MivoScreenTimeAuthorizationStatus) -> String {
+        switch status {
+        case .authorized:
+            return "checkmark.circle.fill"
+        case .denied:
+            return "xmark.circle.fill"
+        case .notDetermined:
+            return "clock.badge.questionmark"
+        case .unavailable:
+            return "exclamationmark.triangle"
+        }
+    }
+    
+    @available(iOS 16.0, *)
+    private func statusText(for status: MivoScreenTimeAuthorizationStatus) -> String {
+        switch status {
+        case .authorized:
+            return "Real-time iOS data"
+        case .denied:
+            return "Access denied"
+        case .notDetermined:
+            return "Tap to enable accurate tracking"
+        case .unavailable:
+            return "Not available"
+        }
+    }
 
     @ViewBuilder
     private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -701,7 +870,7 @@ struct SettingsView: View {
                     monitoringMessage = "Daily monitoring started successfully! The app will track your device usage in the background."
                     showMonitoringAlert = true
                     // Refresh the report
-                    appVM.refreshScreenTimeData(allowBootstrap: true)
+                    appVM.refreshScreenTimeData()
                 case .failure(let error):
                     monitoringMessage = "Failed to start monitoring: \(error.localizedDescription)"
                     showMonitoringAlert = true

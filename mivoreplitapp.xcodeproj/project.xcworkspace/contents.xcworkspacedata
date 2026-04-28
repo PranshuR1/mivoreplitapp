@@ -28,4 +28,13 @@
    <FileRef
       location = "group:NewOnboardingViews.swift">
    </FileRef>
+   <FileRef
+      location = "group:ScreenTimeDataCollector.swift">
+   </FileRef>
+   <FileRef
+      location = "group:SCREENTIME_IMPLEMENTATION.md">
+   </FileRef>
+   <FileRef
+      location = "group:ScreenTimeIntegration.swift">
+   </FileRef>
 </Workspace>

@@ -37,7 +37,7 @@ struct HomeView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            appVM.refreshScreenTimeData(allowBootstrap: true)
+            appVM.refreshScreenTimeData()
             if displayedMinutesToday == 0 && minutesToday > 0 {
                 animateMinutes(to: minutesToday)
             } else {
@@ -463,6 +463,26 @@ struct HomeView: View {
             await MainActor.run {
                 displayedMinutesToday = target
             }
+        }
+    }
+    
+    private func greeting() -> String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 0..<12: return "Good morning"
+        case 12..<17: return "Good afternoon"
+        default: return "Good evening"
+        }
+    }
+    
+    private func formatDuration(_ minutes: Int) -> String {
+        let hours = minutes / 60
+        let mins = minutes % 60
+        
+        if hours > 0 {
+            return "\(hours)h \(mins)m"
+        } else {
+            return "\(mins)m"
         }
     }
 }

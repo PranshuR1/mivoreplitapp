@@ -10,6 +10,7 @@ import DeviceActivity
 // This class helps collect and process screen time data from the system
 
 @available(iOS 16.0, *)
+@MainActor
 class ScreenTimeDataCollector {
     
     static let shared = ScreenTimeDataCollector()
@@ -17,6 +18,25 @@ class ScreenTimeDataCollector {
     private let appGroup = "group.com.mivo.mivoapp"
     
     private init() {}
+
+    var authorizationStatus: MivoScreenTimeAuthorizationStatus {
+        guard let cached = FamilyControlsManager.shared.cachedAuthorizationStatus() else {
+            return .notDetermined
+        }
+        return cached ? .authorized : .denied
+    }
+
+    var isMonitoring: Bool {
+        FamilyControlsManager.shared.isMonitoring()
+    }
+
+    func startMonitoring() {
+        FamilyControlsManager.shared.scheduleDailyMonitoring { _ in }
+    }
+
+    var latestReport: ScreenTimeReport? {
+        loadCachedReport()
+    }
     
     // MARK: - Public Methods
     
@@ -91,6 +111,13 @@ class ScreenTimeDataCollector {
         userDefaults.removeObject(forKey: "mivo.extensionLogs")
         userDefaults.synchronize()
     }
+}
+
+enum MivoScreenTimeAuthorizationStatus {
+    case authorized
+    case denied
+    case notDetermined
+    case unavailable
 }
 
 // MARK: - Screen Time Report Model

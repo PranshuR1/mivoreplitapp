@@ -1,5 +1,17 @@
 import SwiftUI
 
+#if canImport(DeviceActivity)
+import DeviceActivity
+#endif
+
+#if canImport(FamilyControls)
+import FamilyControls
+#endif
+
+#if canImport(ManagedSettings)
+import ManagedSettings
+#endif
+
 private let monthNames = ["January","February","March","April","May","June",
                            "July","August","September","October","November","December"]
 private let weekdayLabels = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
@@ -54,7 +66,7 @@ struct PatternsView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            appVM.refreshScreenTimeData(allowBootstrap: true)
+            appVM.refreshScreenTimeData()
         }
     }
 
@@ -105,6 +117,8 @@ struct PatternsView: View {
 
             if hasDeviceData {
                 appUsageBars
+            } else if hasScreenTimeAccess {
+                realScreenTimeReportCard
             } else {
                 missingScreenTimeCard
             }
@@ -206,6 +220,39 @@ struct PatternsView: View {
         .padding(14)
         .background(MivoColors.heroText)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var realScreenTimeReportCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "iphone.gen3")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(MivoColors.accent)
+                Text("Live iOS Screen Time report")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Spacer()
+            }
+
+            if #available(iOS 16.0, *) {
+                MivoLiveDeviceActivityReport()
+                    .frame(height: 230)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            } else {
+                Text("Real Screen Time reports require iOS 16 or later.")
+                    .font(.system(size: 12))
+                    .foregroundColor(MivoColors.textSecondary)
+            }
+
+            Text("This panel is real Screen Time data from Apple’s DeviceActivityReport API. Detailed numbers only appear when the report extension is installed and iOS has published usage for the selected day.")
+                .font(.system(size: 12))
+                .foregroundColor(MivoColors.textSecondary)
+                .lineSpacing(3)
+        }
+        .padding(14)
+        .background(MivoColors.heroText)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     // MARK: - Calendar
@@ -439,6 +486,10 @@ struct PatternsView: View {
         (appVM.deviceActivityMinutesToday ?? 0) > 0 || !appVM.deviceActivityPerAppSeconds.isEmpty
     }
 
+    var hasScreenTimeAccess: Bool {
+        FamilyControlsManager.shared.cachedAuthorizationStatus() == true
+    }
+
     var screenTimeMinutesToday: Int {
         appVM.deviceActivityMinutesToday ?? appVM.todaysTotalMinutes
     }
@@ -454,9 +505,8 @@ struct PatternsView: View {
     }
 
     var screenTimeCaption: String {
-        guard hasDeviceData else { return "Connect Screen Time to turn this into live usage." }
-        if appVM.deviceActivityReportSource == "mivo-initial-screen-time-snapshot" {
-            return "Screen Time is connected. Showing an initial snapshot while iOS publishes detailed usage."
+        guard hasDeviceData else {
+            return hasScreenTimeAccess ? "Screen Time is connected. Waiting for iOS to publish real report data." : "Connect Screen Time to turn this into live usage."
         }
         if let generatedAt = appVM.deviceActivityReportGeneratedAt {
             let fmt = DateFormatter()
@@ -542,3 +592,37 @@ struct PatternsView: View {
         selectedDay = 1
     }
 }
+
+#if canImport(DeviceActivity) && canImport(FamilyControls) && canImport(ManagedSettings)
+@available(iOS 16.0, *)
+private struct MivoLiveDeviceActivityReport: View {
+    private let context = DeviceActivityReport.Context("MivoPatternsTotalActivity")
+
+    private var filter: DeviceActivityFilter {
+        let interval = Calendar.current.dateInterval(of: .day, for: Date()) ?? DateInterval(start: Date(), duration: 24 * 60 * 60)
+        return DeviceActivityFilter(
+            segment: .daily(during: interval),
+            devices: .init([.iPhone, .iPad]),
+            applications: Set<ApplicationToken>(),
+            categories: Set<ActivityCategoryToken>(),
+            webDomains: Set<WebDomainToken>()
+        )
+    }
+
+    var body: some View {
+        DeviceActivityReport(context, filter: filter)
+            .background(MivoColors.white.opacity(0.42))
+    }
+}
+#else
+@available(iOS 16.0, *)
+private struct MivoLiveDeviceActivityReport: View {
+    var body: some View {
+        Text("Device Activity is unavailable in this build.")
+            .font(.system(size: 12))
+            .foregroundColor(MivoColors.textSecondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(MivoColors.white.opacity(0.42))
+    }
+}
+#endif
