@@ -227,112 +227,134 @@ private struct AgeOnboardingView_Internal: View {
 
     var body: some View {
         ZStack {
-            MivoColors.background.ignoresSafeArea()
-            VStack(spacing: 20) {
-                Spacer(minLength: 20)
+            OnboardingBackdrop()
 
-                // Header
-                VStack(spacing: 6) {
-                    Text("About your age")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
-                    Text("Helps Mivo personalize suggestions and lifetime visualizations.")
-                        .font(.system(size: 14))
-                        .foregroundColor(MivoColors.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 36)
-                }
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        OnboardingStepHeader(
+                            step: 4,
+                            total: 5,
+                            eyebrow: "Personalize",
+                            title: "How should we frame your time?",
+                            subtitle: "Your age helps Mivo turn daily scrolling into a life-sized view. It stays on device."
+                        )
+                        .onboardingEntrance(appear)
 
-                // Card containing the main input
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(MivoColors.card)
-                        .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 4)
+                        ageCard
+                            .onboardingEntrance(appear, delay: 0.08)
 
-                    VStack(spacing: 18) {
-                        // Large numeric input (UIKit-backed for smoother typing)
-                        ZStack(alignment: .center) {
-                            if ageText.isEmpty {
-                                Text("Enter your age")
-                                    .font(.system(size: 20, weight: .semibold))
-                                    .foregroundColor(MivoColors.textMuted)
-                            }
-                            NumericTextField(text: $ageText, placeholder: "", fontSize: 40)
-                                .frame(height: 64)
-                        }
-                        .padding(.top, 10)
-
-                        // Age range chips
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(ranges, id: \.self) { r in
-                                    Button {
-                                        withAnimation(.spring()) { selectedRange = (selectedRange == r ? nil : r) }
-                                        HapticsService.impact(style: .medium)
-                                    } label: {
-                                        Text(r)
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 10)
-                                            .background(selectedRange == r ? MivoColors.accent : MivoColors.card)
-                                            .foregroundColor(selectedRange == r ? Color.white : MivoColors.textPrimary)
-                                            .clipShape(Capsule())
-                                            .overlay(
-                                                Capsule().stroke(selectedRange == r ? Color.clear : MivoColors.border, lineWidth: 1)
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.horizontal, 12)
-                        }
-
-                        Text("We’ll use this only to show a personalized life view — you can skip.")
-                            .font(.system(size: 13))
-                            .foregroundColor(MivoColors.textMuted)
-                            .multilineTextAlignment(.center)
-                            .padding(.bottom, 12)
+                        rangeGrid
+                            .onboardingEntrance(appear, delay: 0.16)
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 120)
                 }
-                .padding(.horizontal, 20)
 
-                Spacer()
-
-                // Primary action
-                // Only enable navigation when user has entered an age or selected a range
                 let hasSelection = (Int(ageText) ?? 0) > 0 || selectedRange != nil
-
-                NavigationLink {
-                    let ageVal = Int(ageText)
-                    LifeBreakdownView_Internal(providedAge: ageVal, providedAgeRange: selectedRange)
-                } label: {
-                    Text("Show my life breakdown")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
+                OnboardingBottomBar {
+                    NavigationLink {
+                        let ageVal = Int(ageText)
+                        LifeBreakdownView_Internal(providedAge: ageVal, providedAgeRange: selectedRange)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text("Show life breakdown")
+                                .font(.system(size: 16, weight: .semibold))
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundColor(MivoColors.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(hasSelection ? MivoColors.accent : MivoColors.border)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .padding(.horizontal, 28)
-                        .padding(.bottom, 40)
-                }
-                .disabled(!hasSelection)
-                .simultaneousGesture(TapGesture().onEnded {
-                    if hasSelection {
-                        var profile = appVM.onboardingProfile
-                        if let age = Int(ageText), age > 0 { profile.age = age }
-                        profile.ageRange = selectedRange
-                        appVM.saveOnboardingProfile(profile)
-                        HapticsService.success()
+                        .padding(.vertical, 17)
+                        .background(hasSelection ? MivoColors.textPrimary : MivoColors.textMuted.opacity(0.36))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: hasSelection ? MivoColors.textPrimary.opacity(0.18) : .clear, radius: 16, y: 8)
                     }
-                })
+                    .disabled(!hasSelection)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        if hasSelection {
+                            var profile = appVM.onboardingProfile
+                            if let age = Int(ageText), age > 0 { profile.age = age }
+                            profile.ageRange = selectedRange
+                            appVM.saveOnboardingProfile(profile)
+                            HapticsService.success()
+                        }
+                    })
+                }
             }
-            .padding(.top, 44)
             .onAppear { appear = true }
         }
         .navigationBarBackButtonHidden()
+    }
+
+    private var ageCard: some View {
+        VStack(spacing: 18) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Exact age")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(MivoColors.textSecondary)
+                    Text("Optional, but more accurate")
+                        .font(.system(size: 12))
+                        .foregroundColor(MivoColors.textMuted)
+                }
+                Spacer()
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(Color(hex: "#4E7152"))
+            }
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color(hex: "#26382E"))
+                    .frame(height: 116)
+
+                if ageText.isEmpty {
+                    Text("Enter age")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.white.opacity(0.42))
+                }
+
+                NumericTextField(text: $ageText, placeholder: "", fontSize: 46)
+                    .frame(height: 86)
+                    .padding(.horizontal, 20)
+            }
+        }
+        .padding(18)
+        .background(MivoColors.white.opacity(0.64))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.04), radius: 16, y: 8)
+    }
+
+    private var rangeGrid: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Or choose a range")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(MivoColors.textSecondary)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(ranges, id: \.self) { range in
+                    Button {
+                        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+                            selectedRange = (selectedRange == range ? nil : range)
+                        }
+                        HapticsService.selection()
+                    } label: {
+                        Text(range)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(selectedRange == range ? MivoColors.white : MivoColors.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(selectedRange == range ? MivoColors.accent : MivoColors.white.opacity(0.62))
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(selectedRange == range ? MivoColors.accent : MivoColors.white.opacity(0.58), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
 
@@ -442,226 +464,213 @@ private struct LifeBreakdownView_Internal: View {
 
     var body: some View {
         ZStack {
-            MivoColors.background.ignoresSafeArea()
+            OnboardingBackdrop()
+            let boxes = boxesForAge(providedAge, ageRange: providedAgeRange)
 
-            VStack(spacing: 18) {
-                Spacer(minLength: 12)
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        OnboardingStepHeader(
+                            step: 5,
+                            total: 5,
+                            eyebrow: "Perspective",
+                            title: "Your time, made visible",
+                            subtitle: "Each square is roughly one year ahead. We’ll color the picture so your phone time has context."
+                        )
+                        .onboardingEntrance(appear)
 
-                Text("Let’s visualize the rest of your life")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(MivoColors.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
+                        yearPreviewCard(boxes: boxes)
+                            .onboardingEntrance(appear, delay: 0.08)
 
-                Text("We’ll show a year-by-year view based on your profile. Tap Next when you’re ready.")
-                    .font(.system(size: 14))
-                    .foregroundColor(MivoColors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
+                        lifeGridCard(boxes: boxes)
+                            .onboardingEntrance(appear, delay: 0.16)
 
-                Spacer()
-
-                // Show a preview of how many boxes will be visualized based on age or age range
-                let boxes = boxesForAge(providedAge, ageRange: providedAgeRange)
-                Text("We’ll show \(boxes) years")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(MivoColors.textPrimary)
-
-                Spacer()
-
-                if !started {
-                    Button(action: {
-                        started = true
-                        loading = true
-                        // kick off AI fetch + reveal sequence
-                        Task {
-                            // call AI to get a life breakdown for the requested number of boxes
-                            let counts = await AIService.estimateLifeBreakdown(profile: appVM.onboardingProfile, lifeExpectancy: boxes)
-
-                            // ensure freeYears respects any small rounding differences by forcing sum == boxes
-                            var s = counts.sleepYears, w = counts.workYears, e = counts.eatYears, b = counts.basicsYears, sc = counts.scrollYears, f = counts.freeYears
-                            let total = s + w + e + b + sc + f
-                            if total != boxes {
-                                let diff = boxes - total
-                                f += diff
-                            }
-                            lifeCounts = (s,w,e,b,sc,f)
-
-                            // Build category map
-                            let map = buildCategoryMap(for: lifeCounts!, totalBoxes: boxes)
-                            // Assign to state once so the grid doesn't rebuild the map on every render
-                            await MainActor.run {
-                                lifeMap = map
-                            }
-
-                            // reveal cells left-to-right in batches (reduce main-thread updates)
-                            visibleCells = 0
-                            highlightedCategory = nil
-                            let categoriesOrder = ["sleep","work","eat","basics","scroll","free"]
-                            var startIdx = 0
-                            for cat in categoriesOrder {
-                                let catCount = map.filter { $0 == cat }.count
-                                if catCount == 0 { continue }
-
-                                // show floating label for the category
-                                if let counts = lifeCounts {
-                                    await MainActor.run {
-                                        floatingText = floatingLabelFor(category: cat, counts: counts)
-                                        showFloatingText = true
-                                        highlightedCategory = cat
-                                    }
-                                }
-
-                                // Reveal in batches to reduce per-frame churn
-                                var revealedForCat = 0
-                                while revealedForCat < catCount {
-                                    let revealNow = min(revealBatchSize, catCount - revealedForCat)
-                                    revealedForCat += revealNow
-                                    let newVisible = startIdx + revealedForCat
-                                    // update visibleCells on main actor once per batch
-                                    await MainActor.run {
-                                        withAnimation(.easeOut(duration: 0.18)) {
-                                            visibleCells = newVisible
-                                        }
-                                    }
-                                    // grouped haptic for the batch
-                                    HapticsService.impact(style: .medium)
-                                    // short pause between batches
-                                    try? await Task.sleep(nanoseconds: UInt64(120_000_000)) // 120ms
-                                }
-
-                                // after finishing this category, pause before next
-                                try? await Task.sleep(nanoseconds: UInt64(2_000_000_000)) // 2s pause between categories
-
-                                // small hide gap for floating label
-                                await MainActor.run {
-                                    showFloatingText = false
-                                }
-                                try? await Task.sleep(nanoseconds: UInt64(200_000_000))
-
-                                startIdx += catCount
-                            }
-
-                            // reveal complete
-                            highlightedCategory = nil
-                            showDetails = true
-                            loading = false
-                        }
-                    }) {
-                        Text("Next")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(MivoColors.accent)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .padding(.horizontal, 28)
-                    }
-                    .disabled(loading)
-                } else {
-                    ZStack(alignment: .top) {
-                        // While loading/revealing, show a simplified grid that grows as visibleCells increases
-                        GeometryReader { geo in
-                            let cols = 10
-                            let spacing: CGFloat = 6
-                            let total = boxes
-                            let cellSize = max(12, (geo.size.width - CGFloat(cols + 1) * spacing) / CGFloat(cols))
-
-                            // Build the category map (defensive when lifeCounts is not yet available)
-                            let counts = lifeCounts ?? (sleepYears: 0, workYears: 0, eatYears: 0, basicsYears: 0, scrollYears: 0, freeYears: boxes)
-                            let map = lifeMap.isEmpty ? buildCategoryMap(for: counts, totalBoxes: total) : lifeMap
-
-                            ScrollView(.vertical) {
-                                LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellSize), spacing: spacing), count: cols), spacing: spacing) {
-                                    ForEach(0..<total, id: \.self) { idx in
-                                        let cat = map[idx]
-                                        // cell is visible if idx < visibleCells
-                                        let isVisible = idx < visibleCells
-                                        ZStack {
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .fill(isVisible ? colorForCategory(cat) : MivoColors.card)
-                                                .frame(width: cellSize, height: cellSize)
-                                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(MivoColors.border, lineWidth: isVisible ? 1 : 0.5))
-
-                                            if isVisible {
-                                                Text("—")
-                                                    .font(.system(size: 12, weight: .semibold))
-                                                    .foregroundColor(.white)
-                                            }
-                                        }
-                                        .scaleEffect(highlightedCategory == cat && isVisible ? 1.06 : 1.0)
-                                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: visibleCells)
-                                    }
-                                }
-                                .padding(12)
-                                .frame(minHeight: geo.size.height)
-                            }
-                        }
-                        .padding(.horizontal, 8)
-
-                        // Floating label while a category is being revealed
-                        if showFloatingText, let text = floatingText {
-                            VStack {
-                                Text(text)
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
-                                    .background(BlurView(style: .systemMaterialDark))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .shadow(radius: 6)
-                                    .padding(.top, 12)
-                                Spacer()
-                            }
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                            .animation(.easeOut, value: showFloatingText)
-                        }
-
-                        // Legend/key appears only after full reveal; no long descriptive text blocks
                         if showDetails, let counts = lifeCounts {
-                            VStack(spacing: 12) {
-                                Spacer().frame(height: 16)
-                                // Adaptive legend grid so labels don't truncate
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 10) {
-                                    legendItem(color: colorForCategory("sleep"), label: "Sleep — \(counts.sleepYears) yrs")
-                                    legendItem(color: colorForCategory("work"), label: "Work — \(counts.workYears) yrs")
-                                    legendItem(color: colorForCategory("eat"), label: "Eat — \(counts.eatYears) yrs")
-                                    legendItem(color: colorForCategory("basics"), label: "Basics — \(counts.basicsYears) yrs")
-                                    legendItem(color: colorForCategory("scroll"), label: "Phone — \(counts.scrollYears) yrs")
-                                    legendItem(color: colorForCategory("free"), label: "Free — \(counts.freeYears) yrs")
-                                }
+                            lifeLegend(counts: counts)
+                                .onboardingEntrance(showDetails, delay: 0.02)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 124)
+                }
 
-                                Spacer()
-
-                                // Navigate to the result wheel; pass the provided age/range so the Result view computes remaining years consistently
-                                NavigationLink {
-                                    ResultOnboardingView_Internal(providedAge: providedAge, providedAgeRange: providedAgeRange)
-                                } label: {
-                                    Text("Next")
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 16)
-                                        .background(MivoColors.accent)
-                                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                                        .padding(.horizontal, 28)
-                                        .padding(.bottom, 40)
-                                }
+                OnboardingBottomBar {
+                    if showDetails {
+                        NavigationLink {
+                            ResultOnboardingView_Internal(providedAge: providedAge, providedAgeRange: providedAgeRange)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text("Show recovered time")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 15, weight: .semibold))
                             }
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            .animation(.easeOut, value: showDetails)
+                            .foregroundColor(MivoColors.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 17)
+                            .background(MivoColors.textPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
+                        }
+                    } else {
+                        OnboardingPrimaryButton(started ? "Visualizing..." : "Build my life map", enabled: !loading) {
+                            Image(systemName: "sparkles")
+                        } action: {
+                            startVisualization(boxes: boxes)
                         }
                     }
                 }
-
-                Spacer()
             }
-            .opacity(appear ? 1 : 0)
-            .onAppear {
-                appear = true
-            }
+            .onAppear { appear = true }
         }
         .navigationBarBackButtonHidden()
+    }
+
+    private func yearPreviewCard(boxes: Int) -> some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color(hex: "#26382E"))
+                    .frame(width: 72, height: 72)
+                Text("\(boxes)")
+                    .font(.system(size: 25, weight: .bold).monospacedDigit())
+                    .foregroundColor(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Years ahead")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Text("Not a prediction. A lens for seeing attention as something precious.")
+                    .font(.system(size: 13))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineSpacing(3)
+            }
+        }
+        .padding(18)
+        .background(MivoColors.white.opacity(0.64))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private func lifeGridCard(boxes: Int) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(showDetails ? "Life map" : started ? "Building your map" : "Preview")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Spacer()
+                if started && !showDetails {
+                    ProgressView()
+                        .tint(MivoColors.accent)
+                }
+            }
+
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 10)
+            let counts = lifeCounts ?? (sleepYears: 0, workYears: 0, eatYears: 0, basicsYears: 0, scrollYears: 0, freeYears: boxes)
+            let map = lifeMap.isEmpty ? buildCategoryMap(for: counts, totalBoxes: boxes) : lifeMap
+
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(0..<boxes, id: \.self) { index in
+                    let category = map[index]
+                    let isVisible = index < visibleCells
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isVisible ? colorForCategory(category) : Color(hex: "#E8DED2"))
+                        .aspectRatio(1, contentMode: .fit)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color.white.opacity(0.46), lineWidth: 1)
+                        )
+                        .scaleEffect(highlightedCategory == category && isVisible ? 1.08 : 1)
+                        .opacity(started ? 1 : 0.72)
+                        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: visibleCells)
+                }
+            }
+
+            if let floatingText, showFloatingText {
+                Text(floatingText)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(hex: "#DFE7DA"))
+                    .clipShape(Capsule())
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(18)
+        .background(MivoColors.white.opacity(0.66))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.04), radius: 16, y: 8)
+    }
+
+    private func lifeLegend(counts: (sleepYears: Int, workYears: Int, eatYears: Int, basicsYears: Int, scrollYears: Int, freeYears: Int)) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            legendItem(color: colorForCategory("sleep"), label: "Sleep · \(counts.sleepYears)y")
+            legendItem(color: colorForCategory("work"), label: "Work · \(counts.workYears)y")
+            legendItem(color: colorForCategory("eat"), label: "Meals · \(counts.eatYears)y")
+            legendItem(color: colorForCategory("basics"), label: "Basics · \(counts.basicsYears)y")
+            legendItem(color: colorForCategory("scroll"), label: "Phone · \(counts.scrollYears)y")
+            legendItem(color: colorForCategory("free"), label: "Open · \(counts.freeYears)y")
+        }
+    }
+
+    private func startVisualization(boxes: Int) {
+        guard !loading else { return }
+        started = true
+        loading = true
+        HapticsService.impact(style: .light)
+
+        Task {
+            let counts = await AIService.estimateLifeBreakdown(profile: appVM.onboardingProfile, lifeExpectancy: boxes)
+            var s = counts.sleepYears, w = counts.workYears, e = counts.eatYears, b = counts.basicsYears, sc = counts.scrollYears, f = counts.freeYears
+            let total = s + w + e + b + sc + f
+            if total != boxes { f += boxes - total }
+            let adjusted = (s, w, e, b, sc, f)
+            let map = buildCategoryMap(for: adjusted, totalBoxes: boxes)
+
+            await MainActor.run {
+                lifeCounts = adjusted
+                lifeMap = map
+                visibleCells = 0
+            }
+
+            let categoriesOrder = ["sleep", "work", "eat", "basics", "scroll", "free"]
+            var startIndex = 0
+            for category in categoriesOrder {
+                let count = map.filter { $0 == category }.count
+                if count == 0 { continue }
+                await MainActor.run {
+                    floatingText = floatingLabelFor(category: category, counts: adjusted)
+                    showFloatingText = true
+                    highlightedCategory = category
+                }
+
+                var revealed = 0
+                while revealed < count {
+                    revealed += min(revealBatchSize, count - revealed)
+                    await MainActor.run {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            visibleCells = startIndex + revealed
+                        }
+                    }
+                    try? await Task.sleep(nanoseconds: 80_000_000)
+                }
+
+                try? await Task.sleep(nanoseconds: 520_000_000)
+                startIndex += count
+            }
+
+            await MainActor.run {
+                showFloatingText = false
+                highlightedCategory = nil
+                showDetails = true
+                loading = false
+                HapticsService.success()
+            }
+        }
     }
 
     // Helper to choose a color for a category
@@ -693,87 +702,124 @@ private struct ResultOnboardingView_Internal: View {
 
     var body: some View {
         ZStack {
-            MivoColors.background.ignoresSafeArea()
-            VStack(spacing: 20) {
-                Text("Don’t worry — you can recover time")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundColor(MivoColors.textPrimary)
+            OnboardingBackdrop()
 
-                Text("We used your answers to estimate how much time per day we can help you save, then converted that into recovered years across your remaining life.")
-                    .font(.system(size: 15))
-                    .foregroundColor(MivoColors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 24) {
+                        OnboardingStepHeader(
+                            step: 5,
+                            total: 5,
+                            eyebrow: "Recovery",
+                            title: "This is time you can win back",
+                            subtitle: "Small pauses compound. Mivo turns tiny choices into visible time recovered."
+                        )
+                        .onboardingEntrance(appear)
 
-                ZStack {
-                    Circle()
-                        .stroke(MivoColors.border, lineWidth: 14)
-                        .frame(width: 300, height: 300)
+                        recoveredWheel
+                            .onboardingEntrance(appear, delay: 0.08)
 
-                    // Draw the arc proportional to yearsRecovered / remainingYears (so wheel reflects years saved)
-                    Circle()
-                        .trim(from: 0, to: CGFloat(trimFraction()))
-                        .stroke(AngularGradient(gradient: Gradient(colors: [MivoColors.accent, MivoColors.accentLight]), center: .center), style: StrokeStyle(lineWidth: 14, lineCap: .round))
-                        .rotationEffect(.degrees(spin ? 360 : -90))
-                        .frame(width: 300, height: 300)
-                        .animation(.interpolatingSpring(stiffness: 70, damping: 10).speed(0.45), value: estimateYears)
+                        if let mins = estimateMinutes, let years = estimateYears {
+                            recoveredStats(minutes: mins, years: years)
+                                .onboardingEntrance(appear, delay: 0.18)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 124)
+                }
 
-                    VStack(spacing: 6) {
-                        // Display animated years number (falls back to estimateYears if displayYears hasn't animated yet)
-                        Text((estimateYears != nil || displayYears > 0) ? String(format: "%.2f yrs", displayYears > 0 ? displayYears : (estimateYears ?? 0)) : "—")
-                            .font(.system(size: 36, weight: .bold).monospacedDigit())
-                            .foregroundColor(MivoColors.textPrimary)
-                        Text("estimated recovered time")
-                            .font(.system(size: 13))
-                            .foregroundColor(MivoColors.textMuted)
+                OnboardingBottomBar {
+                    OnboardingPrimaryButton("Finish setup") {
+                        Image(systemName: "checkmark")
+                    } action: {
+                        dismiss()
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 50_000_000)
+                            appVM.completeOnboarding()
+                            HapticsService.success()
+                        }
                     }
                 }
-                .padding(8)
-                .onTapGesture {
-                    // very strong tactile sequence
-                    for i in 0..<6 { DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.06) { HapticsService.impact(style: .heavy) } }
-                    withAnimation(.easeOut(duration: 2.0)) { spin.toggle() }
-                }
-
-                if let mins = estimateMinutes, let years = estimateYears {
-                    Text("We estimate you could save \(mins) minutes per day. That's about \(String(format: "%.2f", years)) years across your remaining life.")
-                        .font(.system(size: 14))
-                        .foregroundColor(MivoColors.textPrimary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 28)
-                }
-
-                Spacer()
-
-                Button {
-                    // Dismiss first, then mark onboarding complete to avoid navigation race conditions
-                    dismiss()
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 50_000_000)
-                        appVM.completeOnboarding()
-                        // celebratory haptic
-                        for i in 0..<5 { DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.04) { HapticsService.impact(style: .heavy) } }
-                        HapticsService.success()
-                    }
-                 } label: {
-                     Text("Finish setup")
-                         .font(.system(size: 16, weight: .semibold))
-                         .foregroundColor(.white)
-                         .frame(maxWidth: .infinity)
-                         .padding(.vertical, 16)
-                         .background(MivoColors.accent)
-                         .clipShape(RoundedRectangle(cornerRadius: 14))
-                 }
-                 .padding(.horizontal, 28)
-                 .padding(.bottom, 40)
-             }
-             .opacity(appear ? 1 : 0)
-             .onAppear {
-                 appear = true
-                 computeEstimates()
-             }
+            }
+            .onAppear {
+                appear = true
+                computeEstimates()
+            }
          }
          .navigationBarBackButtonHidden(true)
+    }
+
+    private var recoveredWheel: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .fill(Color(hex: "#26382E"))
+                .frame(height: 330)
+
+            Circle()
+                .stroke(Color.white.opacity(0.12), lineWidth: 18)
+                .frame(width: 220, height: 220)
+
+            Circle()
+                .trim(from: 0, to: CGFloat(trimFraction()))
+                .stroke(
+                    AngularGradient(gradient: Gradient(colors: [Color(hex: "#DFE7DA"), Color(hex: "#E6B17E"), MivoColors.accent]), center: .center),
+                    style: StrokeStyle(lineWidth: 18, lineCap: .round)
+                )
+                .rotationEffect(.degrees(spin ? 270 : -90))
+                .frame(width: 220, height: 220)
+                .animation(.interpolatingSpring(stiffness: 70, damping: 11).speed(0.48), value: estimateYears)
+
+            VStack(spacing: 7) {
+                Text((estimateYears != nil || displayYears > 0) ? String(format: "%.2f", displayYears > 0 ? displayYears : (estimateYears ?? 0)) : "--")
+                    .font(.system(size: 48, weight: .bold).monospacedDigit())
+                    .foregroundColor(.white)
+                    .contentTransition(.numericText())
+                Text("years recovered")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color.white.opacity(0.68))
+            }
+        }
+        .onTapGesture {
+            HapticsService.impact(style: .medium)
+            withAnimation(.easeOut(duration: 1.6)) { spin.toggle() }
+        }
+    }
+
+    private func recoveredStats(minutes: Int, years: Double) -> some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                recoveryStatCard(value: "\(minutes)", label: "minutes saved / day", icon: "clock.fill")
+                recoveryStatCard(value: String(format: "%.1f", years * 365), label: "days recovered", icon: "sun.max.fill")
+            }
+
+            Text("That estimate comes from your baseline, selected apps, and reasons for scrolling. It will become sharper as Mivo learns your pattern.")
+                .font(.system(size: 13))
+                .foregroundColor(MivoColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+                .padding(.horizontal, 8)
+        }
+    }
+
+    private func recoveryStatCard(value: String, label: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Color(hex: "#4E7152"))
+            Text(value)
+                .font(.system(size: 25, weight: .bold).monospacedDigit())
+                .foregroundColor(MivoColors.textPrimary)
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(MivoColors.textSecondary)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(MivoColors.white.opacity(0.64))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
     }
 
     // Compute the trim fraction for the wheel: yearsRecovered / remainingYears (clamped 0..1)
@@ -883,7 +929,7 @@ private struct NumericTextField: UIViewRepresentable {
         tf.keyboardType = .numberPad
         tf.textAlignment = .center
         tf.font = UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .bold)
-        tf.textColor = UIColor(dynamicColor: MivoColors.textPrimary)
+        tf.textColor = .white
         tf.placeholder = placeholder
         tf.delegate = context.coordinator
 

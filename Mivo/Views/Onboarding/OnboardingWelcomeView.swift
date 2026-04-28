@@ -13,9 +13,6 @@ struct OnboardingWelcomeView: View {
                 VStack(spacing: 0) {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 26) {
-                            focusHero
-                                .onboardingEntrance(appear, delay: 0.05)
-
                             VStack(spacing: 12) {
                                 Text("Build a quieter phone")
                                     .font(.system(size: 34, weight: .bold, design: .rounded))
@@ -29,7 +26,11 @@ struct OnboardingWelcomeView: View {
                                     .lineSpacing(6)
                                     .padding(.horizontal, 10)
                             }
-                            .onboardingEntrance(appear, delay: 0.16)
+                            .padding(.top, 22)
+                            .onboardingEntrance(appear, delay: 0.05)
+
+                            focusHero
+                                .onboardingEntrance(appear, delay: 0.16)
 
                             VStack(spacing: 12) {
                                 ForEach(Array(pillarItems().enumerated()), id: \.offset) { index, item in
@@ -70,39 +71,47 @@ struct OnboardingWelcomeView: View {
     private var focusHero: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 38, style: .continuous)
-                .fill(Color(hex: "#28392F"))
-                .frame(height: 244)
-                .overlay(alignment: .topTrailing) {
-                    VStack(alignment: .trailing, spacing: 8) {
-                        Text("Today")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(Color.white.opacity(0.7))
-                        Text("2h 14m")
-                            .font(.system(size: 26, weight: .bold).monospacedDigit())
-                            .foregroundColor(.white)
-                    }
-                    .padding(22)
-                }
+                .fill(LinearGradient(colors: [Color(hex: "#26382E"), Color(hex: "#3F5947")], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(height: 226)
 
             Circle()
                 .stroke(Color(hex: "#D8E2D3").opacity(0.18), lineWidth: 18)
-                .frame(width: pulse ? 190 : 168, height: pulse ? 190 : 168)
+                .frame(width: pulse ? 180 : 156, height: pulse ? 180 : 156)
 
             Circle()
-                .trim(from: 0.08, to: 0.78)
-                .stroke(Color(hex: "#E6B17E"), style: StrokeStyle(lineWidth: 13, lineCap: .round))
-                .frame(width: 154, height: 154)
+                .trim(from: 0.12, to: 0.86)
+                .stroke(Color(hex: "#E6B17E"), style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                .frame(width: 144, height: 144)
                 .rotationEffect(.degrees(pulse ? 18 : -8))
 
             VStack(spacing: 10) {
-                MivoLogo(size: 58)
-                Text("Mivo")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                Image(systemName: "pause.fill")
+                    .font(.system(size: 26, weight: .bold))
+                    .frame(width: 64, height: 64)
+                    .background(Color.white.opacity(0.16))
+                    .clipShape(Circle())
+                Text("A pause before autopilot")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
-                Text("Attention protected")
+                Text("Reflect first. Scroll only when you mean it.")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(Color.white.opacity(0.68))
             }
+
+            VStack {
+                HStack {
+                    Text("Private by design")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.76))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Capsule())
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(18)
         }
     }
 
