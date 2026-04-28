@@ -43,14 +43,12 @@ class ScreenTimeDataCollector {
     /// Request usage data for today
     func requestTodayUsageData(completion: @escaping (Result<ScreenTimeReport, Error>) -> Void) {
         #if canImport(DeviceActivity)
-        // Note: DeviceActivityReport needs to be used within a SwiftUI context
-        // For now, we'll check if data exists in the shared container
         if let report = loadCachedReport() {
             completion(.success(report))
         } else {
             completion(.failure(NSError(domain: "ScreenTimeDataCollector", 
                                        code: -1, 
-                                       userInfo: [NSLocalizedDescriptionKey: "No cached report available. Please ensure monitoring is running."])))
+                                       userInfo: [NSLocalizedDescriptionKey: "No numeric Screen Time report has been published by iOS yet. Use the live Device Activity report view for real Screen Time data."])))
         }
         #else
         completion(.failure(NSError(domain: "ScreenTimeDataCollector", 
@@ -69,6 +67,10 @@ class ScreenTimeDataCollector {
         
         do {
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                guard json["source"] as? String == "mivo-device-activity-extension" else {
+                    clearCachedReport()
+                    return nil
+                }
                 return ScreenTimeReport(from: json)
             }
         } catch {
@@ -110,6 +112,15 @@ class ScreenTimeDataCollector {
         guard let userDefaults = UserDefaults(suiteName: appGroup) else { return }
         userDefaults.removeObject(forKey: "mivo.extensionLogs")
         userDefaults.synchronize()
+    }
+
+    func clearCachedReport() {
+        if let userDefaults = UserDefaults(suiteName: appGroup) {
+            userDefaults.removeObject(forKey: "mivo.lastDeviceActivityReport")
+            userDefaults.removeObject(forKey: "mivo.lastReportTimestamp")
+            userDefaults.synchronize()
+        }
+        UserDefaults.standard.removeObject(forKey: "mivo.lastDeviceActivityReport")
     }
 }
 
@@ -180,7 +191,8 @@ struct ScreenTimeReport {
         return [
             "generatedAt": ISO8601DateFormatter().string(from: generatedAt),
             "totalSeconds": totalSeconds,
-            "perAppSeconds": perAppSeconds
+            "perAppSeconds": perAppSeconds,
+            "source": "mivo-device-activity-extension"
         ]
     }
     

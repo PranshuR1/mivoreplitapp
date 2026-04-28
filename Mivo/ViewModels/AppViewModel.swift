@@ -163,6 +163,7 @@ class AppViewModel: ObservableObject {
     func completeOnboarding() {
         // Set flag
         settings.onboardingComplete = true
+        settings.tutorialComplete = false
         // Reassign to force @Published notifications in case of in-place mutation
         let updated = settings
         settings = updated
@@ -418,94 +419,24 @@ class AppViewModel: ObservableObject {
         return fmt.string(from: Date())
     }
 
-    // Load Screen Time data from the collector or fallback sources
+    // Load Screen Time data from the real Device Activity extension report.
     func loadDeviceActivityReport() {
         if #available(iOS 16.0, *) {
-            // Try to get data from Screen Time collector
             let collector = ScreenTimeDataCollector.shared
             
             if let report = collector.latestReport {
-                // Use real Screen Time data
                 deviceActivityMinutesToday = report.totalMinutes
                 deviceActivityPerAppSeconds = report.perAppSeconds
                 deviceActivityReportGeneratedAt = report.generatedAt
-                
-                // Store as JSON for backward compatibility
                 if let encoded = try? JSONSerialization.data(withJSONObject: report.toJSON(), options: []),
                    let jsonString = String(data: encoded, encoding: .utf8) {
                     lastDeviceActivityReportJSON = jsonString
-                    
-                    // Also save to UserDefaults for persistence
-                    if let ud = UserDefaults(suiteName: "group.com.mivo.mivoapp") {
-                        ud.set(jsonString, forKey: "mivo.lastDeviceActivityReport")
-                        ud.synchronize()
-                    }
                 }
                 return
             }
         }
-        
-        // Fallback: Use the app group data (if extension wrote it)
-        let ud = UserDefaults(suiteName: "group.com.mivo.mivoapp")
-        lastDeviceActivityReportJSON = ud?.string(forKey: "mivo.lastDeviceActivityReport")
 
-        // Parse the JSON and compute an aggregate minutes value for display
-        guard let raw = lastDeviceActivityReportJSON, let data = raw.data(using: .utf8) else {
-            deviceActivityMinutesToday = nil
-            deviceActivityPerAppSeconds = [:]
-            deviceActivityReportGeneratedAt = nil
-            return
-        }
-        do {
-            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let generatedAt = json["generatedAt"] as? String {
-                    deviceActivityReportGeneratedAt = ISO8601DateFormatter().date(from: generatedAt)
-                } else {
-                    deviceActivityReportGeneratedAt = nil
-                }
-
-                if let perApp = json["perAppSeconds"] as? [String: Any] {
-                    var normalized: [String: Int] = [:]
-                    for (bundleID, value) in perApp {
-                        if let seconds = value as? Int {
-                            normalized[bundleID] = seconds
-                        } else if let seconds = value as? Double {
-                            normalized[bundleID] = Int(seconds)
-                        } else if let seconds = value as? String, let parsed = Int(seconds) {
-                            normalized[bundleID] = parsed
-                        }
-                    }
-                    deviceActivityPerAppSeconds = normalized
-                } else {
-                    deviceActivityPerAppSeconds = [:]
-                }
-
-                // Prefer explicit totalSeconds field when the extension provides it
-                if let total = json["totalSeconds"] as? Int {
-                    deviceActivityMinutesToday = Int((Double(total) / 60.0).rounded())
-                    return
-                }
-                // Expecting shape: { "perAppSeconds": { "bundle.id": 123, ... } }
-                if let perApp = json["perAppSeconds"] as? [String: Any] {
-                    var totalSeconds = 0
-                    for (_, v) in perApp {
-                        if let n = v as? Int { totalSeconds += n }
-                        else if let d = v as? Double { totalSeconds += Int(d) }
-                        else if let s = v as? String, let iv = Int(s) { totalSeconds += iv }
-                    }
-                    // convert to rounded minutes
-                    let minutes = Int((Double(totalSeconds) / 60.0).rounded())
-                    deviceActivityMinutesToday = minutes
-                    return
-                }
-            }
-        } catch {
-            // parsing failed — clear device metric but keep raw JSON visible for debugging
-            deviceActivityMinutesToday = nil
-            deviceActivityPerAppSeconds = [:]
-            deviceActivityReportGeneratedAt = nil
-            return
-        }
+        lastDeviceActivityReportJSON = nil
         deviceActivityMinutesToday = nil
         deviceActivityPerAppSeconds = [:]
         deviceActivityReportGeneratedAt = nil

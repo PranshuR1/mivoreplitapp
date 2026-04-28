@@ -491,7 +491,7 @@ struct PatternsView: View {
     }
 
     var screenTimeMinutesToday: Int {
-        appVM.deviceActivityMinutesToday ?? appVM.todaysTotalMinutes
+        appVM.deviceActivityMinutesToday ?? 0
     }
 
     var dailyBaseline: Int {
@@ -562,7 +562,7 @@ struct PatternsView: View {
         if key == todayKey, let deviceMinutes = appVM.deviceActivityMinutesToday {
             return deviceMinutes
         }
-        return sessions.reduce(0) { $0 + $1.actualDuration }
+        return 0
     }
 
     func appBarProgress(_ seconds: Int) -> Double {

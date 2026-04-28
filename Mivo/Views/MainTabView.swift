@@ -175,7 +175,7 @@ private struct AppTutorialStep: Identifiable {
             tab: 3,
             icon: "waveform.path.ecg",
             title: "Connect Screen Time",
-            body: "Allow Screen Time access so Mivo can replace the 0m placeholder with your actual usage today.",
+            body: "Allow Screen Time access so Mivo can show your real iOS usage today.",
             buttonTitle: "Allow Screen Time",
             requiresScreenTimeAccess: true
         )

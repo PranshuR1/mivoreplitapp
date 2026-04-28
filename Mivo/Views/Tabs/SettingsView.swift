@@ -465,17 +465,6 @@ struct SettingsView: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
 
-#if DEBUG
-                            rowSeparator()
-                            // Developer-only simulate action (hidden on release builds)
-                            settingsRow(icon: "wand.and.stars", label: "Simulate device report (debug)") {
-                                DispatchQueue.main.async {
-                                    lastActionLog = "Tapped: Simulate device report"
-                                    simulateDeviceReport()
-                                }
-                            }
-#endif
-
                             if let log = lastActionLog {
                                 Text(log)
                                     .font(.system(size: 12))
@@ -997,31 +986,6 @@ struct SettingsView: View {
         lastActionLog = "Data export initiated. Check console for file path."
     }
 
-    private func simulateDeviceReport() {
-        // Developer-only: write a small synthetic report into the shared App Group so the app can read it during testing.
-        let group = FamilyControlsManager.shared.appGroup
-        var perApp: [String: Int] = [:]
-        perApp["com.apple.Safari"] = 60 * 15 // 15 minutes
-        perApp["com.tiktok.ios"] = 60 * 20 // 20 minutes
-        let total = perApp.values.reduce(0, +)
-        let report: [String: Any] = ["perAppSeconds": perApp, "totalSeconds": total, "generatedAt": ISO8601DateFormatter().string(from: Date())]
-        if let data = try? JSONSerialization.data(withJSONObject: report, options: []), let str = String(data: data, encoding: .utf8) {
-            if let ud = UserDefaults(suiteName: group) {
-                ud.set(str, forKey: "mivo.lastDeviceActivityReport")
-                ud.synchronize()
-                // notify the app
-                NotificationCenter.default.post(name: .mivoDeviceActivityDidUpdate, object: nil)
-                lastActionLog = "Simulated device report written into App Group (total \(Int(total/60)) minutes)."
-            } else {
-                // fallback to standard defaults for simulator/debug
-                UserDefaults.standard.set(str, forKey: "mivo.lastDeviceActivityReport")
-                lastActionLog = "Simulated device report written to UserDefaults.standard (debug). Total: \(Int(total/60)) minutes."
-                NotificationCenter.default.post(name: .mivoDeviceActivityDidUpdate, object: nil)
-            }
-        } else {
-            lastActionLog = "Failed to serialize simulated report."
-        }
-    }
 }
 
 extension Int {

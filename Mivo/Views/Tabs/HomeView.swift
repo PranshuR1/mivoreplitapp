@@ -9,7 +9,7 @@ struct HomeView: View {
     @State private var countUpTask: Task<Void, Never>? = nil
 
     private var minutesToday: Int {
-        appVM.deviceActivityMinutesToday ?? appVM.todaysTotalMinutes
+        appVM.deviceActivityMinutesToday ?? 0
     }
 
     var body: some View {
@@ -106,7 +106,7 @@ struct HomeView: View {
 
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
-                    Label(appVM.deviceActivityMinutesToday != nil ? "Device activity" : "Mivo sessions", systemImage: "waveform.path.ecg")
+                    Label(appVM.deviceActivityMinutesToday != nil ? "Device activity" : "Awaiting iOS report", systemImage: "waveform.path.ecg")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(MivoColors.heroText.opacity(0.72))
                         .padding(.horizontal, 12)
@@ -427,7 +427,7 @@ struct HomeView: View {
     private var insightTags: [String] {
         [
             protectionEnabled ? "Protected" : "Ready",
-            appVM.deviceActivityMinutesToday != nil ? "Device data" : "Manual data",
+            appVM.deviceActivityMinutesToday != nil ? "Device data" : "No device report yet",
             appVM.todaysSessions.isEmpty ? "No sessions" : "\(appVM.todaysSessions.count) sessions"
         ]
     }

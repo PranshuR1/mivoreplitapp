@@ -42,6 +42,7 @@ public class DeviceActivityMonitorHandler: DeviceActivityMonitor {
         let iso = ISO8601DateFormatter().string(from: Date())
         summary["generatedAt"] = iso
         summary["totalSeconds"] = totalSeconds
+        summary["source"] = "mivo-device-activity-extension"
 
         // Save into shared UserDefaults (app group)
         if let data = try? JSONSerialization.data(withJSONObject: summary, options: []) {

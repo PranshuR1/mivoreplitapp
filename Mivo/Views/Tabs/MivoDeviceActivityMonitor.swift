@@ -28,7 +28,8 @@ final class MivoDeviceActivityMonitor: DeviceActivityMonitor {
         let timestamp = ISO8601DateFormatter().string(from: Date())
         appendLog("[\(timestamp)] Monitoring interval ended for activity: \(activity)")
         
-        // Generate and save the daily report
+        // DeviceActivityMonitor cannot read raw Screen Time totals directly.
+        // Numeric reports must be produced by a DeviceActivityReport extension.
         generateAndSaveDailyReport()
     }
     
@@ -64,51 +65,7 @@ final class MivoDeviceActivityMonitor: DeviceActivityMonitor {
     }
     
     private func generateAndSaveDailyReport() {
-        // Access device activity data and generate a report
-        // Note: Actual screen time data requires using the DeviceActivityReport API
-        // For now, we'll create a placeholder report structure
-        
-        let appGroup = "group.com.mivo.mivoapp"
-        guard let userDefaults = UserDefaults(suiteName: appGroup) else {
-            appendLog("Failed to access app group for saving report")
-            return
-        }
-        
-        // Create a report structure
-        // In a real implementation, you would use DeviceActivityReport or other APIs
-        // to get actual usage data
-        let report: [String: Any] = [
-            "generatedAt": ISO8601DateFormatter().string(from: Date()),
-            "totalSeconds": 0,  // Would be populated with actual data
-            "perAppSeconds": [:],  // Would be populated with actual data
-            "note": "This is a placeholder. Implement actual data collection using DeviceActivityReport or other APIs."
-        ]
-        
-        // Serialize and save
-        if let jsonData = try? JSONSerialization.data(withJSONObject: report, options: []),
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            userDefaults.set(jsonString, forKey: "mivo.lastDeviceActivityReport")
-            userDefaults.synchronize()
-            appendLog("Daily report saved to app group")
-            
-            // Post notification to main app
-            // Note: This may not work from an extension context, but we'll try
-            notifyMainApp()
-        } else {
-            appendLog("Failed to serialize report")
-        }
-    }
-    
-    private func notifyMainApp() {
-        // Try to notify the main app that new data is available
-        // Extensions have limited ability to communicate with the main app
-        // The main app should periodically check the shared UserDefaults
-        
-        let appGroup = "group.com.mivo.mivoapp"
-        guard let userDefaults = UserDefaults(suiteName: appGroup) else { return }
-        
-        userDefaults.set(Date().timeIntervalSince1970, forKey: "mivo.lastReportTimestamp")
-        userDefaults.synchronize()
+        appendLog("Monitoring interval ended. No numeric report was written because Screen Time totals must come from a DeviceActivityReport extension.")
     }
     
     private func appendLog(_ message: String) {
