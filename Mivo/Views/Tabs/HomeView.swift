@@ -37,7 +37,7 @@ struct HomeView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            appVM.loadDeviceActivityReport()
+            appVM.refreshScreenTimeData(allowBootstrap: true)
             if displayedMinutesToday == 0 && minutesToday > 0 {
                 animateMinutes(to: minutesToday)
             } else {

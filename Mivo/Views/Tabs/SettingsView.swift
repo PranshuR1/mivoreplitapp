@@ -701,7 +701,7 @@ struct SettingsView: View {
                     monitoringMessage = "Daily monitoring started successfully! The app will track your device usage in the background."
                     showMonitoringAlert = true
                     // Refresh the report
-                    appVM.loadDeviceActivityReport()
+                    appVM.refreshScreenTimeData(allowBootstrap: true)
                 case .failure(let error):
                     monitoringMessage = "Failed to start monitoring: \(error.localizedDescription)"
                     showMonitoringAlert = true

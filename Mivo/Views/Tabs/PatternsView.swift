@@ -54,7 +54,7 @@ struct PatternsView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            appVM.loadDeviceActivityReport()
+            appVM.refreshScreenTimeData(allowBootstrap: true)
         }
     }
 
@@ -455,6 +455,9 @@ struct PatternsView: View {
 
     var screenTimeCaption: String {
         guard hasDeviceData else { return "Connect Screen Time to turn this into live usage." }
+        if appVM.deviceActivityReportSource == "mivo-initial-screen-time-snapshot" {
+            return "Screen Time is connected. Showing an initial snapshot while iOS publishes detailed usage."
+        }
         if let generatedAt = appVM.deviceActivityReportGeneratedAt {
             let fmt = DateFormatter()
             fmt.timeStyle = .short

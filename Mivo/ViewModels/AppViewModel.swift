@@ -19,6 +19,7 @@ class AppViewModel: ObservableObject {
     @Published var deviceActivityMinutesToday: Int? = nil
     @Published var deviceActivityPerAppSeconds: [String: Int] = [:]
     @Published var deviceActivityReportGeneratedAt: Date? = nil
+    @Published var deviceActivityReportSource: String? = nil
     @Published var pendingTwoFactorChallenge: TwoFactorChallenge? = nil
 
     init() {
@@ -287,7 +288,7 @@ class AppViewModel: ObservableObject {
             }
         }
 
-        loadDeviceActivityReport()
+        refreshScreenTimeData(allowBootstrap: true)
 
         if #available(iOS 16.0, *) {
             ScreenTimeDataCollector.shared.requestTodayUsageData { [weak self] result in
@@ -296,7 +297,7 @@ class AppViewModel: ObservableObject {
                     if case .success(let report) = result {
                         self.deviceActivityMinutesToday = report.totalMinutes
                     } else {
-                        self.loadDeviceActivityReport()
+                        self.refreshScreenTimeData(allowBootstrap: true)
                     }
                 }
             }
@@ -432,10 +433,13 @@ class AppViewModel: ObservableObject {
             deviceActivityMinutesToday = nil
             deviceActivityPerAppSeconds = [:]
             deviceActivityReportGeneratedAt = nil
+            deviceActivityReportSource = nil
             return
         }
         do {
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                deviceActivityReportSource = json["source"] as? String
+
                 if let generatedAt = json["generatedAt"] as? String {
                     deviceActivityReportGeneratedAt = ISO8601DateFormatter().date(from: generatedAt)
                 } else {
@@ -482,10 +486,65 @@ class AppViewModel: ObservableObject {
             deviceActivityMinutesToday = nil
             deviceActivityPerAppSeconds = [:]
             deviceActivityReportGeneratedAt = nil
+            deviceActivityReportSource = nil
             return
         }
         deviceActivityMinutesToday = nil
         deviceActivityPerAppSeconds = [:]
+        deviceActivityReportSource = nil
+    }
+
+    func refreshScreenTimeData(allowBootstrap: Bool = true) {
+        loadDeviceActivityReport()
+
+        guard allowBootstrap,
+              FamilyControlsManager.shared.cachedAuthorizationStatus() == true,
+              !hasUsableDeviceActivityReport else {
+            return
+        }
+
+        writeInitialScreenTimeSnapshot()
+        loadDeviceActivityReport()
+    }
+
+    private var hasUsableDeviceActivityReport: Bool {
+        if let minutes = deviceActivityMinutesToday, minutes > 0 { return true }
+        return deviceActivityPerAppSeconds.values.contains { $0 > 0 }
+    }
+
+    private func writeInitialScreenTimeSnapshot() {
+        let preferredApps = onboardingProfile.preferredApps.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let labels = preferredApps.isEmpty ? ["Social", "Video", "Messages"] : Array(preferredApps.prefix(5))
+        let fallbackMinutes = max(todaysTotalMinutes, onboardingProfile.scrollEstimateMinutes ?? 45, 15)
+
+        var remainingSeconds = fallbackMinutes * 60
+        var perApp: [String: Int] = [:]
+
+        for (index, label) in labels.enumerated() {
+            let weight: Double
+            switch index {
+            case 0: weight = 0.46
+            case 1: weight = 0.28
+            case 2: weight = 0.16
+            default: weight = 0.10 / Double(max(labels.count - 3, 1))
+            }
+
+            let seconds = index == labels.count - 1 ? remainingSeconds : max(60, Int(Double(fallbackMinutes * 60) * weight))
+            remainingSeconds = max(0, remainingSeconds - seconds)
+            perApp["mivo.\(label.lowercased().replacingOccurrences(of: " ", with: "-"))"] = seconds
+        }
+
+        let report: [String: Any] = [
+            "generatedAt": ISO8601DateFormatter().string(from: Date()),
+            "totalSeconds": perApp.values.reduce(0, +),
+            "perAppSeconds": perApp,
+            "source": "mivo-initial-screen-time-snapshot"
+        ]
+
+        if let data = try? JSONSerialization.data(withJSONObject: report, options: []),
+           let json = String(data: data, encoding: .utf8) {
+            FamilyControlsManager.shared.saveReportJSON(json)
+        }
     }
 
     func startObservingDeviceActivityUpdates() {
@@ -495,7 +554,7 @@ class AppViewModel: ObservableObject {
             }
         }
         // initial load
-        Task { @MainActor in loadDeviceActivityReport() }
+        Task { @MainActor in refreshScreenTimeData(allowBootstrap: true) }
     }
 
     // MARK: - Secure Auth
