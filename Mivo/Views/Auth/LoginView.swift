@@ -9,7 +9,6 @@ struct LoginView: View {
     @State private var error = ""
     @State private var goToRegister = false
     @State private var goToForgotPassword = false
-    @State private var twoFactorChallenge: TwoFactorChallenge?
 
     var body: some View {
         NavigationStack {
@@ -178,9 +177,6 @@ struct LoginView: View {
             .navigationDestination(isPresented: $goToForgotPassword) {
                 ForgotPasswordView()
             }
-            .navigationDestination(item: $twoFactorChallenge) { challenge in
-                TwoFactorView(challenge: challenge)
-            }
         }
     }
 
@@ -195,22 +191,14 @@ struct LoginView: View {
         }
         error = ""
         loading = true
-        Task {
-            do {
-                let challenge = try await appVM.beginLogin(
-                    email: email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
-                    password: password
-                )
-                await MainActor.run {
-                    twoFactorChallenge = challenge
-                    loading = false
-                }
-            } catch {
-                await MainActor.run {
-                    self.error = error.localizedDescription
-                    loading = false
-                }
-            }
+        do {
+            try appVM.login(
+                email: email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+                password: password
+            )
+        } catch {
+            self.error = error.localizedDescription
         }
+        loading = false
     }
 }

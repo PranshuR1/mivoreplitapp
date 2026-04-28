@@ -53,19 +53,22 @@ class AppViewModel: ObservableObject {
 
     // MARK: - Auth
 
-    func beginLogin(email: String, password: String) async throws -> TwoFactorChallenge {
+    func login(email: String, password: String) throws {
         guard var record = SecureAuthService.loadRecord() else {
             throw AppError.noAccount
         }
         guard record.email == email, SecureAuthService.verifyPassword(password, for: record) else {
             throw AppError.invalidCredentials
         }
+        guard record.emailVerified != false else {
+            throw AppError.emailNotVerified
+        }
 
         if record.passwordIterations == 0 {
             record = try SecureAuthService.updatePassword(password, for: record)
         }
 
-        return try await sendTwoFactorChallenge(email: email, purpose: .login)
+        try completeLogin(email: email)
     }
 
     func completeLogin(email: String) throws {
@@ -227,7 +230,22 @@ class AppViewModel: ObservableObject {
     }
 
     func resetAllData() {
-        // Offload heavy storage deletion to background, update published properties on main when done
+        SecureAuthService.deleteRecord()
+        pendingTwoFactorChallenge = nil
+
+        StorageService.remove(forKey: .user)
+        StorageService.remove(forKey: .credentials)
+        StorageService.remove(forKey: .authSession)
+        StorageService.remove(forKey: .settings)
+        StorageService.remove(forKey: .onboardingProfile)
+        StorageService.remove(forKey: .aiDataset)
+
+        user = nil
+        settings = AppSettings(onboardingComplete: false, notificationsEnabled: false)
+        onboardingProfile = OnboardingProfile()
+        isLoggedIn = false
+
+        // Offload heavier history deletion to background, update published state on main when done.
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             StorageService.remove(forKey: .sessions)
             StorageService.remove(forKey: .truthChecks)
@@ -413,7 +431,13 @@ class AppViewModel: ObservableObject {
         }
 
         switch challenge.purpose {
-        case .login, .registration:
+        case .registration:
+            if var record = SecureAuthService.loadRecord(), record.email == challenge.email {
+                record.emailVerified = true
+                try SecureAuthService.saveRecord(record)
+            }
+            try completeLogin(email: challenge.email)
+        case .login:
             try completeLogin(email: challenge.email)
         case .passwordReset:
             break
@@ -423,6 +447,9 @@ class AppViewModel: ObservableObject {
     }
 
     func resendTwoFactorCode(for challenge: TwoFactorChallenge) async throws {
+        guard challenge.purpose != .registration else {
+            throw AppError.registrationCodeAlreadySent
+        }
         _ = try await sendTwoFactorChallenge(email: challenge.email, purpose: challenge.purpose)
     }
 
@@ -468,6 +495,8 @@ enum AppError: LocalizedError {
     case weakPassword
     case secureStorageFailed
     case emailDeliveryUnavailable
+    case emailNotVerified
+    case registrationCodeAlreadySent
 
     var errorDescription: String? {
         switch self {
@@ -479,6 +508,8 @@ enum AppError: LocalizedError {
         case .weakPassword: return "Password must be at least 8 characters."
         case .secureStorageFailed: return "Could not save credentials securely."
         case .emailDeliveryUnavailable: return "Email delivery is not configured yet."
+        case .emailNotVerified: return "Please verify your email from the code sent during registration."
+        case .registrationCodeAlreadySent: return "Registration codes are sent once when you create the account."
         }
     }
 }

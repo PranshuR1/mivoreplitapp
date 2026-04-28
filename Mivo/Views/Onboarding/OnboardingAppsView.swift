@@ -11,87 +11,72 @@ struct OnboardingAppsView: View {
     @Environment(\.dismiss) var dismiss
     @State private var selected: Set<String> = []
     @State private var loading = false
+    @State private var appear = false
 
     var body: some View {
         ZStack {
-            MivoColors.background.ignoresSafeArea()
+            OnboardingBackdrop()
+
             VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("3 of 3")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(MivoColors.textMuted)
-                        .tracking(0.5)
-                        .padding(.bottom, 12)
-
-                    Text("Which apps do you scroll most?")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
-                        .tracking(-0.8)
-                        .lineSpacing(4)
-                        .padding(.bottom, 6)
-
-                    // Friendly selection count to help users
-                    if !selected.isEmpty {
-                        Text("\(selected.count) selected")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(MivoColors.textSecondary)
-                            .padding(.bottom, 8)
-                    }
-
-                    Text("Mivo doesn't track apps automatically. This just helps you reflect.")
-                        .font(.system(size: 15))
-                        .foregroundColor(MivoColors.textSecondary)
-                        .lineSpacing(6)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 28)
-                .padding(.top, 16)
-                .padding(.bottom, 24)
-
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        OnboardingStepHeader(
+                            step: 3,
+                            total: 3,
+                            eyebrow: "Apps",
+                            title: "Where should Mivo pay attention?",
+                            subtitle: "Choose the places that tend to pull you in. This stays private and helps your first insights feel relevant."
+                        )
+                        .onboardingEntrance(appear)
+
+                        selectedSummary
+                            .onboardingEntrance(appear, delay: 0.08)
+
                         FlowLayout(spacing: 10) {
-                            ForEach(availableApps, id: \.self) { app in
+                            ForEach(Array(availableApps.enumerated()), id: \.element) { index, app in
                                 Button {
-                                    if selected.contains(app) { selected.remove(app) }
-                                    else { selected.insert(app) }
+                                    withAnimation(.spring(response: 0.34, dampingFraction: 0.8)) {
+                                        if selected.contains(app) { selected.remove(app) }
+                                        else { selected.insert(app) }
+                                    }
+                                    HapticsService.selection()
                                 } label: {
                                     HStack(spacing: 6) {
+                                        Image(systemName: appIcon(for: app))
+                                            .font(.system(size: 12, weight: .semibold))
                                         if selected.contains(app) {
                                             Image(systemName: "checkmark")
                                                 .font(.system(size: 11, weight: .semibold))
-                                                .foregroundColor(MivoColors.accent)
                                         }
                                         Text(app)
                                             .font(.system(size: 14, weight: .medium))
-                                            .foregroundColor(selected.contains(app) ? MivoColors.accent : MivoColors.textSecondary)
                                     }
+                                    .foregroundColor(selected.contains(app) ? MivoColors.white : MivoColors.textSecondary)
                                     .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
-                                    .background(selected.contains(app) ? MivoColors.accentMuted : MivoColors.card)
+                                    .padding(.vertical, 11)
+                                    .background(selected.contains(app) ? MivoColors.accent : MivoColors.white.opacity(0.62))
                                     .clipShape(Capsule())
                                     .overlay(
                                         Capsule()
-                                            .strokeBorder(selected.contains(app) ? MivoColors.accent : MivoColors.border, lineWidth: 1)
+                                            .strokeBorder(selected.contains(app) ? MivoColors.accent : MivoColors.white.opacity(0.58), lineWidth: 1)
                                     )
+                                    .shadow(color: Color.black.opacity(selected.contains(app) ? 0.08 : 0.025), radius: selected.contains(app) ? 12 : 6, y: 4)
                                 }
                                 .buttonStyle(.plain)
+                                .onboardingEntrance(appear, delay: 0.14 + Double(index) * 0.025)
                             }
                         }
-                        .padding(.bottom, 24)
 
-                        Text("You can always change this later in Settings.")
+                        Text("You can change this later in Settings.")
                             .font(.system(size: 13).italic())
                             .foregroundColor(MivoColors.textMuted)
                     }
-                    .padding(.horizontal, 28)
-                    .padding(.bottom, 20)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 120)
                 }
 
-                VStack(spacing: 0) {
-                    Divider().background(MivoColors.border)
-
-                    // Make the visible button itself a NavigationLink to avoid deprecated programmatic API.
+                OnboardingBottomBar {
                     NavigationLink {
                         AgeOnboardingView_Internal()
                     } label: {
@@ -103,22 +88,20 @@ struct OnboardingAppsView: View {
                         }
                         .foregroundColor(MivoColors.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(MivoColors.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .padding(.vertical, 17)
+                        .background(MivoColors.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
                     }
                     .simultaneousGesture(TapGesture().onEnded {
                         loading = true
                         var profile = OnboardingProfile()
                         profile.preferredApps = Array(selected)
                         appVM.saveOnboardingProfile(profile)
+                        HapticsService.impact(style: .light)
                     })
                     .disabled(loading)
-                    .padding(.horizontal, 28)
-                    .padding(.top, 12)
-                    .padding(.bottom, 40)
                 }
-                .background(MivoColors.background)
             }
         }
         .navigationBarBackButtonHidden()
@@ -140,6 +123,43 @@ struct OnboardingAppsView: View {
                 }
                 .foregroundColor(MivoColors.textSecondary)
             }
+        }
+        .onAppear { appear = true }
+    }
+
+    private var selectedSummary: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(selected.isEmpty ? "No apps selected yet" : "\(selected.count) app\(selected.count == 1 ? "" : "s") selected")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+                    .contentTransition(.numericText())
+                Text(selected.isEmpty ? "Tap any apps that feel familiar." : "Nice. Your reflection map is getting sharper.")
+                    .font(.system(size: 13))
+                    .foregroundColor(MivoColors.textSecondary)
+            }
+
+            Spacer()
+
+            Image(systemName: selected.isEmpty ? "square.grid.2x2" : "checkmark.seal.fill")
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundColor(selected.isEmpty ? Color(hex: "#4E7152") : MivoColors.accent)
+        }
+        .padding(18)
+        .background(MivoColors.white.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private func appIcon(for app: String) -> String {
+        switch app {
+        case "YouTube": return "play.rectangle.fill"
+        case "LinkedIn": return "briefcase.fill"
+        case "Pinterest": return "pin.fill"
+        case "Twitter / X", "Threads": return "at"
+        case "Reddit": return "bubble.left.and.bubble.right.fill"
+        case "Snapchat": return "camera.fill"
+        default: return "app.fill"
         }
     }
 }

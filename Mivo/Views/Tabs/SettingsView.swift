@@ -517,7 +517,7 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
             Button("Delete all data", role: .destructive) { appVM.resetAllData() }
         } message: {
-            Text("This will delete all sessions and truth checks permanently. Your account stays.")
+            Text("This will delete your account, credentials, onboarding, sessions, and local app data permanently.")
         }
         // Simple status alert for informational messages
         .alert("Family Controls", isPresented: $showFamilyControlsAlert, actions: {

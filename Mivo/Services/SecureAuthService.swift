@@ -9,6 +9,7 @@ struct SecureAuthRecord: Codable {
     var passwordHash: String
     var passwordSalt: String
     var passwordIterations: Int
+    var emailVerified: Bool?
     var onboardingProfile: OnboardingProfile?
 }
 
@@ -69,7 +70,8 @@ enum SecureAuthService {
             createdAt: ISO8601DateFormatter().string(from: Date()),
             passwordHash: hashPassword(password, salt: salt, iterations: passwordIterations),
             passwordSalt: salt.hexString,
-            passwordIterations: passwordIterations
+            passwordIterations: passwordIterations,
+            emailVerified: false
         )
         try saveRecord(record)
         return record
@@ -169,6 +171,7 @@ enum SecureAuthService {
             passwordHash: legacyCredentials.passwordHash,
             passwordSalt: "legacy",
             passwordIterations: 0,
+            emailVerified: true,
             onboardingProfile: legacyUser.onboardingProfile
         )
         try? saveRecord(record)

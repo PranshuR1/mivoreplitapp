@@ -3,125 +3,97 @@ import SwiftUI
 private struct Estimate {
     let label: String
     let value: Int
+    let detail: String
 }
 
 private let estimates: [Estimate] = [
-    .init(label: "Less than 30 min", value: 20),
-    .init(label: "30–60 minutes", value: 45),
-    .init(label: "1–2 hours", value: 90),
-    .init(label: "2–3 hours", value: 150),
-    .init(label: "4–5 hours", value: 270),
-    .init(label: "5+ hours", value: 360),
+    .init(label: "Less than 30 min", value: 20, detail: "Light check-ins"),
+    .init(label: "30-60 minutes", value: 45, detail: "A little drift"),
+    .init(label: "1-2 hours", value: 90, detail: "Noticeable habit"),
+    .init(label: "2-3 hours", value: 150, detail: "Easy to lose time"),
+    .init(label: "4-5 hours", value: 270, detail: "Needs guardrails"),
+    .init(label: "5+ hours", value: 360, detail: "Deep reset mode"),
 ]
 
 struct OnboardingCalibrationView: View {
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.dismiss) var dismiss
     @State private var selected: Int? = nil
-    @State private var goNext = false
+    @State private var appear = false
 
     var body: some View {
         ZStack {
-            MivoColors.background.ignoresSafeArea()
+            OnboardingBackdrop()
+
             VStack(spacing: 0) {
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("2 of 3")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(MivoColors.textMuted)
-                            .tracking(0.5)
-                            .padding(.bottom, 12)
+                    VStack(alignment: .leading, spacing: 24) {
+                        OnboardingStepHeader(
+                            step: 2,
+                            total: 3,
+                            eyebrow: "Baseline",
+                            title: "How much time disappears?",
+                            subtitle: "A rough estimate is enough. This gives Mivo a starting line for your first report."
+                        )
+                        .onboardingEntrance(appear)
 
-                        Text("How much time do you think you scroll per day?")
-                            .font(.system(size: 26, weight: .bold))
-                            .foregroundColor(MivoColors.textPrimary)
-                            .tracking(-0.8)
-                            .lineSpacing(4)
-                            .padding(.bottom, 12)
-
-                        Text("This is your starting estimate. Mivo will quietly compare it to reality over time.")
-                            .font(.system(size: 15))
-                            .foregroundColor(MivoColors.textSecondary)
-                            .lineSpacing(6)
-                            .padding(.bottom, 28)
+                        estimateMeter
+                            .onboardingEntrance(appear, delay: 0.08)
 
                         VStack(spacing: 10) {
-                            ForEach(estimates, id: \.value) { item in
+                            ForEach(Array(estimates.enumerated()), id: \.element.value) { index, item in
                                 Button {
-                                    selected = item.value
-                                } label: {
-                                    HStack(spacing: 14) {
-                                        ZStack {
-                                            Circle()
-                                                .strokeBorder(MivoColors.accentLight, lineWidth: 1.5)
-                                                .frame(width: 20, height: 20)
-                                            if selected == item.value {
-                                                Circle()
-                                                    .fill(MivoColors.accent)
-                                                    .frame(width: 20, height: 20)
-                                                Circle()
-                                                    .fill(MivoColors.white)
-                                                    .frame(width: 8, height: 8)
-                                            }
-                                        }
-                                        Text(item.label)
-                                            .font(.system(size: 15, weight: .medium))
-                                            .foregroundColor(selected == item.value ? MivoColors.accent : MivoColors.textPrimary)
-                                        Spacer()
+                                    withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+                                        selected = item.value
                                     }
-                                    .padding(16)
-                                    .background(selected == item.value ? MivoColors.accentMuted : MivoColors.card)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 14)
-                                            .strokeBorder(selected == item.value ? MivoColors.accent : MivoColors.border, lineWidth: 1)
-                                    )
+                                    HapticsService.selection()
+                                } label: {
+                                    OnboardingOptionRow(
+                                        title: item.label,
+                                        subtitle: item.detail,
+                                        isSelected: selected == item.value
+                                    ) {
+                                        Image(systemName: selected == item.value ? "timer.circle.fill" : "timer")
+                                            .font(.system(size: 18, weight: .semibold))
+                                    }
                                 }
                                 .buttonStyle(.plain)
+                                .onboardingEntrance(appear, delay: 0.14 + Double(index) * 0.04)
                             }
                         }
-                        .padding(.bottom, 24)
-
-                        Text("There is no right answer. Mivo works better when you're honest.")
-                            .font(.system(size: 13).italic())
-                            .foregroundColor(MivoColors.textMuted)
-                            .lineSpacing(4)
                     }
-                    .padding(.horizontal, 28)
-                    .padding(.top, 16)
-                    .padding(.bottom, 20)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 120)
                 }
 
-                VStack(spacing: 0) {
-                    Divider().background(MivoColors.border)
-
+                OnboardingBottomBar {
                     NavigationLink {
                         OnboardingAppsView()
                     } label: {
-                        HStack(spacing: 8) {
-                            Text("Next")
+                        HStack(spacing: 10) {
+                            Text("Continue")
                                 .font(.system(size: 16, weight: .semibold))
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 16, weight: .medium))
+                                .font(.system(size: 15, weight: .semibold))
                         }
                         .foregroundColor(MivoColors.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(MivoColors.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .padding(.vertical, 17)
+                        .background(selected == nil ? MivoColors.textMuted.opacity(0.36) : MivoColors.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: selected == nil ? .clear : MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
                     }
                     .simultaneousGesture(TapGesture().onEnded {
                         if let val = selected {
                             var profile = OnboardingProfile()
                             profile.scrollEstimateMinutes = val
                             appVM.saveOnboardingProfile(profile)
+                            HapticsService.impact(style: .light)
                         }
                     })
-                    .padding(.horizontal, 28)
-                    .padding(.top, 12)
-                    .padding(.bottom, 40)
+                    .disabled(selected == nil)
                 }
-                .background(MivoColors.background)
             }
         }
         .navigationBarBackButtonHidden()
@@ -133,5 +105,48 @@ struct OnboardingCalibrationView: View {
                 }
             }
         }
+        .onAppear { appear = true }
+    }
+
+    private var estimateMeter: some View {
+        let minutes = selected ?? 0
+        let progress = min(Double(minutes) / 360.0, 1)
+
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(minutes == 0 ? "--" : "\(minutes)")
+                    .font(.system(size: 42, weight: .bold).monospacedDigit())
+                    .foregroundColor(MivoColors.textPrimary)
+                    .contentTransition(.numericText())
+                Text("min / day")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                Spacer()
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundColor(Color(hex: "#4E7152"))
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color(hex: "#DFE7DA"))
+                    Capsule()
+                        .fill(LinearGradient(colors: [Color(hex: "#4E7152"), MivoColors.accent], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: max(12, proxy.size.width * progress))
+                        .animation(.spring(response: 0.46, dampingFraction: 0.86), value: progress)
+                }
+            }
+            .frame(height: 12)
+
+            Text(selected == nil ? "Choose the closest range." : "Good. We’ll compare this against your real pattern later.")
+                .font(.system(size: 13))
+                .foregroundColor(MivoColors.textSecondary)
+        }
+        .padding(18)
+        .background(MivoColors.white.opacity(0.64))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(MivoColors.white.opacity(0.6), lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.04), radius: 14, y: 7)
     }
 }

@@ -14,6 +14,7 @@
 		11A1B2C3D4E5F60718293A4F /* TwoFactorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A4E /* TwoFactorView.swift */; };
 		11A1B2C3D4E5F60718293A51 /* ForgotPasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A50 /* ForgotPasswordView.swift */; };
 		11A1B2C3D4E5F60718293A53 /* HapticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A52 /* HapticsService.swift */; };
+		11A1B2C3D4E5F60718293A55 /* OnboardingPolish.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A54 /* OnboardingPolish.swift */; };
 		20F6403A2FA005BC00F3DDD2 /* MivoDeviceActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F640392FA005BB00F3DDD2 /* MivoDeviceActivityMonitor.swift */; };
 		20F6403C2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F6403B2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift */; };
 		20F6403E2FA005FF00F3DDD2 /* MivoDeviceActivityExtension-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 20F6403D2FA005FF00F3DDD2 /* MivoDeviceActivityExtension-Info.plist */; };
@@ -56,6 +57,7 @@
 		11A1B2C3D4E5F60718293A4E /* TwoFactorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoFactorView.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A50 /* ForgotPasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgotPasswordView.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A52 /* HapticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsService.swift; sourceTree = "<group>"; };
+		11A1B2C3D4E5F60718293A54 /* OnboardingPolish.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPolish.swift; sourceTree = "<group>"; };
 		203EE6C12F8672FF00CF2F60 /* Mivo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mivo.entitlements; sourceTree = "<group>"; };
 		20F640392FA005BB00F3DDD2 /* MivoDeviceActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoDeviceActivityMonitor.swift; sourceTree = "<group>"; };
 		20F6403B2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenTimeDataCollector.swift; sourceTree = "<group>"; };
@@ -166,6 +168,7 @@
 			isa = PBXGroup;
 			children = (
 				7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */,
+				11A1B2C3D4E5F60718293A54 /* OnboardingPolish.swift */,
 				B6A5B5AD5658BBDC54B49C03 /* OnboardingWhyView.swift */,
 				BB00AD3F6DBBFDA083CC9797 /* OnboardingCalibrationView.swift */,
 				EBCED7FB0532BE876C8C5A7D /* OnboardingAppsView.swift */,
@@ -356,6 +359,7 @@
 				6C0340F1A79DDBDE74E67D9E /* OnboardingWelcomeView.swift in Sources */,
 				484E1553E2D16A1334C5B534 /* OnboardingWhyView.swift in Sources */,
 				36E209E3016E99C04CA79F09 /* OnboardingCalibrationView.swift in Sources */,
+				11A1B2C3D4E5F60718293A55 /* OnboardingPolish.swift in Sources */,
 				E8CE5CE448C77CB1FCA80F35 /* OnboardingAppsView.swift in Sources */,
 				8490515CD6AF2AED0400D0CA /* MainTabView.swift in Sources */,
 				2ABB1EAABB2C457C759A4ED9 /* HomeView.swift in Sources */,

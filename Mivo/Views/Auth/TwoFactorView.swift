@@ -62,15 +62,17 @@ struct TwoFactorView: View {
                 .disabled(loading || code.count < 6)
                 .opacity(loading || code.count < 6 ? 0.7 : 1)
 
-                Button {
-                    resend()
-                } label: {
-                    Text("Send a new code")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(MivoColors.accent)
-                        .frame(maxWidth: .infinity)
+                if challenge.purpose != .registration {
+                    Button {
+                        resend()
+                    } label: {
+                        Text("Send a new code")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(MivoColors.accent)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .disabled(loading)
                 }
-                .disabled(loading)
 
                 Spacer()
             }
