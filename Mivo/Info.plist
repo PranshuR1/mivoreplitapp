@@ -5,7 +5,7 @@
 	<key>AI_API_BASE_URL</key>
 	<string></string>
 	<key>MIVO_AUTH_EMAIL_API_URL</key>
-	<string></string>
+	<string>http://localhost:8787/send-verification-code</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -28,6 +28,11 @@
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Mivo uses Face ID to protect your data.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

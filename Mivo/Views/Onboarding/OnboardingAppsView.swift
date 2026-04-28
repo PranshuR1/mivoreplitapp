@@ -1,38 +1,6 @@
 import SwiftUI
 import UIKit
 
-// Local fallback haptics implementation (used if HapticsService isn't compiled into the target)
-private struct HapticsService {
-    // Reuse generators to avoid allocating on every interaction
-    private static var notificationGenerator = UINotificationFeedbackGenerator()
-    private static var selectionGenerator = UISelectionFeedbackGenerator()
-    private static var impactGenerator: UIImpactFeedbackGenerator? = nil
-    private static var impactGeneratorStyle: UIImpactFeedbackGenerator.FeedbackStyle? = nil
-
-    static func success() {
-        notificationGenerator.notificationOccurred(.success)
-    }
-    static func warning() {
-        notificationGenerator.notificationOccurred(.warning)
-    }
-    static func error() {
-        notificationGenerator.notificationOccurred(.error)
-    }
-    static func impact(style: UIImpactFeedbackGenerator.FeedbackStyle = .medium) {
-        // reuse a generator for the requested style, create on demand
-        if impactGenerator == nil || impactGeneratorStyle != style {
-            impactGenerator = UIImpactFeedbackGenerator(style: style)
-            impactGeneratorStyle = style
-        }
-        impactGenerator?.prepare()
-        impactGenerator?.impactOccurred()
-    }
-    static func selection() {
-        selectionGenerator.prepare()
-        selectionGenerator.selectionChanged()
-    }
-}
-
 private let availableApps = [
     "Instagram", "TikTok", "Twitter / X", "YouTube",
     "Reddit", "Facebook", "LinkedIn", "Snapchat", "Pinterest", "Threads"

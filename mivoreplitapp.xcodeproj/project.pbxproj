@@ -13,6 +13,7 @@
 		11A1B2C3D4E5F60718293A4D /* EmailVerificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A4C /* EmailVerificationService.swift */; };
 		11A1B2C3D4E5F60718293A4F /* TwoFactorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A4E /* TwoFactorView.swift */; };
 		11A1B2C3D4E5F60718293A51 /* ForgotPasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A50 /* ForgotPasswordView.swift */; };
+		11A1B2C3D4E5F60718293A53 /* HapticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A52 /* HapticsService.swift */; };
 		20F6403A2FA005BC00F3DDD2 /* MivoDeviceActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F640392FA005BB00F3DDD2 /* MivoDeviceActivityMonitor.swift */; };
 		20F6403C2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F6403B2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift */; };
 		20F6403E2FA005FF00F3DDD2 /* MivoDeviceActivityExtension-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 20F6403D2FA005FF00F3DDD2 /* MivoDeviceActivityExtension-Info.plist */; };
@@ -54,6 +55,7 @@
 		11A1B2C3D4E5F60718293A4C /* EmailVerificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailVerificationService.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A4E /* TwoFactorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoFactorView.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A50 /* ForgotPasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgotPasswordView.swift; sourceTree = "<group>"; };
+		11A1B2C3D4E5F60718293A52 /* HapticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsService.swift; sourceTree = "<group>"; };
 		203EE6C12F8672FF00CF2F60 /* Mivo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mivo.entitlements; sourceTree = "<group>"; };
 		20F640392FA005BB00F3DDD2 /* MivoDeviceActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoDeviceActivityMonitor.swift; sourceTree = "<group>"; };
 		20F6403B2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenTimeDataCollector.swift; sourceTree = "<group>"; };
@@ -154,6 +156,7 @@
 				7A180955A0A07FDEFC1A0BFF /* AIService.swift */,
 				11A1B2C3D4E5F60718293A4A /* SecureAuthService.swift */,
 				11A1B2C3D4E5F60718293A4C /* EmailVerificationService.swift */,
+				11A1B2C3D4E5F60718293A52 /* HapticsService.swift */,
 				F1A2B3C4D5E6F7A8B9C0D1E1 /* FamilyControlsManager.swift */,
 			);
 			path = Services;
@@ -343,6 +346,7 @@
 				3BF38CFF771C4B42265F053C /* AIService.swift in Sources */,
 				11A1B2C3D4E5F60718293A4B /* SecureAuthService.swift in Sources */,
 				11A1B2C3D4E5F60718293A4D /* EmailVerificationService.swift in Sources */,
+				11A1B2C3D4E5F60718293A53 /* HapticsService.swift in Sources */,
 				5306BDEDDBAF577A5C71D040 /* AppViewModel.swift in Sources */,
 				5CA7645304E43E1E7ED6FBC7 /* MivoComponents.swift in Sources */,
 				DBBAED45E4F10CBB5AA82D31 /* LoginView.swift in Sources */,
