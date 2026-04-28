@@ -41,9 +41,9 @@ struct HomeView: View {
             MivoColors.background.ignoresSafeArea()
             LinearGradient(
                 colors: [
-                    Color(hex: "#F6EEE6"),
+                    MivoColors.heroText,
                     MivoColors.background,
-                    Color(hex: "#F3EBE3").opacity(0.45)
+                    MivoColors.surface.opacity(0.45)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -85,34 +85,34 @@ struct HomeView: View {
     private var heroCard: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .fill(Color(hex: "#4A2E1F"))
+                .fill(MivoColors.heroBg)
                 .frame(minHeight: 246)
 
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
                     Label(appVM.deviceActivityMinutesToday != nil ? "Device activity" : "Mivo sessions", systemImage: "waveform.path.ecg")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color.white.opacity(0.72))
+                        .foregroundColor(MivoColors.heroText.opacity(0.72))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.12))
+                        .background(MivoColors.heroText.opacity(0.12))
                         .clipShape(Capsule())
 
                     Spacer()
 
                     Text(statusLabel)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color.white.opacity(0.75))
+                        .foregroundColor(MivoColors.heroText.opacity(0.75))
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(formatDuration(minutesToday))
                         .font(.system(size: 58, weight: .bold).monospacedDigit())
-                        .foregroundColor(.white)
+                        .foregroundColor(MivoColors.heroText)
                         .minimumScaleFactor(0.72)
                     Text("screen time today")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.66))
+                        .foregroundColor(MivoColors.heroText.opacity(0.66))
                 }
 
                 progressBar
@@ -134,9 +134,9 @@ struct HomeView: View {
         return VStack(alignment: .leading, spacing: 8) {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.14))
+                    Capsule().fill(MivoColors.heroText.opacity(0.14))
                     Capsule()
-                        .fill(LinearGradient(colors: [Color(hex: "#F3EBE3"), Color(hex: "#E6B17E")], startPoint: .leading, endPoint: .trailing))
+                        .fill(LinearGradient(colors: [MivoColors.heroText, MivoColors.heroArc], startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(10, proxy.size.width * progress))
                         .animation(.spring(response: 0.5, dampingFraction: 0.86), value: progress)
                 }
@@ -149,7 +149,7 @@ struct HomeView: View {
                 Text("\(target)m")
             }
             .font(.system(size: 12, weight: .medium))
-            .foregroundColor(Color.white.opacity(0.58))
+            .foregroundColor(MivoColors.heroText.opacity(0.58))
         }
     }
 
@@ -157,19 +157,19 @@ struct HomeView: View {
         HStack(spacing: 9) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Color(hex: "#F3EBE3"))
+                .foregroundColor(MivoColors.heroText)
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(MivoColors.heroText)
                 Text(subtitle)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.56))
+                    .foregroundColor(MivoColors.heroText.opacity(0.56))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color.white.opacity(0.1))
+        .background(MivoColors.heroText.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 
@@ -181,7 +181,7 @@ struct HomeView: View {
         }
     }
 
-    private func metricCard(icon: String, value: String, label: String, tint: Color = Color(hex: "#A97B5B")) -> some View {
+    private func metricCard(icon: String, value: String, label: String, tint: Color = MivoColors.secondary) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .semibold))
@@ -207,9 +207,9 @@ struct HomeView: View {
         HStack(spacing: 14) {
             Image(systemName: protectionEnabled ? "shield.checkered" : "shield.lefthalf.filled")
                 .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(protectionEnabled ? Color(hex: "#A97B5B") : MivoColors.textSecondary)
+                .foregroundColor(protectionEnabled ? MivoColors.secondary : MivoColors.textSecondary)
                 .frame(width: 46, height: 46)
-                .background(Color(hex: "#F3EBE3"))
+                .background(MivoColors.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
@@ -258,7 +258,7 @@ struct HomeView: View {
                         .foregroundColor(MivoColors.textSecondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
-                        .background(Color(hex: "#F6EEE6"))
+                        .background(MivoColors.heroText)
                         .clipShape(Capsule())
                 }
             }
@@ -284,7 +284,7 @@ struct HomeView: View {
                 if reflectionSaved {
                     Label("Saved", systemImage: "checkmark.circle.fill")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(hex: "#A97B5B"))
+                        .foregroundColor(MivoColors.secondary)
                 }
             }
 
@@ -375,7 +375,7 @@ struct HomeView: View {
     }
 
     private var trendTint: Color {
-        appVM.patternPercent <= 0 ? Color(hex: "#A97B5B") : MivoColors.timerRed
+        appVM.patternPercent <= 0 ? MivoColors.secondary : MivoColors.timerRed
     }
 
     private var statusLabel: String {
@@ -388,7 +388,7 @@ struct HomeView: View {
 
     private var statusTint: Color {
         switch statusLabel {
-        case "Quiet start", "On track": return Color(hex: "#A97B5B")
+        case "Quiet start", "On track": return MivoColors.secondary
         case "Watchful": return MivoColors.accent
         default: return MivoColors.timerRed
         }

@@ -1,25 +1,55 @@
 import SwiftUI
 
 struct MivoColors {
-    static let background = Color(hex: "#E7D6C4")
-    static let surface = Color(hex: "#DCC6AF")
-    static let card = Color(hex: "#F3F3F3")
-    static let border = Color(hex: "#E0E0E0")
-
-    static let accent = Color(hex: "#C97942")
-    static let accentLight = Color(hex: "#A97B5B")
-    static let accentMuted = Color(hex: "#F3EBE3")
-
-    static let textPrimary = Color(hex: "#2E2E2E")
-    static let textSecondary = Color(hex: "#9C8573")
-    static let textMuted = Color(hex: "#9E9E9E")
-
-    static let brand = Color(hex: "#4A2E1F")
-
-    static let timerGreen = Color(hex: "#A97B5B")
-    static let timerOrange = Color(hex: "#C97942")
+    // MARK: - New Mivo Brand Palette
+    
+    /// Page background - #F5E6C8
+    static let background = Color(hex: "#F5E6C8")
+    
+    /// Cards, sections - #EDD9B3
+    static let surface = Color(hex: "#EDD9B3")
+    
+    /// Borders, inactive states - #C8A882
+    static let muted = Color(hex: "#C8A882")
+    
+    /// Selections, highlights, dot - #D4872A
+    static let accent = Color(hex: "#D4872A")
+    
+    /// Labels, secondary text, icons - #B5621E
+    static let secondary = Color(hex: "#B5621E")
+    
+    /// Headings, body text, CTA button - #5C3317
+    static let primary = Color(hex: "#5C3317")
+    
+    // MARK: - Hero Card Colors
+    
+    /// Hero card darker brown background - #6B3A20
+    static let heroBg = Color(hex: "#6B3A20")
+    
+    /// Hero card circular arc stroke - #D4872A
+    static let heroArc = Color(hex: "#D4872A")
+    
+    /// Hero card text on dark background - #F5E6C8
+    static let heroText = Color(hex: "#F5E6C8")
+    
+    // MARK: - Legacy Aliases (for gradual migration)
+    
+    static let card = surface
+    static let border = muted
+    
+    static let accentLight = secondary
+    static let accentMuted = background
+    
+    static let textPrimary = primary
+    static let textSecondary = secondary
+    static let textMuted = muted
+    
+    static let brand = heroBg
+    
+    static let timerGreen = secondary
+    static let timerOrange = accent
     static let timerRed = Color(hex: "#B05540")
-
+    
     static let white = Color.white
     static let overlay = Color.black.opacity(0.5)
 }

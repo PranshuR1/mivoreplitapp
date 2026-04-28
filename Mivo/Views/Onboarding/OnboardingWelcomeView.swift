@@ -67,16 +67,16 @@ struct OnboardingWelcomeView: View {
     private var focusHero: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 38, style: .continuous)
-                .fill(LinearGradient(colors: [Color(hex: "#4A2E1F"), Color(hex: "#6F4A34")], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .fill(LinearGradient(colors: [MivoColors.heroBg, MivoColors.heroBg.opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(height: 226)
 
             Circle()
-                .stroke(Color(hex: "#F3EBE3").opacity(0.18), lineWidth: 18)
+                .stroke(MivoColors.heroText.opacity(0.18), lineWidth: 18)
                 .frame(width: 166, height: 166)
 
             Circle()
                 .trim(from: 0.12, to: 0.86)
-                .stroke(Color(hex: "#E6B17E"), style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                .stroke(MivoColors.heroArc, style: StrokeStyle(lineWidth: 12, lineCap: .round))
                 .frame(width: 144, height: 144)
                 .rotationEffect(.degrees(-12))
 
@@ -84,24 +84,24 @@ struct OnboardingWelcomeView: View {
                 Image(systemName: "pause.fill")
                     .font(.system(size: 26, weight: .bold))
                     .frame(width: 64, height: 64)
-                    .background(Color.white.opacity(0.16))
+                    .background(MivoColors.heroText.opacity(0.16))
                     .clipShape(Circle())
                 Text("A pause before autopilot")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(MivoColors.heroText)
                 Text("Reflect first. Scroll only when you mean it.")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.68))
+                    .foregroundColor(MivoColors.heroText.opacity(0.68))
             }
 
             VStack {
                 HStack {
                     Text("Private by design")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color.white.opacity(0.76))
+                        .foregroundColor(MivoColors.heroText.opacity(0.76))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.12))
+                        .background(MivoColors.heroText.opacity(0.12))
                         .clipShape(Capsule())
                     Spacer()
                 }
@@ -134,8 +134,8 @@ private struct PillarCard: View {
             Image(systemName: item.systemImage)
                 .font(.system(size: 17, weight: .semibold))
                 .frame(width: 44, height: 44)
-                .background(Color(hex: "#F3EBE3"))
-                .foregroundColor(Color(hex: "#A97B5B"))
+                .background(MivoColors.surface)
+                .foregroundColor(MivoColors.secondary)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
 
             VStack(alignment: .leading, spacing: 5) {

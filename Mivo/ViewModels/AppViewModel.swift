@@ -153,6 +153,7 @@ class AppViewModel: ObservableObject {
     func completeOnboarding() {
         // Set flag
         settings.onboardingComplete = true
+        settings.tutorialComplete = false
         // Reassign to force @Published notifications in case of in-place mutation
         let updated = settings
         settings = updated
@@ -255,6 +256,51 @@ class AppViewModel: ObservableObject {
                 self.truthChecks = []
             }
         }
+    }
+
+    func completeTutorial() {
+        settings.tutorialComplete = true
+        let updated = settings
+        settings = updated
+        StorageService.save(settings, forKey: .settings)
+    }
+
+    func requestScreenTimeAccessAndRefresh() async -> Bool {
+        let granted = await withCheckedContinuation { continuation in
+            FamilyControlsManager.shared.requestAuthorization { granted in
+                continuation.resume(returning: granted)
+            }
+        }
+
+        FamilyControlsManager.shared.saveAuthorizationFlag(granted)
+
+        guard granted else {
+            loadDeviceActivityReport()
+            return false
+        }
+
+        await withCheckedContinuation { continuation in
+            FamilyControlsManager.shared.scheduleDailyMonitoring { _ in
+                continuation.resume()
+            }
+        }
+
+        loadDeviceActivityReport()
+
+        if #available(iOS 16.0, *) {
+            ScreenTimeDataCollector.shared.requestTodayUsageData { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    if case .success(let report) = result {
+                        self.deviceActivityMinutesToday = report.totalMinutes
+                    } else {
+                        self.loadDeviceActivityReport()
+                    }
+                }
+            }
+        }
+
+        return true
     }
 
     func exportData() -> String {

@@ -48,6 +48,7 @@ struct UserProfile: Codable {
 struct AppSettings: Codable {
     var onboardingComplete: Bool
     var notificationsEnabled: Bool
+    var tutorialComplete: Bool? = nil
 }
 
 struct OnboardingProfile: Codable {
