@@ -90,7 +90,7 @@ struct OnboardingResultView: View {
         // Use onboarding profile and AIService to compute estimated saved minutes per day
         // Heuristic fallback: saved = max(5, min(estimateReduction, 120))
         let profile = appVM.onboardingProfile
-        var baseEstimate = profile.scrollEstimateMinutes ?? 60
+        let baseEstimate = profile.scrollEstimateMinutes ?? 60
 
         // Heuristic: if user selects intentions that include 'killTime' or 'bored', assume higher reducible time
         let multiplier: Double
@@ -121,7 +121,8 @@ struct OnboardingResultView: View {
 
             // also append AI summary
             var parts: [String] = []
-            if let ints = profile.intentions.map({ $0.rawValue }), !ints.isEmpty { parts.append("Intentions: \(ints.joined(separator: ", "))") }
+            let ints = profile.intentions.map { $0.rawValue }
+            if !ints.isEmpty { parts.append("Intentions: \(ints.joined(separator: ", "))") }
             if let s = profile.scrollEstimateMinutes { parts.append("Estimate: \(s) min/day") }
             if let a = profile.age { parts.append("Age: \(a)") }
             let summary = parts.joined(separator: " | ")

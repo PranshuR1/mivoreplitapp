@@ -8,6 +8,8 @@ struct LoginView: View {
     @State private var loading = false
     @State private var error = ""
     @State private var goToRegister = false
+    @State private var goToForgotPassword = false
+    @State private var twoFactorChallenge: TwoFactorChallenge?
 
     var body: some View {
         NavigationStack {
@@ -114,6 +116,15 @@ struct LoginView: View {
                                 }
                             }
 
+                            Button {
+                                goToForgotPassword = true
+                            } label: {
+                                Text("Forgot password?")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(MivoColors.accent)
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                            }
+
                             if !error.isEmpty {
                                 Text(error)
                                     .font(.system(size: 13))
@@ -164,6 +175,12 @@ struct LoginView: View {
             .navigationDestination(isPresented: $goToRegister) {
                 RegisterView()
             }
+            .navigationDestination(isPresented: $goToForgotPassword) {
+                ForgotPasswordView()
+            }
+            .navigationDestination(item: $twoFactorChallenge) { challenge in
+                TwoFactorView(challenge: challenge)
+            }
         }
     }
 
@@ -178,11 +195,22 @@ struct LoginView: View {
         }
         error = ""
         loading = true
-        do {
-            try appVM.login(email: email.lowercased().trimmingCharacters(in: .whitespaces), password: password)
-        } catch {
-            self.error = error.localizedDescription
+        Task {
+            do {
+                let challenge = try await appVM.beginLogin(
+                    email: email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+                    password: password
+                )
+                await MainActor.run {
+                    twoFactorChallenge = challenge
+                    loading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                    loading = false
+                }
+            }
         }
-        loading = false
     }
 }

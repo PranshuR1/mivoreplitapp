@@ -10,6 +10,7 @@ struct RegisterView: View {
     @State private var showPassword = false
     @State private var loading = false
     @State private var error = ""
+    @State private var twoFactorChallenge: TwoFactorChallenge?
 
     var body: some View {
         ZStack {
@@ -86,6 +87,9 @@ struct RegisterView: View {
         .navigationBarTitleDisplayMode(.inline)
         .tint(MivoColors.textSecondary)
         .toolbarColorScheme(.light, for: .navigationBar)
+        .navigationDestination(item: $twoFactorChallenge) { challenge in
+            TwoFactorView(challenge: challenge)
+        }
     }
 
     @ViewBuilder
@@ -161,14 +165,27 @@ struct RegisterView: View {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { error = "Please enter your name."; return }
         guard !email.trimmingCharacters(in: .whitespaces).isEmpty else { error = "Please enter your email."; return }
         guard !password.isEmpty else { error = "Please enter a password."; return }
+        guard password.count >= 8 else { error = "Password must be at least 8 characters."; return }
         guard password == confirmPassword else { error = "Passwords do not match."; return }
         error = ""
         loading = true
-        do {
-            try appVM.register(email: email.lowercased().trimmingCharacters(in: .whitespaces), password: password, name: name.trimmingCharacters(in: .whitespaces))
-        } catch {
-            self.error = error.localizedDescription
+        Task {
+            do {
+                let challenge = try await appVM.beginRegistration(
+                    email: email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+                    password: password,
+                    name: name.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+                await MainActor.run {
+                    twoFactorChallenge = challenge
+                    loading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                    loading = false
+                }
+            }
         }
-        loading = false
     }
 }

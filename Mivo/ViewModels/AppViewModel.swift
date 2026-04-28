@@ -17,6 +17,7 @@ class AppViewModel: ObservableObject {
     // Last Device Activity report JSON (from extension via app group)
     @Published var lastDeviceActivityReportJSON: String? = nil
     @Published var deviceActivityMinutesToday: Int? = nil
+    @Published var pendingTwoFactorChallenge: TwoFactorChallenge? = nil
 
     init() {
         loadData()
@@ -25,9 +26,14 @@ class AppViewModel: ObservableObject {
     }
 
     func loadData() {
-        if let savedUser = StorageService.load(UserProfile.self, forKey: .user),
-           StorageService.exists(forKey: .authSession) {
-            user = savedUser
+        if StorageService.exists(forKey: .authSession),
+           let authRecord = SecureAuthService.loadRecord() {
+            user = UserProfile(
+                email: authRecord.email,
+                name: authRecord.name,
+                createdAt: authRecord.createdAt,
+                onboardingProfile: authRecord.onboardingProfile
+            )
             isLoggedIn = true
         }
         if let savedSessions = StorageService.load([Session].self, forKey: .sessions) {
@@ -47,64 +53,63 @@ class AppViewModel: ObservableObject {
 
     // MARK: - Auth
 
-    func login(email: String, password: String) throws {
-        guard let creds = StorageService.load(StoredCredentials.self, forKey: .credentials) else {
+    func beginLogin(email: String, password: String) async throws -> TwoFactorChallenge {
+        guard var record = SecureAuthService.loadRecord() else {
             throw AppError.noAccount
         }
-        let hash = simpleHash(password)
-        guard creds.email == email, creds.passwordHash == hash else {
+        guard record.email == email, SecureAuthService.verifyPassword(password, for: record) else {
             throw AppError.invalidCredentials
         }
-        guard let profile = StorageService.load(UserProfile.self, forKey: .user) else {
-            throw AppError.accountDataMissing
+
+        if record.passwordIterations == 0 {
+            record = try SecureAuthService.updatePassword(password, for: record)
         }
 
-        // Determine if a different user is logging in compared to current session
-        let previousEmail = self.user?.email
+        return try await sendTwoFactorChallenge(email: email, purpose: .login)
+    }
 
+    func completeLogin(email: String) throws {
+        guard let record = SecureAuthService.loadRecord(), record.email == email else {
+            throw AppError.accountDataMissing
+        }
         StorageService.save("1", forKey: .authSession)
-        user = profile
+        user = UserProfile(
+            email: record.email,
+            name: record.name,
+            createdAt: record.createdAt,
+            onboardingProfile: record.onboardingProfile
+        )
         isLoggedIn = true
 
         // Restore any saved onboarding profile for this user
-        if let userOnboard = profile.onboardingProfile {
+        if let userOnboard = record.onboardingProfile {
             onboardingProfile = userOnboard
         } else {
             onboardingProfile = OnboardingProfile()
         }
-
-        // If this is a different user than before, ensure onboarding runs for them
-        if profile.email != previousEmail {
-            settings.onboardingComplete = false
-            StorageService.save(settings, forKey: .settings)
-        }
     }
 
-    func register(email: String, password: String, name: String) throws {
-        if let existing = StorageService.load(UserProfile.self, forKey: .user), existing.email == email {
+    func beginRegistration(email: String, password: String, name: String) async throws -> TwoFactorChallenge {
+        if let existing = SecureAuthService.loadRecord(), existing.email == email {
             throw AppError.emailAlreadyExists
         }
-        let hash = simpleHash(password)
-        let creds = StoredCredentials(email: email, passwordHash: hash)
-        let profile = UserProfile(
+        let record = try SecureAuthService.createRecord(
             email: email,
-            name: name.isEmpty ? String(email.split(separator: "@").first ?? Substring(email)) : name,
-            createdAt: ISO8601DateFormatter().string(from: Date())
+            password: password,
+            name: name.isEmpty ? String(email.split(separator: "@").first ?? Substring(email)) : name
         )
-        StorageService.save(creds, forKey: .credentials)
+
+        let profile = UserProfile(email: record.email, name: record.name, createdAt: record.createdAt)
         StorageService.save(profile, forKey: .user)
-        StorageService.save("1", forKey: .authSession)
-        user = profile
-        isLoggedIn = true
 
         // New account: ensure onboarding runs
-        // Since the user has now registered via the app, treat onboarding as completed
-        // so the onboarding flow will not be shown again on subsequent logins.
-        settings.onboardingComplete = true
+        settings.onboardingComplete = false
         StorageService.save(settings, forKey: .settings)
 
         // Reset onboarding profile for fresh user
         onboardingProfile = OnboardingProfile()
+
+        return try await sendTwoFactorChallenge(email: email, purpose: .registration)
     }
 
     func logout() {
@@ -185,6 +190,11 @@ class AppViewModel: ObservableObject {
             u.onboardingProfile = onboardingProfile
             StorageService.save(u, forKey: .user)
             user = u
+
+            if var record = SecureAuthService.loadRecord(), record.email == u.email {
+                record.onboardingProfile = onboardingProfile
+                try? SecureAuthService.saveRecord(record)
+            }
         }
 
         // Create a small summary string for AI and append to AI dataset (stored as simple string array)
@@ -394,6 +404,57 @@ class AppViewModel: ObservableObject {
         // initial load
         Task { @MainActor in loadDeviceActivityReport() }
     }
+
+    // MARK: - Secure Auth
+
+    func verifyTwoFactorCode(_ code: String, for challenge: TwoFactorChallenge) throws {
+        guard pendingTwoFactorChallenge?.id == challenge.id, challenge.verifies(code) else {
+            throw AppError.invalidVerificationCode
+        }
+
+        switch challenge.purpose {
+        case .login, .registration:
+            try completeLogin(email: challenge.email)
+        case .passwordReset:
+            break
+        }
+
+        pendingTwoFactorChallenge = nil
+    }
+
+    func resendTwoFactorCode(for challenge: TwoFactorChallenge) async throws {
+        _ = try await sendTwoFactorChallenge(email: challenge.email, purpose: challenge.purpose)
+    }
+
+    func beginPasswordReset(email: String) async throws -> TwoFactorChallenge {
+        guard let record = SecureAuthService.loadRecord(), record.email == email else {
+            throw AppError.noAccount
+        }
+        return try await sendTwoFactorChallenge(email: email, purpose: .passwordReset)
+    }
+
+    func completePasswordReset(code: String, newPassword: String, challenge: TwoFactorChallenge) throws {
+        guard pendingTwoFactorChallenge?.id == challenge.id, challenge.verifies(code) else {
+            throw AppError.invalidVerificationCode
+        }
+        guard newPassword.count >= 8 else {
+            throw AppError.weakPassword
+        }
+        guard let record = SecureAuthService.loadRecord(), record.email == challenge.email else {
+            throw AppError.noAccount
+        }
+
+        _ = try SecureAuthService.updatePassword(newPassword, for: record)
+        StorageService.remove(forKey: .authSession)
+        pendingTwoFactorChallenge = nil
+    }
+
+    private func sendTwoFactorChallenge(email: String, purpose: TwoFactorChallenge.Purpose) async throws -> TwoFactorChallenge {
+        let result = SecureAuthService.makeChallenge(email: email, purpose: purpose)
+        pendingTwoFactorChallenge = result.challenge
+        try await EmailVerificationService.send(code: result.code, to: email, purpose: purpose)
+        return result.challenge
+    }
 }
 
 // MARK: - Errors
@@ -403,6 +464,10 @@ enum AppError: LocalizedError {
     case invalidCredentials
     case accountDataMissing
     case emailAlreadyExists
+    case invalidVerificationCode
+    case weakPassword
+    case secureStorageFailed
+    case emailDeliveryUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -410,6 +475,10 @@ enum AppError: LocalizedError {
         case .invalidCredentials: return "Invalid email or password."
         case .accountDataMissing: return "Account data missing. Please register again."
         case .emailAlreadyExists: return "An account with this email already exists."
+        case .invalidVerificationCode: return "That verification code is invalid or expired."
+        case .weakPassword: return "Password must be at least 8 characters."
+        case .secureStorageFailed: return "Could not save credentials securely."
+        case .emailDeliveryUnavailable: return "Email delivery is not configured yet."
         }
     }
 }
