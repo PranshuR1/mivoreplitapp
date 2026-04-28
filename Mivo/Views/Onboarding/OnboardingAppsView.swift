@@ -656,10 +656,10 @@ private struct LifeBreakdownView_Internal: View {
                             visibleCells = startIndex + revealed
                         }
                     }
-                    try? await Task.sleep(nanoseconds: 260_000_000)
+                    try? await Task.sleep(nanoseconds: 180_000_000)
                 }
 
-                try? await Task.sleep(nanoseconds: 900_000_000)
+                try? await Task.sleep(nanoseconds: 650_000_000)
                 startIndex += count
             }
 
