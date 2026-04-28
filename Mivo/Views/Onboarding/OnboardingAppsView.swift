@@ -21,8 +21,8 @@ struct OnboardingAppsView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 3,
-                            total: 3,
+                            step: 6,
+                            total: 6,
                             eyebrow: "Apps",
                             title: "Where should Mivo pay attention?",
                             subtitle: "Choose the places that tend to pull you in. This stays private and helps your first insights feel relevant."

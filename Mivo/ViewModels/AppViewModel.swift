@@ -17,6 +17,8 @@ class AppViewModel: ObservableObject {
     // Last Device Activity report JSON (from extension via app group)
     @Published var lastDeviceActivityReportJSON: String? = nil
     @Published var deviceActivityMinutesToday: Int? = nil
+    @Published var deviceActivityPerAppSeconds: [String: Int] = [:]
+    @Published var deviceActivityReportGeneratedAt: Date? = nil
     @Published var pendingTwoFactorChallenge: TwoFactorChallenge? = nil
 
     init() {
@@ -428,10 +430,34 @@ class AppViewModel: ObservableObject {
         // Parse the JSON and compute an aggregate minutes value for display
         guard let raw = lastDeviceActivityReportJSON, let data = raw.data(using: .utf8) else {
             deviceActivityMinutesToday = nil
+            deviceActivityPerAppSeconds = [:]
+            deviceActivityReportGeneratedAt = nil
             return
         }
         do {
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let generatedAt = json["generatedAt"] as? String {
+                    deviceActivityReportGeneratedAt = ISO8601DateFormatter().date(from: generatedAt)
+                } else {
+                    deviceActivityReportGeneratedAt = nil
+                }
+
+                if let perApp = json["perAppSeconds"] as? [String: Any] {
+                    var normalized: [String: Int] = [:]
+                    for (bundleID, value) in perApp {
+                        if let seconds = value as? Int {
+                            normalized[bundleID] = seconds
+                        } else if let seconds = value as? Double {
+                            normalized[bundleID] = Int(seconds)
+                        } else if let seconds = value as? String, let parsed = Int(seconds) {
+                            normalized[bundleID] = parsed
+                        }
+                    }
+                    deviceActivityPerAppSeconds = normalized
+                } else {
+                    deviceActivityPerAppSeconds = [:]
+                }
+
                 // Prefer explicit totalSeconds field when the extension provides it
                 if let total = json["totalSeconds"] as? Int {
                     deviceActivityMinutesToday = Int((Double(total) / 60.0).rounded())
@@ -454,9 +480,12 @@ class AppViewModel: ObservableObject {
         } catch {
             // parsing failed — clear device metric but keep raw JSON visible for debugging
             deviceActivityMinutesToday = nil
+            deviceActivityPerAppSeconds = [:]
+            deviceActivityReportGeneratedAt = nil
             return
         }
         deviceActivityMinutesToday = nil
+        deviceActivityPerAppSeconds = [:]
     }
 
     func startObservingDeviceActivityUpdates() {

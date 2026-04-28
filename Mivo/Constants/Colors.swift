@@ -1,36 +1,39 @@
 import SwiftUI
 
 struct MivoColors {
-    // MARK: - New Mivo Brand Palette
+    // MARK: - Mivo Brand Palette (2026)
     
-    /// Page background - #F5E6C8
-    static let background = Color(hex: "#F5E6C8")
+    /// Page background (slightly lighter) - #FAF3E8
+    static let background = Color(hex: "#FAF3E8")
     
-    /// Cards, sections - #EDD9B3
-    static let surface = Color(hex: "#EDD9B3")
+    /// Cards, sections - #F0E4CC
+    static let surface = Color(hex: "#F0E4CC")
     
     /// Borders, inactive states - #C8A882
     static let muted = Color(hex: "#C8A882")
     
-    /// Selections, highlights, dot - #D4872A
+    /// Amber accent from logo - #D4872A
     static let accent = Color(hex: "#D4872A")
     
-    /// Labels, secondary text, icons - #B5621E
+    /// Secondary text, labels - #B5621E
     static let secondary = Color(hex: "#B5621E")
     
-    /// Headings, body text, CTA button - #5C3317
+    /// Headings, body text - #5C3317
     static let primary = Color(hex: "#5C3317")
     
-    // MARK: - Hero Card Colors
+    /// Hero card background (lightened) - #8B4E28
+    static let heroBg = Color(hex: "#8B4E28")
     
-    /// Hero card darker brown background - #6B3A20
-    static let heroBg = Color(hex: "#6B3A20")
+    /// New blue accent for CTAs, icons, highlights - #4A6FA5
+    static let blue = Color(hex: "#4A6FA5")
     
-    /// Hero card circular arc stroke - #D4872A
-    static let heroArc = Color(hex: "#D4872A")
+    // MARK: - Computed/Derived Colors
     
-    /// Hero card text on dark background - #F5E6C8
-    static let heroText = Color(hex: "#F5E6C8")
+    /// Hero card circular arc stroke (uses accent)
+    static let heroArc = accent
+    
+    /// Hero card text on dark background (uses background)
+    static let heroText = background
     
     // MARK: - Legacy Aliases (for gradual migration)
     

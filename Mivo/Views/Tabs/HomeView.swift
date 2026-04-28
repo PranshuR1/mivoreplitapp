@@ -5,6 +5,8 @@ struct HomeView: View {
     @State private var protectionEnabled = false
     @State private var reflectionText = ""
     @State private var reflectionSaved = false
+    @State private var displayedMinutesToday = 0
+    @State private var countUpTask: Task<Void, Never>? = nil
 
     private var minutesToday: Int {
         appVM.deviceActivityMinutesToday ?? appVM.todaysTotalMinutes
@@ -34,6 +36,20 @@ struct HomeView: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            appVM.loadDeviceActivityReport()
+            if displayedMinutesToday == 0 && minutesToday > 0 {
+                animateMinutes(to: minutesToday)
+            } else {
+                displayedMinutesToday = minutesToday
+            }
+        }
+        .onDisappear {
+            countUpTask?.cancel()
+        }
+        .onChange(of: minutesToday) { _, newValue in
+            animateMinutes(to: newValue)
+        }
     }
 
     private var homeBackdrop: some View {
@@ -106,10 +122,11 @@ struct HomeView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(formatDuration(minutesToday))
+                    Text(formatDuration(displayedMinutesToday))
                         .font(.system(size: 58, weight: .bold).monospacedDigit())
                         .foregroundColor(MivoColors.heroText)
                         .minimumScaleFactor(0.72)
+                        .contentTransition(.numericText())
                     Text("screen time today")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundColor(MivoColors.heroText.opacity(0.66))
@@ -129,7 +146,7 @@ struct HomeView: View {
 
     private var progressBar: some View {
         let target = max(appVM.onboardingProfile.scrollEstimateMinutes ?? 120, 30)
-        let progress = min(Double(minutesToday) / Double(target), 1)
+        let progress = min(Double(displayedMinutesToday) / Double(target), 1)
 
         return VStack(alignment: .leading, spacing: 8) {
             GeometryReader { proxy in
@@ -320,7 +337,7 @@ struct HomeView: View {
                 .foregroundColor(MivoColors.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 13)
-                .background(reflectionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? MivoColors.textMuted.opacity(0.36) : MivoColors.textPrimary)
+                .background(reflectionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? MivoColors.textMuted.opacity(0.36) : MivoColors.blue)
                 .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -348,9 +365,9 @@ struct HomeView: View {
             .foregroundColor(MivoColors.white)
             .padding(.horizontal, 20)
             .padding(.vertical, 18)
-            .background(MivoColors.textPrimary)
+            .background(MivoColors.blue)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .shadow(color: MivoColors.textPrimary.opacity(0.24), radius: 18, y: 8)
+            .shadow(color: MivoColors.blue.opacity(0.24), radius: 18, y: 8)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 12)
@@ -380,9 +397,9 @@ struct HomeView: View {
 
     private var statusLabel: String {
         let baseline = max(appVM.onboardingProfile.scrollEstimateMinutes ?? 120, 30)
-        if minutesToday == 0 { return "Quiet start" }
-        if minutesToday < baseline / 2 { return "On track" }
-        if minutesToday <= baseline { return "Watchful" }
+        if displayedMinutesToday == 0 { return "Quiet start" }
+        if displayedMinutesToday < baseline / 2 { return "On track" }
+        if displayedMinutesToday <= baseline { return "Watchful" }
         return "Over baseline"
     }
 
@@ -395,7 +412,7 @@ struct HomeView: View {
     }
 
     private var insightText: String {
-        if minutesToday == 0 {
+        if displayedMinutesToday == 0 {
             return "You haven’t logged screen time yet today. This is a good moment to set intention before the first unlock."
         }
         if appVM.patternPercent > 20 {
@@ -422,6 +439,30 @@ struct HomeView: View {
         reflectionText = ""
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
             reflectionSaved = false
+        }
+    }
+
+    private func animateMinutes(to target: Int) {
+        countUpTask?.cancel()
+
+        guard target != displayedMinutesToday else { return }
+
+        let start = displayedMinutesToday
+        let distance = abs(target - start)
+        let steps = max(12, min(48, distance))
+
+        countUpTask = Task {
+            for step in 1...steps {
+                if Task.isCancelled { return }
+                let value = start + Int(Double(target - start) * (Double(step) / Double(steps)))
+                await MainActor.run {
+                    displayedMinutesToday = value
+                }
+                try? await Task.sleep(nanoseconds: 28_000_000)
+            }
+            await MainActor.run {
+                displayedMinutesToday = target
+            }
         }
     }
 }

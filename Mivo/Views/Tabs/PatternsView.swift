@@ -23,7 +23,8 @@ struct PatternsView: View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
+                VStack(spacing: 18) {
+                    screenTimeInfographic
                     calendarCard
                     insightSection
                         .padding(.bottom, 80)
@@ -52,6 +53,159 @@ struct PatternsView: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            appVM.loadDeviceActivityReport()
+        }
+    }
+
+    // MARK: - Screen Time Infographic
+
+    var screenTimeInfographic: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Screen Time")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(MivoColors.textPrimary)
+                    Text(screenTimeCaption)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: hasDeviceData ? "waveform.path.ecg" : "lock.open")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(MivoColors.heroText)
+                    .frame(width: 42, height: 42)
+                    .background(hasDeviceData ? MivoColors.accent : MivoColors.muted)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            HStack(alignment: .center, spacing: 18) {
+                usageRing
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(formatDuration(screenTimeMinutesToday))
+                        .font(.system(size: 38, weight: .bold).monospacedDigit())
+                        .foregroundColor(MivoColors.textPrimary)
+                        .contentTransition(.numericText())
+
+                    Text("today")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.textSecondary)
+
+                    HStack(spacing: 8) {
+                        statPill(title: "\(topDeviceApps.count)", subtitle: "tracked apps")
+                        statPill(title: "\(baselineDeltaText)", subtitle: "vs baseline")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if hasDeviceData {
+                appUsageBars
+            } else {
+                missingScreenTimeCard
+            }
+        }
+        .padding(18)
+        .background(MivoColors.white.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+        .shadow(color: MivoColors.textPrimary.opacity(0.06), radius: 14, y: 7)
+    }
+
+    private var usageRing: some View {
+        let progress = min(Double(screenTimeMinutesToday) / Double(dailyBaseline), 1)
+
+        return ZStack {
+            Circle()
+                .stroke(MivoColors.surface, lineWidth: 14)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    LinearGradient(colors: [MivoColors.accent, MivoColors.blue], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    style: StrokeStyle(lineWidth: 14, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .animation(.spring(response: 0.6, dampingFraction: 0.86), value: progress)
+            VStack(spacing: 2) {
+                Text("\(Int(progress * 100))%")
+                    .font(.system(size: 20, weight: .bold).monospacedDigit())
+                    .foregroundColor(MivoColors.textPrimary)
+                Text("baseline")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+            }
+        }
+        .frame(width: 116, height: 116)
+    }
+
+    private func statPill(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 14, weight: .bold).monospacedDigit())
+                .foregroundColor(MivoColors.textPrimary)
+            Text(subtitle)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(MivoColors.textSecondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(MivoColors.heroText)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var appUsageBars: some View {
+        VStack(spacing: 11) {
+            ForEach(topDeviceApps, id: \.bundleID) { item in
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Text(appDisplayName(item.bundleID))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(MivoColors.textPrimary)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(formatDuration(Int((Double(item.seconds) / 60.0).rounded())))
+                            .font(.system(size: 12, weight: .bold).monospacedDigit())
+                            .foregroundColor(MivoColors.textSecondary)
+                    }
+
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(MivoColors.surface)
+                            Capsule()
+                                .fill(MivoColors.accent)
+                                .frame(width: max(8, proxy.size.width * appBarProgress(item.seconds)))
+                        }
+                    }
+                    .frame(height: 8)
+                }
+            }
+        }
+    }
+
+    private var missingScreenTimeCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "info.circle.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(MivoColors.accent)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Waiting for Screen Time data")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Text("After access is allowed, Mivo reads the shared Device Activity report and these charts update from real usage.")
+                    .font(.system(size: 12))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineSpacing(3)
+            }
+        }
+        .padding(14)
+        .background(MivoColors.heroText)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     // MARK: - Calendar
@@ -108,7 +262,7 @@ struct PatternsView: View {
                         if let day {
                             let key = dateKey(year: viewYear, month: viewMonth, day: day)
                             let daySessions = dayMap[key] ?? []
-                            let dayTotal = daySessions.reduce(0) { $0 + $1.actualDuration }
+                            let dayTotal = totalForDay(key, sessions: daySessions)
                             let isToday = key == todayKey
                             let isSelected = day == selectedDay
 
@@ -161,7 +315,7 @@ struct PatternsView: View {
                 .foregroundColor(MivoColors.textPrimary)
                 .tracking(-0.4)
 
-            if selectedSessions.isEmpty {
+            if selectedTotal == 0 {
                 Text("No data recorded.")
                     .font(.system(size: 15))
                     .foregroundColor(MivoColors.textMuted)
@@ -181,11 +335,11 @@ struct PatternsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
 
                     HStack {
-                        Text("Sessions")
+                        Text(selectedKey == todayKey && hasDeviceData ? "Source" : "Sessions")
                             .font(.system(size: 14))
                             .foregroundColor(MivoColors.textSecondary)
                         Spacer()
-                        Text("\(selectedSessions.count)")
+                        Text(selectedKey == todayKey && hasDeviceData ? "Screen Time" : "\(selectedSessions.count)")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(MivoColors.textPrimary)
                     }
@@ -193,7 +347,24 @@ struct PatternsView: View {
                     .background(MivoColors.card)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
 
-                    ForEach(selectedSessions) { session in
+                    if selectedKey == todayKey && hasDeviceData {
+                        ForEach(topDeviceApps, id: \.bundleID) { item in
+                            HStack {
+                                Text(appDisplayName(item.bundleID))
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(MivoColors.textPrimary)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(formatDuration(Int((Double(item.seconds) / 60.0).rounded())))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(MivoColors.textPrimary)
+                            }
+                            .padding(14)
+                            .background(MivoColors.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                    } else {
+                        ForEach(selectedSessions) { session in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(sessionTime(session))
@@ -211,6 +382,7 @@ struct PatternsView: View {
                         .padding(14)
                         .background(MivoColors.card)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
                     }
                 }
             }
@@ -253,7 +425,7 @@ struct PatternsView: View {
     var monthTotal: Int {
         (1...daysInMonth).reduce(0) { total, day in
             let k = dateKey(year: viewYear, month: viewMonth, day: day)
-            return total + (dayMap[k] ?? []).reduce(0) { $0 + $1.actualDuration }
+            return total + totalForDay(k, sessions: dayMap[k] ?? [])
         }
     }
 
@@ -261,7 +433,43 @@ struct PatternsView: View {
 
     var selectedKey: String { dateKey(year: viewYear, month: viewMonth, day: selectedDay) }
     var selectedSessions: [Session] { dayMap[selectedKey] ?? [] }
-    var selectedTotal: Int { selectedSessions.reduce(0) { $0 + $1.actualDuration } }
+    var selectedTotal: Int { totalForDay(selectedKey, sessions: selectedSessions) }
+
+    var hasDeviceData: Bool {
+        (appVM.deviceActivityMinutesToday ?? 0) > 0 || !appVM.deviceActivityPerAppSeconds.isEmpty
+    }
+
+    var screenTimeMinutesToday: Int {
+        appVM.deviceActivityMinutesToday ?? appVM.todaysTotalMinutes
+    }
+
+    var dailyBaseline: Int {
+        max(appVM.onboardingProfile.scrollEstimateMinutes ?? 120, 30)
+    }
+
+    var baselineDeltaText: String {
+        let delta = screenTimeMinutesToday - dailyBaseline
+        if delta == 0 { return "Even" }
+        return "\(delta > 0 ? "+" : "")\(delta)m"
+    }
+
+    var screenTimeCaption: String {
+        guard hasDeviceData else { return "Connect Screen Time to turn this into live usage." }
+        if let generatedAt = appVM.deviceActivityReportGeneratedAt {
+            let fmt = DateFormatter()
+            fmt.timeStyle = .short
+            return "Updated \(fmt.string(from: generatedAt)) from Device Activity."
+        }
+        return "Updated from Device Activity."
+    }
+
+    var topDeviceApps: [(bundleID: String, seconds: Int)] {
+        appVM.deviceActivityPerAppSeconds
+            .filter { $0.value > 0 }
+            .sorted { $0.value > $1.value }
+            .prefix(5)
+            .map { (bundleID: $0.key, seconds: $0.value) }
+    }
 
     var selectedDateLabel: String {
         var comps = DateComponents()
@@ -295,6 +503,27 @@ struct PatternsView: View {
             return disp.string(from: date)
         }
         return s.startTime
+    }
+
+    func totalForDay(_ key: String, sessions: [Session]) -> Int {
+        if key == todayKey, let deviceMinutes = appVM.deviceActivityMinutesToday {
+            return deviceMinutes
+        }
+        return sessions.reduce(0) { $0 + $1.actualDuration }
+    }
+
+    func appBarProgress(_ seconds: Int) -> Double {
+        guard let largest = topDeviceApps.first?.seconds, largest > 0 else { return 0 }
+        return min(Double(seconds) / Double(largest), 1)
+    }
+
+    func appDisplayName(_ bundleID: String) -> String {
+        let parts = bundleID.split(separator: ".").map(String.init)
+        guard let last = parts.last else { return bundleID }
+        return last
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
     }
 
     func goToPrevMonth() {

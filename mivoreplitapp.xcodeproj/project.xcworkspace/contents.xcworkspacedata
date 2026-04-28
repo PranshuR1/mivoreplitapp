@@ -4,4 +4,28 @@
    <FileRef
       location = "self:">
    </FileRef>
+   <FileRef
+      location = "group:OnboardingPhoneRelationshipView.swift">
+   </FileRef>
+   <FileRef
+      location = "group:OnboardingTriggersView.swift">
+   </FileRef>
+   <FileRef
+      location = "group:OnboardingGoalsView.swift">
+   </FileRef>
+   <FileRef
+      location = "group:OnboardingCommitmentView.swift">
+   </FileRef>
+   <FileRef
+      location = "group:ONBOARDING_ENHANCEMENT_SUMMARY.md">
+   </FileRef>
+   <FileRef
+      location = "group:OnboardingComponents.swift">
+   </FileRef>
+   <FileRef
+      location = "group:OnboardingExtras.swift">
+   </FileRef>
+   <FileRef
+      location = "group:NewOnboardingViews.swift">
+   </FileRef>
 </Workspace>
