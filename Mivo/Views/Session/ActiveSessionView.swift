@@ -188,16 +188,16 @@ struct ActiveSessionView: View {
     }
 
     func interpolateColor(progress: Double) -> Color {
-        let green = (r: 107.0, g: 140.0, b: 107.0)
+        let calm = (r: 169.0, g: 123.0, b: 91.0)
         let orange = (r: 196.0, g: 132.0, b: 74.0)
         let red = (r: 176.0, g: 85.0, b: 64.0)
 
         let r, g, b: Double
         if progress < 0.7 {
             let t = progress / 0.7
-            r = green.r + (orange.r - green.r) * t
-            g = green.g + (orange.g - green.g) * t
-            b = green.b + (orange.b - green.b) * t
+            r = calm.r + (orange.r - calm.r) * t
+            g = calm.g + (orange.g - calm.g) * t
+            b = calm.b + (orange.b - calm.b) * t
         } else {
             let t = (progress - 0.7) / 0.3
             r = orange.r + (red.r - orange.r) * t

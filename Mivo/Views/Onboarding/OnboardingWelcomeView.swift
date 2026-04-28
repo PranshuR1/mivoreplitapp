@@ -67,11 +67,11 @@ struct OnboardingWelcomeView: View {
     private var focusHero: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 38, style: .continuous)
-                .fill(LinearGradient(colors: [Color(hex: "#26382E"), Color(hex: "#3F5947")], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .fill(LinearGradient(colors: [Color(hex: "#4A2E1F"), Color(hex: "#6F4A34")], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(height: 226)
 
             Circle()
-                .stroke(Color(hex: "#D8E2D3").opacity(0.18), lineWidth: 18)
+                .stroke(Color(hex: "#F3EBE3").opacity(0.18), lineWidth: 18)
                 .frame(width: 166, height: 166)
 
             Circle()
@@ -134,8 +134,8 @@ private struct PillarCard: View {
             Image(systemName: item.systemImage)
                 .font(.system(size: 17, weight: .semibold))
                 .frame(width: 44, height: 44)
-                .background(Color(hex: "#DFE7DA"))
-                .foregroundColor(Color(hex: "#4E7152"))
+                .background(Color(hex: "#F3EBE3"))
+                .foregroundColor(Color(hex: "#A97B5B"))
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
 
             VStack(alignment: .leading, spacing: 5) {

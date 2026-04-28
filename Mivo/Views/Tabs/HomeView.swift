@@ -43,7 +43,7 @@ struct HomeView: View {
                 colors: [
                     Color(hex: "#F6EEE6"),
                     MivoColors.background,
-                    Color(hex: "#D8E2D3").opacity(0.45)
+                    Color(hex: "#F3EBE3").opacity(0.45)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -85,7 +85,7 @@ struct HomeView: View {
     private var heroCard: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .fill(Color(hex: "#26382E"))
+                .fill(Color(hex: "#4A2E1F"))
                 .frame(minHeight: 246)
 
             VStack(alignment: .leading, spacing: 22) {
@@ -136,7 +136,7 @@ struct HomeView: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.14))
                     Capsule()
-                        .fill(LinearGradient(colors: [Color(hex: "#D8E2D3"), Color(hex: "#E6B17E")], startPoint: .leading, endPoint: .trailing))
+                        .fill(LinearGradient(colors: [Color(hex: "#F3EBE3"), Color(hex: "#E6B17E")], startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(10, proxy.size.width * progress))
                         .animation(.spring(response: 0.5, dampingFraction: 0.86), value: progress)
                 }
@@ -157,7 +157,7 @@ struct HomeView: View {
         HStack(spacing: 9) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Color(hex: "#D8E2D3"))
+                .foregroundColor(Color(hex: "#F3EBE3"))
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)
                     .font(.system(size: 15, weight: .bold))
@@ -181,7 +181,7 @@ struct HomeView: View {
         }
     }
 
-    private func metricCard(icon: String, value: String, label: String, tint: Color = Color(hex: "#4E7152")) -> some View {
+    private func metricCard(icon: String, value: String, label: String, tint: Color = Color(hex: "#A97B5B")) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .semibold))
@@ -207,9 +207,9 @@ struct HomeView: View {
         HStack(spacing: 14) {
             Image(systemName: protectionEnabled ? "shield.checkered" : "shield.lefthalf.filled")
                 .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(protectionEnabled ? Color(hex: "#4E7152") : MivoColors.textSecondary)
+                .foregroundColor(protectionEnabled ? Color(hex: "#A97B5B") : MivoColors.textSecondary)
                 .frame(width: 46, height: 46)
-                .background(Color(hex: "#DFE7DA"))
+                .background(Color(hex: "#F3EBE3"))
                 .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
@@ -284,7 +284,7 @@ struct HomeView: View {
                 if reflectionSaved {
                     Label("Saved", systemImage: "checkmark.circle.fill")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(hex: "#4E7152"))
+                        .foregroundColor(Color(hex: "#A97B5B"))
                 }
             }
 
@@ -375,7 +375,7 @@ struct HomeView: View {
     }
 
     private var trendTint: Color {
-        appVM.patternPercent <= 0 ? Color(hex: "#4E7152") : MivoColors.timerRed
+        appVM.patternPercent <= 0 ? Color(hex: "#A97B5B") : MivoColors.timerRed
     }
 
     private var statusLabel: String {
@@ -388,7 +388,7 @@ struct HomeView: View {
 
     private var statusTint: Color {
         switch statusLabel {
-        case "Quiet start", "On track": return Color(hex: "#4E7152")
+        case "Quiet start", "On track": return Color(hex: "#A97B5B")
         case "Watchful": return MivoColors.accent
         default: return MivoColors.timerRed
         }

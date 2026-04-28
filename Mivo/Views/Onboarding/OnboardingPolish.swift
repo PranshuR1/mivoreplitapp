@@ -9,7 +9,7 @@ struct OnboardingBackdrop: View {
                 colors: [
                     Color(hex: "#F6EEE6").opacity(0.92),
                     MivoColors.background,
-                    Color(hex: "#D8E2D3").opacity(0.46)
+                    Color(hex: "#F3EBE3").opacity(0.46)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -113,8 +113,8 @@ struct OnboardingOptionRow<Leading: View>: View {
         HStack(spacing: 14) {
             leading
                 .frame(width: 42, height: 42)
-                .background(isSelected ? MivoColors.accent : Color(hex: "#DFE7DA"))
-                .foregroundColor(isSelected ? MivoColors.white : Color(hex: "#4E7152"))
+                .background(isSelected ? MivoColors.accent : Color(hex: "#F3EBE3"))
+                .foregroundColor(isSelected ? MivoColors.white : Color(hex: "#A97B5B"))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {

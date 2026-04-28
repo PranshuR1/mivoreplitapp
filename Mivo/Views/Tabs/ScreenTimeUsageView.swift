@@ -245,7 +245,7 @@ struct ScreenTimeUsageView: View {
                             .foregroundColor(MivoColors.textSecondary)
                         Text("\(report.totalMinutes) min")
                             .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(report.totalMinutes > estimate ? .red : .green)
+                            .foregroundColor(report.totalMinutes > estimate ? .red : MivoColors.accentLight)
                     }
                 }
                 .padding(16)

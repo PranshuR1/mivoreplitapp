@@ -172,7 +172,7 @@ struct SettingsView: View {
                                         if cached {
                                             Text("Status: Authorized")
                                                 .font(.system(size: 12))
-                                                .foregroundColor(.green)
+                                                .foregroundColor(MivoColors.accentLight)
                                         } else {
                                             Text("Status: Denied — open Settings to enable")
                                                 .font(.system(size: 12))
@@ -319,7 +319,7 @@ struct SettingsView: View {
                                     if #available(iOS 16.0, *), FamilyControlsManager.shared.isMonitoring() {
                                         Text("Active - tracking device usage")
                                             .font(.system(size: 12))
-                                            .foregroundColor(.green)
+                                            .foregroundColor(MivoColors.accentLight)
                                     } else {
                                         Text("Inactive - tap 'Start daily monitoring' to begin")
                                             .font(.system(size: 12))

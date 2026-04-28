@@ -143,7 +143,7 @@ struct OnboardingAppsView: View {
 
             Image(systemName: selected.isEmpty ? "square.grid.2x2" : "checkmark.seal.fill")
                 .font(.system(size: 24, weight: .semibold))
-                .foregroundColor(selected.isEmpty ? Color(hex: "#4E7152") : MivoColors.accent)
+                .foregroundColor(selected.isEmpty ? Color(hex: "#A97B5B") : MivoColors.accent)
         }
         .padding(18)
         .background(MivoColors.white.opacity(0.62))
@@ -302,12 +302,12 @@ private struct AgeOnboardingView_Internal: View {
                 Spacer()
                 Image(systemName: "lock.shield.fill")
                     .font(.system(size: 20))
-                    .foregroundColor(Color(hex: "#4E7152"))
+                    .foregroundColor(Color(hex: "#A97B5B"))
             }
 
             ZStack {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color(hex: "#26382E"))
+                    .fill(Color(hex: "#4A2E1F"))
                     .frame(height: 116)
 
                 if ageText.isEmpty {
@@ -531,7 +531,7 @@ private struct LifeBreakdownView_Internal: View {
         HStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(Color(hex: "#26382E"))
+                    .fill(Color(hex: "#4A2E1F"))
                     .frame(width: 72, height: 72)
                 Text("\(boxes)")
                     .font(.system(size: 25, weight: .bold).monospacedDigit())
@@ -594,7 +594,7 @@ private struct LifeBreakdownView_Internal: View {
                     .foregroundColor(MivoColors.textPrimary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(Color(hex: "#DFE7DA"))
+                    .background(Color(hex: "#F3EBE3"))
                     .clipShape(Capsule())
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -680,7 +680,7 @@ private struct LifeBreakdownView_Internal: View {
         case "work": return MivoColors.accent
         case "eat": return Color(red: 0.96, green: 0.65, blue: 0.22)
         case "basics": return MivoColors.card
-        case "scroll": return Color(red: 0.20, green: 0.65, blue: 0.44)
+        case "scroll": return MivoColors.accentLight
         default: return MivoColors.background
         }
     }
@@ -753,7 +753,7 @@ private struct ResultOnboardingView_Internal: View {
     private var recoveredWheel: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .fill(Color(hex: "#26382E"))
+                .fill(Color(hex: "#4A2E1F"))
                 .frame(height: 330)
 
             Circle()
@@ -763,7 +763,7 @@ private struct ResultOnboardingView_Internal: View {
             Circle()
                 .trim(from: 0, to: CGFloat(trimFraction()))
                 .stroke(
-                    AngularGradient(gradient: Gradient(colors: [Color(hex: "#DFE7DA"), Color(hex: "#E6B17E"), MivoColors.accent]), center: .center),
+                    AngularGradient(gradient: Gradient(colors: [Color(hex: "#F3EBE3"), Color(hex: "#E6B17E"), MivoColors.accent]), center: .center),
                     style: StrokeStyle(lineWidth: 18, lineCap: .round)
                 )
                 .rotationEffect(.degrees(spin ? 270 : -90))
@@ -806,7 +806,7 @@ private struct ResultOnboardingView_Internal: View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(Color(hex: "#4E7152"))
+                .foregroundColor(Color(hex: "#A97B5B"))
             Text(value)
                 .font(.system(size: 25, weight: .bold).monospacedDigit())
                 .foregroundColor(MivoColors.textPrimary)

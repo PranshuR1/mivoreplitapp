@@ -16,7 +16,7 @@ struct MivoColors {
 
     static let brand = Color(hex: "#4A2E1F")
 
-    static let timerGreen = Color(hex: "#6B8C6B")
+    static let timerGreen = Color(hex: "#A97B5B")
     static let timerOrange = Color(hex: "#C97942")
     static let timerRed = Color(hex: "#B05540")
 

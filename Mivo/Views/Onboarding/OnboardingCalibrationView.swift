@@ -124,15 +124,15 @@ struct OnboardingCalibrationView: View {
                 Spacer()
                 Image(systemName: "chart.bar.fill")
                     .font(.system(size: 19, weight: .semibold))
-                    .foregroundColor(Color(hex: "#4E7152"))
+                    .foregroundColor(MivoColors.accentLight)
             }
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(Color(hex: "#DFE7DA"))
+                        .fill(MivoColors.accentMuted)
                     Capsule()
-                        .fill(LinearGradient(colors: [Color(hex: "#4E7152"), MivoColors.accent], startPoint: .leading, endPoint: .trailing))
+                        .fill(LinearGradient(colors: [MivoColors.accentLight, MivoColors.accent], startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(12, proxy.size.width * progress))
                         .animation(.spring(response: 0.46, dampingFraction: 0.86), value: progress)
                 }
