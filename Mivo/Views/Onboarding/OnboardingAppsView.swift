@@ -387,7 +387,7 @@ private struct LifeBreakdownView_Internal: View {
     @State private var showFloatingText: Bool = false
 
     // batch reveal size to reduce frequent UI updates (tuneable)
-    private let revealBatchSize = 4
+    private let revealBatchSize = 1
 
     // computed grid parameters
     private func boxesForAge(_ age: Int?, ageRange: String?) -> Int {
@@ -501,7 +501,7 @@ private struct LifeBreakdownView_Internal: View {
                             ResultOnboardingView_Internal(providedAge: providedAge, providedAgeRange: providedAgeRange)
                         } label: {
                             HStack(spacing: 10) {
-                                Text("Show recovered time")
+                                Text("Show time we can recover")
                                     .font(.system(size: 16, weight: .semibold))
                                 Image(systemName: "arrow.right")
                                     .font(.system(size: 15, weight: .semibold))
@@ -656,10 +656,10 @@ private struct LifeBreakdownView_Internal: View {
                             visibleCells = startIndex + revealed
                         }
                     }
-                    try? await Task.sleep(nanoseconds: 80_000_000)
+                    try? await Task.sleep(nanoseconds: 260_000_000)
                 }
 
-                try? await Task.sleep(nanoseconds: 520_000_000)
+                try? await Task.sleep(nanoseconds: 900_000_000)
                 startIndex += count
             }
 
@@ -711,8 +711,8 @@ private struct ResultOnboardingView_Internal: View {
                             step: 5,
                             total: 5,
                             eyebrow: "Recovery",
-                            title: "This is time you can win back",
-                            subtitle: "Small pauses compound. Mivo turns tiny choices into visible time recovered."
+                            title: "We can recover this time",
+                            subtitle: "Small pauses compound. Mivo turns tiny choices into visible time we can bring back."
                         )
                         .onboardingEntrance(appear)
 
@@ -775,7 +775,7 @@ private struct ResultOnboardingView_Internal: View {
                     .font(.system(size: 48, weight: .bold).monospacedDigit())
                     .foregroundColor(.white)
                     .contentTransition(.numericText())
-                Text("years recovered")
+                Text("years we can recover")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Color.white.opacity(0.68))
             }
@@ -790,7 +790,7 @@ private struct ResultOnboardingView_Internal: View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
                 recoveryStatCard(value: "\(minutes)", label: "minutes saved / day", icon: "clock.fill")
-                recoveryStatCard(value: String(format: "%.1f", years * 365), label: "days recovered", icon: "sun.max.fill")
+                recoveryStatCard(value: String(format: "%.1f", years * 365), label: "days we can recover", icon: "sun.max.fill")
             }
 
             Text("That estimate comes from your baseline, selected apps, and reasons for scrolling. It will become sharper as Mivo learns your pattern.")

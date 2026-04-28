@@ -3,7 +3,6 @@ import SwiftUI
 struct OnboardingWelcomeView: View {
     @State private var goToWhy = false
     @State private var appear = false
-    @State private var pulse = false
 
     var body: some View {
         NavigationStack {
@@ -61,9 +60,6 @@ struct OnboardingWelcomeView: View {
             }
             .onAppear {
                 appear = true
-                withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
             }
         }
     }
@@ -76,13 +72,13 @@ struct OnboardingWelcomeView: View {
 
             Circle()
                 .stroke(Color(hex: "#D8E2D3").opacity(0.18), lineWidth: 18)
-                .frame(width: pulse ? 180 : 156, height: pulse ? 180 : 156)
+                .frame(width: 166, height: 166)
 
             Circle()
                 .trim(from: 0.12, to: 0.86)
                 .stroke(Color(hex: "#E6B17E"), style: StrokeStyle(lineWidth: 12, lineCap: .round))
                 .frame(width: 144, height: 144)
-                .rotationEffect(.degrees(pulse ? 18 : -8))
+                .rotationEffect(.degrees(-12))
 
             VStack(spacing: 10) {
                 Image(systemName: "pause.fill")
