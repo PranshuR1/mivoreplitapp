@@ -88,11 +88,11 @@ struct ScreenTimeUsageView: View {
     private var statusCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: appVM.deviceActivityMinutesToday == nil ? "hourglass" : "checkmark.seal.fill")
+                Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(appVM.deviceActivityMinutesToday == nil ? MivoColors.textMuted : MivoColors.accentLight)
+                    .foregroundColor(MivoColors.accentLight)
 
-                Text(appVM.deviceActivityMinutesToday == nil ? "Waiting for Apple's report" : "Extension report received")
+                Text("Live Apple report")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(MivoColors.textPrimary)
             }
@@ -102,7 +102,7 @@ struct ScreenTimeUsageView: View {
                     .font(.system(size: 14))
                     .foregroundColor(MivoColors.textSecondary)
             } else {
-                Text("When iOS publishes real activity through the Screen Time report extension, this page and the home total will update. Until then Mivo leaves the total empty instead of inventing a number.")
+                Text("The report above is the real Screen Time surface. Apple keeps detailed usage inside the report extension, so Mivo renders it directly instead of inventing or exporting totals.")
                     .font(.system(size: 14))
                     .foregroundColor(MivoColors.textSecondary)
                     .lineSpacing(3)
@@ -120,7 +120,7 @@ struct ScreenTimeUsageView: View {
 
 #if canImport(DeviceActivity) && canImport(FamilyControls) && canImport(ManagedSettings)
 @available(iOS 16.0, *)
-private struct MivoScreenTimeUsageLiveReport: View {
+struct MivoScreenTimeUsageLiveReport: View {
     private let context = DeviceActivityReport.Context("MivoPatternsTotalActivity")
 
     private var filter: DeviceActivityFilter {
@@ -141,7 +141,7 @@ private struct MivoScreenTimeUsageLiveReport: View {
 }
 #else
 @available(iOS 16.0, *)
-private struct MivoScreenTimeUsageLiveReport: View {
+struct MivoScreenTimeUsageLiveReport: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "lock.shield")

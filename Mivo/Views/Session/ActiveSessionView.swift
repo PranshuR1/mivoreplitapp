@@ -1,8 +1,10 @@
 import SwiftUI
+import UserNotifications
 
 struct ActiveSessionView: View {
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.dismiss) var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     let intention: Intention
     let plannedMinutes: Int
@@ -11,11 +13,15 @@ struct ActiveSessionView: View {
     @State private var extraSeconds = 0
     @State private var extensionUsed = false
     @State private var startTime = Date()
+    @State private var didStart = false
     @State private var showReflection = false
     @State private var showQuitAlert = false
     @State private var sessionTimer: Timer? = nil
     @State private var scale: CGFloat = 1.0
     @State private var sessionDone = false
+    @State private var didPulseAtLimit = false
+    @State private var interruptionSaved = false
+    @State private var feedbackPresentedForTimeLimit = false
 
     var totalPlanned: Int { plannedMinutes * 60 + extraSeconds }
     var remaining: Int { totalPlanned - elapsed }
@@ -137,7 +143,10 @@ struct ActiveSessionView: View {
                             startTime: ISO8601DateFormatter().string(from: startTime),
                             endTime: ISO8601DateFormatter().string(from: Date()),
                             extendedOnce: extensionUsed,
-                            onSaved: { dismiss() }
+                            onSaved: {
+                                cancelSessionNotifications()
+                                dismiss()
+                            }
                         )
                     } label: {
                         Text("Done scrolling")
@@ -157,7 +166,19 @@ struct ActiveSessionView: View {
         }
         .navigationBarHidden(true)
         .onAppear { startTimer() }
-        .onDisappear { sessionTimer?.invalidate() }
+        .onDisappear {
+            sessionTimer?.invalidate()
+            if showReflection || sessionDone {
+                cancelSessionNotifications()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                updateElapsed()
+            } else if phase == .background || phase == .inactive {
+                updateElapsed()
+            }
+        }
         .alert("End session?", isPresented: $showQuitAlert) {
             Button("Keep going", role: .cancel) {}
             Button("End now") { endSession() }
@@ -167,24 +188,130 @@ struct ActiveSessionView: View {
     }
 
     func startTimer() {
-        startTime = Date()
+        if !didStart {
+            startTime = Date()
+            didStart = true
+            scheduleSessionNotifications()
+            appVM.markMivoSessionActiveFor(seconds: totalPlanned)
+        }
+        updateElapsed()
+        sessionTimer?.invalidate()
         sessionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            elapsed += 1
-            if elapsed == totalPlanned {
-                scale = 1.06
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { scale = 1.0 }
-            }
+            updateElapsed()
+        }
+    }
+
+    func updateElapsed() {
+        elapsed = max(0, Int(Date().timeIntervalSince(startTime)))
+        if elapsed >= totalPlanned && !didPulseAtLimit {
+            didPulseAtLimit = true
+            scale = 1.06
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { scale = 1.0 }
+        }
+        if elapsed >= totalPlanned && !sessionDone {
+            completeTimeLimit()
         }
     }
 
     func endSession() {
+        updateElapsed()
+        sessionDone = true
+        cancelSessionNotifications()
         sessionTimer?.invalidate()
         showReflection = true
+    }
+
+    func persistInterruptedSessionIfNeeded() {
+        guard !interruptionSaved, !showReflection, !sessionDone else { return }
+        updateElapsed()
+        interruptionSaved = true
+        appVM.savePendingSessionFeedback(
+            PendingSessionFeedback(
+                id: UUID().uuidString,
+                intention: intention,
+                plannedDuration: plannedMinutes,
+                actualDuration: max(1, Int((Double(elapsed) / 60).rounded())),
+                startTime: ISO8601DateFormatter().string(from: startTime),
+                endTime: ISO8601DateFormatter().string(from: Date()),
+                extendedOnce: extensionUsed
+            )
+        )
+    }
+
+    func completeTimeLimit() {
+        guard !feedbackPresentedForTimeLimit else { return }
+        feedbackPresentedForTimeLimit = true
+        sessionDone = true
+        sessionTimer?.invalidate()
+        appVM.finishMivoSession()
+        saveCompletedSessionForFeedback()
+        showReflection = true
+    }
+
+    func saveCompletedSessionForFeedback() {
+        appVM.savePendingSessionFeedback(
+            PendingSessionFeedback(
+                id: UUID().uuidString,
+                intention: intention,
+                plannedDuration: plannedMinutes,
+                actualDuration: max(1, Int((Double(elapsed) / 60).rounded())),
+                startTime: ISO8601DateFormatter().string(from: startTime),
+                endTime: ISO8601DateFormatter().string(from: Date()),
+                extendedOnce: extensionUsed
+            )
+        )
     }
 
     func extend() {
         extraSeconds = 5 * 60
         extensionUsed = true
+        didPulseAtLimit = false
+        scheduleSessionNotifications()
+        appVM.markMivoSessionActiveFor(seconds: max(1, totalPlanned - elapsed))
+        updateElapsed()
+    }
+
+    func scheduleSessionNotifications() {
+        cancelSessionNotifications()
+
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
+        let remainingSeconds = max(1, totalPlanned - elapsed)
+
+        if remainingSeconds > 60 {
+            let warningContent = UNMutableNotificationContent()
+            warningContent.title = "1 minute left"
+            warningContent.body = "Wrap up now. Mivo will lock protected apps again when the timer ends."
+            warningContent.sound = .default
+
+            let warningTrigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(remainingSeconds - 60), repeats: false)
+            let warningRequest = UNNotificationRequest(
+                identifier: "mivo.intervention.oneMinute",
+                content: warningContent,
+                trigger: warningTrigger
+            )
+            center.add(warningRequest)
+        }
+
+        let doneContent = UNMutableNotificationContent()
+        doneContent.title = "Intervention ended"
+        doneContent.body = "Mivo is locking protected apps again. Open Mivo to reflect on the session."
+        doneContent.sound = .default
+
+        let doneTrigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(remainingSeconds), repeats: false)
+        let doneRequest = UNNotificationRequest(
+            identifier: "mivo.intervention.done",
+            content: doneContent,
+            trigger: doneTrigger
+        )
+        center.add(doneRequest)
+    }
+
+    func cancelSessionNotifications() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [
+            "mivo.intervention.oneMinute",
+            "mivo.intervention.done"
+        ])
     }
 
     func interpolateColor(progress: Double) -> Color {

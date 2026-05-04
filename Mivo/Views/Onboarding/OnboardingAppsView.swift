@@ -1,5 +1,10 @@
 import SwiftUI
 import UIKit
+import UserNotifications
+
+#if canImport(FamilyControls)
+import FamilyControls
+#endif
 
 private let availableApps = [
     "Instagram", "TikTok", "Twitter / X", "YouTube",
@@ -12,6 +17,16 @@ struct OnboardingAppsView: View {
     @State private var selected: Set<String> = []
     @State private var loading = false
     @State private var appear = false
+    @State private var notificationsEnabled = false
+    @State private var protectedAppsEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
+    @State private var setupMessage: String? = nil
+    @State private var goToAge = false
+    @State private var aiRecommendation: ProtectedAppRecommendation?
+    @State private var aiRecommendationLoading = false
+    #if canImport(FamilyControls)
+    @State private var impulseSelection = FamilyActivitySelection()
+    @State private var showImpulsePicker = false
+    #endif
 
     var body: some View {
         ZStack {
@@ -31,6 +46,9 @@ struct OnboardingAppsView: View {
 
                         selectedSummary
                             .onboardingEntrance(appear, delay: 0.08)
+
+                        setupPromptCard
+                            .onboardingEntrance(appear, delay: 0.12)
 
                         FlowLayout(spacing: 10) {
                             ForEach(Array(availableApps.enumerated()), id: \.element) { index, app in
@@ -77,34 +95,44 @@ struct OnboardingAppsView: View {
                 }
 
                 OnboardingBottomBar {
-                    NavigationLink {
-                        AgeOnboardingView_Internal()
+                    Button {
+                        continueAfterRequiredSetup()
                     } label: {
                         HStack(spacing: 8) {
-                            Text("I'm ready")
+                            Text(setupComplete ? "I'm ready" : requiredSetupButtonTitle)
                                 .font(.system(size: 16, weight: .semibold))
-                            Image(systemName: "checkmark")
+                            Image(systemName: setupComplete ? "checkmark" : "lock.fill")
                                 .font(.system(size: 16, weight: .medium))
                         }
                         .foregroundColor(MivoColors.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 17)
-                        .background(MivoColors.textPrimary)
+                        .background(setupComplete ? MivoColors.textPrimary : MivoColors.textMuted.opacity(0.52))
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
+                        .shadow(color: setupComplete ? MivoColors.textPrimary.opacity(0.18) : .clear, radius: 16, y: 8)
                     }
-                    .simultaneousGesture(TapGesture().onEnded {
-                        loading = true
-                        var profile = OnboardingProfile()
-                        profile.preferredApps = Array(selected)
-                        appVM.saveOnboardingProfile(profile)
-                        HapticsService.impact(style: .light)
-                    })
                     .disabled(loading)
                 }
             }
         }
         .navigationBarBackButtonHidden()
+        .navigationDestination(isPresented: $goToAge) {
+            AgeOnboardingView_Internal()
+        }
+        #if canImport(FamilyControls)
+        .familyActivityPicker(isPresented: $showImpulsePicker, selection: $impulseSelection)
+        .onChange(of: impulseSelection) { _, newValue in
+            if #available(iOS 16.0, *) {
+                FamilyControlsManager.shared.saveFamilyActivitySelection(newValue)
+                if FamilyControlsManager.shared.hasImpulseSelection() {
+                    protectedAppsEnabled = true
+                    FamilyControlsManager.shared.setImpulseProtectionEnabled(true)
+                    setupMessage = "Protected apps are on. Mivo will pause before those apps open."
+                    HapticsService.success()
+                }
+            }
+        }
+        #endif
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button { dismiss() } label: {
@@ -112,19 +140,29 @@ struct OnboardingAppsView: View {
                         .foregroundColor(MivoColors.textSecondary)
                 }
             }
-            // Add a Skip action to let users finish onboarding quickly
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Skip") {
-                    // Save whatever was selected (if anything) and complete
-                    var profile = OnboardingProfile()
-                    profile.preferredApps = Array(selected)
-                    appVM.saveOnboardingProfile(profile)
-                    appVM.completeOnboarding()
-                }
-                .foregroundColor(MivoColors.textSecondary)
-            }
         }
-        .onAppear { appear = true }
+        .onAppear {
+            appear = true
+            refreshSetupState()
+            refreshAIRecommendation()
+        }
+        .onChange(of: selected) { _, _ in
+            refreshAIRecommendation()
+        }
+    }
+
+    private var setupComplete: Bool {
+        protectedAppsEnabled && notificationsEnabled
+    }
+
+    private var requiredSetupButtonTitle: String {
+        if !protectedAppsEnabled && !notificationsEnabled {
+            return "Turn on protection and notifications"
+        }
+        if !protectedAppsEnabled {
+            return "Choose protected apps"
+        }
+        return "Turn on notifications"
     }
 
     private var selectedSummary: some View {
@@ -149,6 +187,249 @@ struct OnboardingAppsView: View {
         .background(MivoColors.white.opacity(0.62))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private var setupPromptCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "checklist.checked")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(MivoColors.accent)
+                    .frame(width: 40, height: 40)
+                    .background(MivoColors.accent.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Turn on Mivo’s protection")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundColor(MivoColors.textPrimary)
+                    Text("Choose the apps that should pause, then allow notifications so Mivo can remind you at the right moments.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                        .lineSpacing(3)
+                }
+            }
+
+            aiRecommendationCard
+
+            VStack(spacing: 10) {
+                setupActionRow(
+                    icon: protectedAppsEnabled ? "shield.checkered" : "shield",
+                    title: protectedAppsEnabled ? "Apps protected" : "Choose apps to protect",
+                    subtitle: protectedAppsEnabled ? "Your selected apps will show the Mivo pause." : "Open Apple’s picker and select distracting apps.",
+                    isComplete: protectedAppsEnabled,
+                    actionTitle: protectedAppsEnabled ? "Change" : "Choose",
+                    action: chooseProtectedApps
+                )
+
+                setupActionRow(
+                    icon: notificationsEnabled ? "bell.badge.fill" : "bell",
+                    title: notificationsEnabled ? "Notifications on" : "Turn on notifications",
+                    subtitle: notificationsEnabled ? "Mivo can send helpful reminders." : "Allow reminders for streaks, reports, and check-ins.",
+                    isComplete: notificationsEnabled,
+                    actionTitle: notificationsEnabled ? "On" : "Allow",
+                    action: requestNotifications
+                )
+            }
+
+            if let setupMessage {
+                Text(setupMessage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .padding(.top, 2)
+            }
+        }
+        .padding(18)
+        .background(MivoColors.white.opacity(0.66))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.04), radius: 16, y: 8)
+    }
+
+    private var aiRecommendationCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.accent)
+                Text(aiRecommendationLoading ? "Mivo is thinking..." : "Mivo recommends protecting")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Spacer()
+            }
+
+            if let recommendation = aiRecommendation {
+                FlowLayout(spacing: 7) {
+                    ForEach(recommendation.apps, id: \.self) { app in
+                        Label(app, systemImage: appIcon(for: app))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(MivoColors.accent)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(MivoColors.accent.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Text(recommendation.rationale)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(MivoColors.textMuted)
+                    .lineSpacing(2)
+            } else {
+                Text("Pick a few familiar apps below and Mivo will suggest what to protect first.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(MivoColors.textMuted)
+            }
+        }
+        .padding(12)
+        .background(MivoColors.background.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func setupActionRow(
+        icon: String,
+        title: String,
+        subtitle: String,
+        isComplete: Bool,
+        actionTitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(isComplete ? MivoColors.secondary : MivoColors.accent)
+                    .frame(width: 34, height: 34)
+                    .background((isComplete ? MivoColors.secondary : MivoColors.accent).opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.textPrimary)
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(MivoColors.textMuted)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Text(actionTitle)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(isComplete ? MivoColors.secondary : MivoColors.white)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 8)
+                    .background(isComplete ? MivoColors.secondary.opacity(0.12) : MivoColors.accent)
+                    .clipShape(Capsule())
+            }
+            .padding(12)
+            .background(MivoColors.background.opacity(0.62))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func refreshSetupState() {
+        protectedAppsEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
+        #if canImport(FamilyControls)
+        if #available(iOS 16.0, *) {
+            impulseSelection = FamilyControlsManager.shared.loadFamilyActivitySelection()
+            protectedAppsEnabled = protectedAppsEnabled && FamilyControlsManager.shared.hasImpulseSelection()
+        }
+        #endif
+
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                notificationsEnabled = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral
+                var updated = appVM.settings
+                updated.notificationsEnabled = notificationsEnabled
+                appVM.settings = updated
+                StorageService.save(updated, forKey: .settings)
+            }
+        }
+    }
+
+    private func continueAfterRequiredSetup() {
+        refreshSetupState()
+        guard setupComplete else {
+            if !protectedAppsEnabled && !notificationsEnabled {
+                setupMessage = "Choose protected apps and allow notifications to continue."
+            } else if !protectedAppsEnabled {
+                setupMessage = "Choose at least one app to protect before continuing."
+            } else {
+                setupMessage = "Allow notifications before continuing. If you denied them, enable Mivo notifications in iOS Settings."
+            }
+            HapticsService.warning()
+            return
+        }
+
+        loading = true
+        var profile = OnboardingProfile()
+        profile.preferredApps = Array(selected)
+        appVM.saveOnboardingProfile(profile)
+        HapticsService.impact(style: .light)
+        goToAge = true
+        loading = false
+    }
+
+    private func chooseProtectedApps() {
+        HapticsService.selection()
+        #if canImport(FamilyControls)
+        guard #available(iOS 16.0, *) else {
+            setupMessage = "App protection needs iOS Screen Time support."
+            return
+        }
+
+        FamilyControlsManager.shared.requestAuthorization { granted in
+            DispatchQueue.main.async {
+                FamilyControlsManager.shared.saveAuthorizationFlag(granted)
+                if granted {
+                    showImpulsePicker = true
+                } else {
+                    setupMessage = "Screen Time permission is needed before choosing protected apps."
+                    HapticsService.warning()
+                }
+            }
+        }
+        #else
+        setupMessage = "App protection is unavailable in this build."
+        #endif
+    }
+
+    private func refreshAIRecommendation() {
+        aiRecommendationLoading = true
+        let selectedApps = Array(selected)
+        Task {
+            var profile = appVM.onboardingProfile
+            if !selectedApps.isEmpty {
+                profile.preferredApps = selectedApps
+            }
+            let recommendation = await AIService.recommendProtectedApps(
+                profile: profile,
+                selectedApps: selectedApps,
+                recentSessionSummary: AIDataStore.recentSummary(limit: 4)
+            )
+            await MainActor.run {
+                aiRecommendation = recommendation
+                aiRecommendationLoading = false
+            }
+        }
+    }
+
+    private func requestNotifications() {
+        HapticsService.selection()
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+            DispatchQueue.main.async {
+                notificationsEnabled = granted
+                var updated = appVM.settings
+                updated.notificationsEnabled = granted
+                appVM.settings = updated
+                StorageService.save(updated, forKey: .settings)
+                setupMessage = granted ? "Notifications are on." : "Notifications were not enabled. You can turn them on later in Settings."
+                granted ? HapticsService.success() : HapticsService.warning()
+            }
+        }
     }
 
     private func appIcon(for app: String) -> String {

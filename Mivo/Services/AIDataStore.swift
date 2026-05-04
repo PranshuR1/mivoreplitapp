@@ -22,7 +22,13 @@ struct AIDataStore {
     }
 
     static func recentEntries(limit: Int = 5) -> [AIDataEntry] {
-        let entries = StorageService.load([AIDataEntry].self, forKey: .aiDataset) ?? []
+        if let entries = StorageService.load([AIDataEntry].self, forKey: .aiDataset) {
+            return Array(entries.prefix(limit))
+        }
+        let legacySummaries = StorageService.load([String].self, forKey: .aiDataset) ?? []
+        let entries = legacySummaries.map {
+            AIDataEntry(id: UUID().uuidString, timestamp: "Saved profile", summary: $0)
+        }
         return Array(entries.prefix(limit))
     }
 

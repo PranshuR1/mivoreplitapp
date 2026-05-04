@@ -12,6 +12,9 @@ struct InterventionView: View {
     @Environment(\.dismiss) var dismiss
     let intention: Intention?
     let duration: Int?
+    let canCloseEarly: Bool
+    let completionTitle: String
+    let onComplete: (() -> Void)?
 
     @State private var countdown = 5
     @State private var canProceed = false
@@ -21,10 +24,19 @@ struct InterventionView: View {
 
     var isSessionStart: Bool { intention != nil && duration != nil }
 
-    init(intention: Intention?, duration: Int?) {
+    init(
+        intention: Intention?,
+        duration: Int?,
+        canCloseEarly: Bool = true,
+        completionTitle: String = "Open the app",
+        onComplete: (() -> Void)? = nil
+    ) {
         self.intention = intention
         self.duration = duration
-        _prompt = State(initialValue: intentionPrompts.randomElement()!)
+        self.canCloseEarly = canCloseEarly
+        self.completionTitle = completionTitle
+        self.onComplete = onComplete
+        _prompt = State(initialValue: intentionPrompts.randomElement() ?? "Take one breath before you continue.")
     }
 
     var body: some View {
@@ -32,11 +44,13 @@ struct InterventionView: View {
             MivoColors.background.ignoresSafeArea()
             VStack(spacing: 0) {
                 HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18))
-                            .foregroundColor(MivoColors.textSecondary)
-                            .frame(width: 44, height: 44)
+                    if canCloseEarly {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 18))
+                                .foregroundColor(MivoColors.textSecondary)
+                                .frame(width: 44, height: 44)
+                        }
                     }
                     Spacer()
                 }
@@ -107,9 +121,9 @@ struct InterventionView: View {
 
                 // Actions
                 VStack(spacing: 10) {
-                    if isSessionStart {
+                    if let intention, let duration {
                         NavigationLink {
-                            ActiveSessionView(intention: intention!, plannedMinutes: duration!)
+                            ActiveSessionView(intention: intention, plannedMinutes: duration)
                         } label: {
                             Text(canProceed ? "Begin session" : "Wait \(countdown)s...")
                                 .font(.system(size: 16, weight: .semibold))
@@ -122,9 +136,9 @@ struct InterventionView: View {
                         .disabled(!canProceed)
                     } else {
                         Button {
-                            dismiss()
+                            complete()
                         } label: {
-                            Text(canProceed ? "Open the app" : "Wait \(countdown)s...")
+                            Text(canProceed ? completionTitle : "Wait \(countdown)s...")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(MivoColors.white)
                                 .frame(maxWidth: .infinity)
@@ -135,11 +149,13 @@ struct InterventionView: View {
                         .disabled(!canProceed)
                     }
 
-                    Button { dismiss() } label: {
-                        Text("Close")
-                            .font(.system(size: 15))
-                            .foregroundColor(MivoColors.textMuted)
-                            .padding(.vertical, 14)
+                    if canCloseEarly {
+                        Button { dismiss() } label: {
+                            Text("Close")
+                                .font(.system(size: 15))
+                                .foregroundColor(MivoColors.textMuted)
+                                .padding(.vertical, 14)
+                        }
                     }
                 }
             }
@@ -161,6 +177,14 @@ struct InterventionView: View {
             } else {
                 countdown -= 1
             }
+        }
+    }
+
+    private func complete() {
+        if let onComplete {
+            onComplete()
+        } else {
+            dismiss()
         }
     }
 }

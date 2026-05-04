@@ -9,36 +9,7 @@ struct SecureAuthRecord: Codable {
     var passwordHash: String
     var passwordSalt: String
     var passwordIterations: Int
-    var emailVerified: Bool?
     var onboardingProfile: OnboardingProfile?
-}
-
-struct TwoFactorChallenge: Identifiable, Codable, Hashable {
-    enum Purpose: String, Codable, Hashable {
-        case login
-        case registration
-        case passwordReset
-
-        var emailSubject: String {
-            switch self {
-            case .login: return "Your Mivo sign-in code"
-            case .registration: return "Verify your Mivo account"
-            case .passwordReset: return "Reset your Mivo password"
-            }
-        }
-    }
-
-    let id: String
-    let email: String
-    let purpose: Purpose
-    let codeHash: String
-    let salt: String
-    let expiresAt: Date
-
-    func verifies(_ code: String) -> Bool {
-        guard Date() < expiresAt else { return false }
-        return SecureAuthService.hashCode(code, saltHex: salt) == codeHash
-    }
 }
 
 enum SecureAuthService {
@@ -70,8 +41,7 @@ enum SecureAuthService {
             createdAt: ISO8601DateFormatter().string(from: Date()),
             passwordHash: hashPassword(password, salt: salt, iterations: passwordIterations),
             passwordSalt: salt.hexString,
-            passwordIterations: passwordIterations,
-            emailVerified: false
+            passwordIterations: passwordIterations
         )
         try saveRecord(record)
         return record
@@ -95,28 +65,6 @@ enum SecureAuthService {
         updated.passwordHash = hashPassword(password, salt: salt, iterations: passwordIterations)
         try saveRecord(updated)
         return updated
-    }
-
-    static func makeChallenge(email: String, purpose: TwoFactorChallenge.Purpose) -> (challenge: TwoFactorChallenge, code: String) {
-        let code = String(format: "%06d", Int.random(in: 0...999_999))
-        let salt = randomBytes(count: 16).hexString
-        let challenge = TwoFactorChallenge(
-            id: UUID().uuidString,
-            email: email,
-            purpose: purpose,
-            codeHash: hashCode(code, saltHex: salt),
-            salt: salt,
-            expiresAt: Date().addingTimeInterval(10 * 60)
-        )
-        return (challenge, code)
-    }
-
-    static func hashCode(_ code: String, saltHex: String) -> String {
-        let salt = Data(hexString: saltHex) ?? Data()
-        var data = Data()
-        data.append(salt)
-        data.append(Data(code.trimmingCharacters(in: .whitespacesAndNewlines).utf8))
-        return SHA256.hash(data: data).hexString
     }
 
     private static func hashPassword(_ password: String, salt: Data, iterations: Int) -> String {
@@ -171,7 +119,6 @@ enum SecureAuthService {
             passwordHash: legacyCredentials.passwordHash,
             passwordSalt: "legacy",
             passwordIterations: 0,
-            emailVerified: true,
             onboardingProfile: legacyUser.onboardingProfile
         )
         try? saveRecord(record)

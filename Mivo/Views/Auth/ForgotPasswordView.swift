@@ -5,10 +5,8 @@ struct ForgotPasswordView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var email = ""
-    @State private var code = ""
     @State private var password = ""
     @State private var confirmPassword = ""
-    @State private var challenge: TwoFactorChallenge?
     @State private var loading = false
     @State private var message = ""
     @State private var resetComplete = false
@@ -24,18 +22,15 @@ struct ForgotPasswordView: View {
                         Text("Reset password")
                             .font(.system(size: 28, weight: .bold))
                             .foregroundColor(MivoColors.textPrimary)
-                        Text("We’ll send a verification code before changing your password.")
+                        Text("Email verification is off for now. Enter your email and a new password.")
                             .font(.system(size: 15))
                             .foregroundColor(MivoColors.textSecondary)
                     }
 
                     authField(label: "Email", placeholder: "Enter your email", text: $email, keyboard: .emailAddress)
-
-                    if challenge != nil {
-                        authField(label: "Code", placeholder: "6-digit code", text: $code, keyboard: .numberPad)
-                        secureField(label: "New password", placeholder: "Create a new password", text: $password)
-                        secureField(label: "Confirm password", placeholder: "Confirm new password", text: $confirmPassword)
-                    }
+                    secureField(label: "New password", placeholder: "Create a new password", text: $password)
+                    PasswordStrengthView(password: password, confirmPassword: confirmPassword)
+                    secureField(label: "Confirm password", placeholder: "Confirm new password", text: $confirmPassword)
 
                     if !message.isEmpty {
                         Text(message)
@@ -44,7 +39,7 @@ struct ForgotPasswordView: View {
                     }
 
                     Button {
-                        challenge == nil ? sendCode() : resetPassword()
+                        resetPassword()
                     } label: {
                         Text(buttonTitle)
                             .font(.system(size: 17, weight: .semibold))
@@ -56,10 +51,26 @@ struct ForgotPasswordView: View {
                     }
                     .disabled(loading)
                     .opacity(loading ? 0.7 : 1)
+
+                    if resetComplete {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("Back to sign in")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(MivoColors.textPrimary)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
                 }
                 .padding(.horizontal, 28)
                 .padding(.top, 60)
                 .padding(.bottom, 40)
+            }
+
+            if loading {
+                MivoLoadingOverlay(message: "Resetting password...")
+                    .transition(.opacity)
             }
         }
         .navigationBarBackButtonHidden()
@@ -76,19 +87,33 @@ struct ForgotPasswordView: View {
     }
 
     private var buttonTitle: String {
-        if loading { return challenge == nil ? "Sending..." : "Resetting..." }
-        return challenge == nil ? "Send code" : "Reset password"
+        if loading { return "Resetting..." }
+        if resetComplete { return "Password reset" }
+        return "Reset password"
     }
 
-    private func sendCode() {
+    private func resetPassword() {
         let normalizedEmail = email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedEmail.isEmpty else {
+            message = "Enter the email for your Mivo account."
+            return
+        }
+        guard PasswordRules.evaluate(password, confirmPassword: confirmPassword).isAcceptable else {
+            message = "Password must be at least 8 characters and match the confirmation."
+            return
+        }
+        guard password == confirmPassword else {
+            message = "Passwords do not match."
+            return
+        }
         loading = true
         message = ""
         Task {
             do {
-                let newChallenge = try await appVM.beginPasswordReset(email: normalizedEmail)
+                try await appVM.resetPasswordWithoutVerification(email: normalizedEmail, newPassword: password)
                 await MainActor.run {
-                    challenge = newChallenge
+                    resetComplete = true
+                    message = "Password reset. You can sign in now."
                     loading = false
                 }
             } catch {
@@ -100,24 +125,6 @@ struct ForgotPasswordView: View {
         }
     }
 
-    private func resetPassword() {
-        guard let challenge else { return }
-        guard password == confirmPassword else {
-            message = "Passwords do not match."
-            return
-        }
-        loading = true
-        message = ""
-        do {
-            try appVM.completePasswordReset(code: code, newPassword: password, challenge: challenge)
-            resetComplete = true
-            message = "Password reset. You can sign in now."
-        } catch {
-            message = error.localizedDescription
-        }
-        loading = false
-    }
-
     private func authField(label: String, placeholder: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(label)
@@ -125,6 +132,7 @@ struct ForgotPasswordView: View {
                 .foregroundColor(MivoColors.textSecondary)
             TextField(placeholder, text: text)
                 .keyboardType(keyboard)
+                .textContentType(keyboard == .numberPad ? .oneTimeCode : .emailAddress)
                 .autocapitalization(.none)
                 .font(.system(size: 16))
                 .foregroundColor(MivoColors.textPrimary)

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+@preconcurrency import UserNotifications
 
 @MainActor
 class AppViewModel: ObservableObject {
@@ -19,7 +20,9 @@ class AppViewModel: ObservableObject {
     @Published var deviceActivityMinutesToday: Int? = nil
     @Published var deviceActivityPerAppSeconds: [String: Int] = [:]
     @Published var deviceActivityReportGeneratedAt: Date? = nil
-    @Published var pendingTwoFactorChallenge: TwoFactorChallenge? = nil
+    @Published var mivoLaunchGateActive: Bool = false
+    @Published var pendingSessionFeedback: PendingSessionFeedback? = nil
+    @Published var pendingTimeTruthPrompt: TimeTruthPrompt? = nil
 
     init() {
         loadData()
@@ -45,6 +48,9 @@ class AppViewModel: ObservableObject {
                 onboardingProfile: authRecord.onboardingProfile
             )
             isLoggedIn = true
+            FamilyControlsManager.shared.setSignedInForImpulseProtection(true)
+        } else {
+            FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
         }
         if let savedSessions = StorageService.load([Session].self, forKey: .sessions) {
             sessions = savedSessions
@@ -58,34 +64,45 @@ class AppViewModel: ObservableObject {
         if let savedProfile = StorageService.load(OnboardingProfile.self, forKey: .onboardingProfile) {
             onboardingProfile = savedProfile
         }
+        pendingSessionFeedback = StorageService.load(PendingSessionFeedback.self, forKey: .pendingSessionFeedback)
         isLoading = false
     }
 
     // MARK: - Auth
 
-    func login(email: String, password: String) throws {
+    func login(email: String, password: String, rememberMe: Bool = true) async throws {
+        if RemoteAuthService.isConfigured {
+            let remoteUser = try await RemoteAuthService.login(email: email, password: password)
+            try cacheRemoteUser(remoteUser, password: password)
+            try completeLogin(email: remoteUser.email, persistSession: rememberMe)
+            return
+        }
+
         guard var record = SecureAuthService.loadRecord() else {
             throw AppError.noAccount
         }
         guard record.email == email, SecureAuthService.verifyPassword(password, for: record) else {
             throw AppError.invalidCredentials
         }
-        guard record.emailVerified != false else {
-            throw AppError.emailNotVerified
-        }
 
         if record.passwordIterations == 0 {
             record = try SecureAuthService.updatePassword(password, for: record)
         }
 
-        try completeLogin(email: email)
+        try completeLogin(email: email, persistSession: rememberMe)
     }
 
-    func completeLogin(email: String) throws {
+    func completeLogin(email: String, persistSession: Bool = true) throws {
         guard let record = SecureAuthService.loadRecord(), record.email == email else {
             throw AppError.accountDataMissing
         }
-        StorageService.save("1", forKey: .authSession)
+        if persistSession {
+            StorageService.save("1", forKey: .authSession)
+            StorageService.save(email, forKey: .rememberedEmail)
+        } else {
+            StorageService.remove(forKey: .authSession)
+            StorageService.remove(forKey: .rememberedEmail)
+        }
         user = UserProfile(
             email: record.email,
             name: record.name,
@@ -93,6 +110,7 @@ class AppViewModel: ObservableObject {
             onboardingProfile: record.onboardingProfile
         )
         isLoggedIn = true
+        FamilyControlsManager.shared.setSignedInForImpulseProtection(true)
 
         // Restore any saved onboarding profile for this user
         if let userOnboard = record.onboardingProfile {
@@ -102,36 +120,56 @@ class AppViewModel: ObservableObject {
         }
     }
 
-    func beginRegistration(email: String, password: String, name: String) async throws -> TwoFactorChallenge {
+    func registerDirectly(email: String, password: String, name: String) async throws {
+        let normalizedEmail = email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? String(normalizedEmail.split(separator: "@").first ?? Substring(normalizedEmail))
+            : name.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if RemoteAuthService.isConfigured {
+            do {
+                let remoteUser = try await RemoteAuthService.register(
+                    email: normalizedEmail,
+                    password: password,
+                    name: displayName,
+                    onboardingProfile: nil
+                )
+                try cacheRemoteUser(remoteUser, password: password)
+            } catch AppError.emailAlreadyExists {
+                throw AppError.emailAlreadyExists
+            } catch {
+                try registerLocallyDirectly(email: email, password: password, displayName: displayName)
+            }
+        } else {
+            try registerLocallyDirectly(email: email, password: password, displayName: displayName)
+        }
+
+        settings.onboardingComplete = false
+        let updated = settings
+        settings = updated
+        StorageService.save(settings, forKey: .settings)
+        onboardingProfile = OnboardingProfile()
+        try completeLogin(email: normalizedEmail)
+    }
+
+    private func registerLocallyDirectly(email: String, password: String, displayName: String) throws {
         if let existing = SecureAuthService.loadRecord(), existing.email == email {
             throw AppError.emailAlreadyExists
         }
-        let record = try SecureAuthService.createRecord(
-            email: email,
-            password: password,
-            name: name.isEmpty ? String(email.split(separator: "@").first ?? Substring(email)) : name
-        )
-
+        let record = try SecureAuthService.createRecord(email: email, password: password, name: displayName)
         let profile = UserProfile(email: record.email, name: record.name, createdAt: record.createdAt)
         StorageService.save(profile, forKey: .user)
-
-        // New account: ensure onboarding runs
-        settings.onboardingComplete = false
-        StorageService.save(settings, forKey: .settings)
-
-        // Reset onboarding profile for fresh user
-        onboardingProfile = OnboardingProfile()
-
-        return try await sendTwoFactorChallenge(email: email, purpose: .registration)
     }
 
     func logout() {
         // Offload storage mutation to background to avoid blocking the UI
         DispatchQueue.global(qos: .userInitiated).async {
             StorageService.remove(forKey: .authSession)
+            StorageService.remove(forKey: .rememberedEmail)
             // Update published state on main actor
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
+                FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
                 self.user = nil
                 self.isLoggedIn = false
             }
@@ -143,11 +181,23 @@ class AppViewModel: ObservableObject {
     func addSession(_ session: Session) {
         sessions.append(session)
         StorageService.save(sessions, forKey: .sessions)
+        scheduleTimeTruthNotification()
+        NotificationCenter.default.post(name: .mivoSessionHistoryDidUpdate, object: nil)
+    }
+
+    func savePendingSessionFeedback(_ feedback: PendingSessionFeedback) {
+        pendingSessionFeedback = feedback
+        StorageService.save(feedback, forKey: .pendingSessionFeedback)
+    }
+
+    func clearPendingSessionFeedback() {
+        pendingSessionFeedback = nil
+        StorageService.remove(forKey: .pendingSessionFeedback)
     }
 
     func addTruthCheck(guess: Int) {
         let today = todayKey()
-        let actual = todaysSessions.reduce(0) { $0 + $1.actualDuration }
+        let actual = timeTruthActualMinutesForToday()
         let check = TruthCheckGuess(
             id: UUID().uuidString,
             date: today,
@@ -156,6 +206,98 @@ class AppViewModel: ObservableObject {
         )
         truthChecks.append(check)
         StorageService.save(truthChecks, forKey: .truthChecks)
+        scheduleTimeTruthNotification()
+    }
+
+    func recordTimeTruthGuess(_ guess: Int, for prompt: TimeTruthPrompt) {
+        guard !truthChecks.contains(where: { $0.date == prompt.date }) else { return }
+        let check = TruthCheckGuess(
+            id: UUID().uuidString,
+            date: prompt.date,
+            guess: guess,
+            actual: prompt.actualMinutes
+        )
+        truthChecks.append(check)
+        StorageService.save(truthChecks, forKey: .truthChecks)
+        scheduleTimeTruthNotification()
+    }
+
+    func dismissTimeTruthPrompt() {
+        pendingTimeTruthPrompt = nil
+    }
+
+    func evaluateTimeTruthPrompt(now: Date = Date()) {
+        guard isLoggedIn, settings.onboardingComplete else {
+            pendingTimeTruthPrompt = nil
+            return
+        }
+
+        let today = todayKey()
+        guard !truthChecks.contains(where: { $0.date == today }) else {
+            if pendingTimeTruthPrompt?.date == today {
+                pendingTimeTruthPrompt = nil
+            }
+            return
+        }
+
+        let schedule = timeTruthSchedule()
+        let calendar = Calendar.current
+        guard let dueAt = calendar.date(
+            bySettingHour: schedule.hour,
+            minute: schedule.minute,
+            second: 0,
+            of: now
+        ), now >= dueAt else { return }
+
+        if pendingTimeTruthPrompt?.date != today {
+            refreshScreenTimeData()
+            pendingTimeTruthPrompt = TimeTruthPrompt(
+                id: today,
+                date: today,
+                actualMinutes: timeTruthActualMinutesForToday(),
+                scheduledHour: schedule.hour,
+                scheduledMinute: schedule.minute
+            )
+        }
+    }
+
+    func scheduleTimeTruthNotification() {
+        guard isLoggedIn, settings.onboardingComplete else { return }
+
+        let schedule = timeTruthSchedule()
+        let scheduleKey = String(format: "%02d:%02d", schedule.hour, schedule.minute)
+        if StorageService.load(String.self, forKey: .timeTruthNotificationSchedule) == scheduleKey {
+            return
+        }
+
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["mivo.timeTruth.daily"])
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { [weak self] granted, _ in
+            guard granted else { return }
+
+            let content = UNMutableNotificationContent()
+            content.title = "Time Truth"
+            content.body = "How much did you scroll today? Make a guess, then reveal the real number."
+            content.sound = .default
+            content.categoryIdentifier = "MIVO_TIME_TRUTH"
+
+            var date = DateComponents()
+            date.hour = schedule.hour
+            date.minute = schedule.minute
+            let trigger = UNCalendarNotificationTrigger(dateMatching: date, repeats: true)
+            let request = UNNotificationRequest(identifier: "mivo.timeTruth.daily", content: content, trigger: trigger)
+
+            center.add(request) { error in
+                guard error == nil else { return }
+                DispatchQueue.main.async {
+                    StorageService.save(scheduleKey, forKey: .timeTruthNotificationSchedule)
+                    self?.settings.notificationsEnabled = true
+                    if let updated = self?.settings {
+                        StorageService.save(updated, forKey: .settings)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Onboarding
@@ -209,6 +351,12 @@ class AppViewModel: ObservableObject {
                 record.onboardingProfile = onboardingProfile
                 try? SecureAuthService.saveRecord(record)
             }
+
+            if RemoteAuthService.isConfigured {
+                Task {
+                    await RemoteAuthService.saveProfile(email: u.email, onboardingProfile: onboardingProfile)
+                }
+            }
         }
 
         // Create a small summary string for AI and append to AI dataset (stored as simple string array)
@@ -242,19 +390,26 @@ class AppViewModel: ObservableObject {
 
     func resetAllData() {
         SecureAuthService.deleteRecord()
-        pendingTwoFactorChallenge = nil
+        mivoLaunchGateActive = false
 
         StorageService.remove(forKey: .user)
         StorageService.remove(forKey: .credentials)
         StorageService.remove(forKey: .authSession)
+        StorageService.remove(forKey: .rememberedEmail)
         StorageService.remove(forKey: .settings)
         StorageService.remove(forKey: .onboardingProfile)
+        StorageService.remove(forKey: .pendingSessionFeedback)
+        StorageService.remove(forKey: .timeTruthNotificationSchedule)
         StorageService.remove(forKey: .aiDataset)
 
         user = nil
         settings = AppSettings(onboardingComplete: false, notificationsEnabled: false)
         onboardingProfile = OnboardingProfile()
+        pendingSessionFeedback = nil
+        pendingTimeTruthPrompt = nil
         isLoggedIn = false
+        FamilyControlsManager.shared.setMivoSessionActive(false)
+        FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
 
         // Offload heavier history deletion to background, update published state on main when done.
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -264,6 +419,7 @@ class AppViewModel: ObservableObject {
                 guard let self = self else { return }
                 self.sessions = []
                 self.truthChecks = []
+                NotificationCenter.default.post(name: .mivoSessionHistoryDidUpdate, object: nil)
             }
         }
     }
@@ -273,6 +429,37 @@ class AppViewModel: ObservableObject {
         let updated = settings
         settings = updated
         StorageService.save(settings, forKey: .settings)
+    }
+
+    func requireMivoSessionOnLaunch() {
+        mivoLaunchGateActive = false
+    }
+
+    func dismissMivoLaunchGate() {
+        mivoLaunchGateActive = false
+    }
+
+    func consumePendingInterventionSetup() -> Bool {
+        guard isLoggedIn, settings.onboardingComplete else { return false }
+        let pending = FamilyControlsManager.shared.consumePendingInterventionSetup()
+        if pending {
+            mivoLaunchGateActive = true
+        }
+        return pending
+    }
+
+    func markMivoLaunchSessionStarted(plannedMinutes: Int = 0) {
+        FamilyControlsManager.shared.setMivoSessionActive(true, plannedMinutes: plannedMinutes, exactDurationSeconds: max(1, plannedMinutes) * 60)
+        mivoLaunchGateActive = false
+    }
+
+    func markMivoSessionActiveFor(seconds: Int) {
+        FamilyControlsManager.shared.setMivoSessionActive(true, exactDurationSeconds: max(1, seconds))
+        mivoLaunchGateActive = false
+    }
+
+    func finishMivoSession() {
+        FamilyControlsManager.shared.setMivoSessionActive(false)
     }
 
     func requestScreenTimeAccessAndRefresh() async -> Bool {
@@ -411,12 +598,71 @@ class AppViewModel: ObservableObject {
         return insights
     }
 
+    func adaptiveScreenTimePlan() -> ScreenTimeReductionPlan {
+        AIService.makeScreenTimeReductionPlan(
+            sessions: sessions,
+            truthChecks: truthChecks,
+            todayScreenTimeMinutes: deviceActivityMinutesToday,
+            profile: onboardingProfile
+        )
+    }
+
     // MARK: - Helpers
 
     func todayKey() -> String {
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM-dd"
         return fmt.string(from: Date())
+    }
+
+    private func timeTruthActualMinutesForToday() -> Int {
+        refreshScreenTimeData()
+        return deviceActivityMinutesToday ?? todaysTotalMinutes
+    }
+
+    private func timeTruthSchedule() -> (hour: Int, minute: Int) {
+        let activeDates = Set(sessions.map(\.date))
+        guard activeDates.count >= 3 || truthChecks.count >= 3 else {
+            return (20, 0)
+        }
+
+        var buckets: [String: Int] = [
+            "morning": 0,
+            "afternoon": 0,
+            "evening": 0,
+            "night": 0
+        ]
+
+        let calendar = Calendar.current
+        let formatter = ISO8601DateFormatter()
+
+        for session in sessions {
+            guard let start = formatter.date(from: session.startTime) else { continue }
+            let hour = calendar.component(.hour, from: start)
+            let weight = max(session.actualDuration, 1)
+
+            if hour >= 21 || hour < 6 {
+                buckets["night", default: 0] += weight
+            } else if hour < 12 {
+                buckets["morning", default: 0] += weight
+            } else if hour < 17 {
+                buckets["afternoon", default: 0] += weight
+            } else {
+                buckets["evening", default: 0] += weight
+            }
+        }
+
+        let strongest = buckets.max(by: { $0.value < $1.value })?.key ?? "evening"
+        switch strongest {
+        case "morning":
+            return (8, 0)
+        case "afternoon":
+            return (15, 0)
+        case "night":
+            return (22, 0)
+        default:
+            return (20, 0)
+        }
     }
 
     // Load Screen Time data from the real Device Activity extension report.
@@ -463,63 +709,45 @@ class AppViewModel: ObservableObject {
 
     // MARK: - Secure Auth
 
-    func verifyTwoFactorCode(_ code: String, for challenge: TwoFactorChallenge) throws {
-        guard pendingTwoFactorChallenge?.id == challenge.id, challenge.verifies(code) else {
-            throw AppError.invalidVerificationCode
-        }
-
-        switch challenge.purpose {
-        case .registration:
-            if var record = SecureAuthService.loadRecord(), record.email == challenge.email {
-                record.emailVerified = true
-                try SecureAuthService.saveRecord(record)
-            }
-            try completeLogin(email: challenge.email)
-        case .login:
-            try completeLogin(email: challenge.email)
-        case .passwordReset:
-            break
-        }
-
-        pendingTwoFactorChallenge = nil
-    }
-
-    func resendTwoFactorCode(for challenge: TwoFactorChallenge) async throws {
-        guard challenge.purpose != .registration else {
-            throw AppError.registrationCodeAlreadySent
-        }
-        _ = try await sendTwoFactorChallenge(email: challenge.email, purpose: challenge.purpose)
-    }
-
-    func beginPasswordReset(email: String) async throws -> TwoFactorChallenge {
-        guard let record = SecureAuthService.loadRecord(), record.email == email else {
-            throw AppError.noAccount
-        }
-        return try await sendTwoFactorChallenge(email: email, purpose: .passwordReset)
-    }
-
-    func completePasswordReset(code: String, newPassword: String, challenge: TwoFactorChallenge) throws {
-        guard pendingTwoFactorChallenge?.id == challenge.id, challenge.verifies(code) else {
-            throw AppError.invalidVerificationCode
-        }
+    func resetPasswordWithoutVerification(email: String, newPassword: String) async throws {
+        let normalizedEmail = email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard newPassword.count >= 8 else {
             throw AppError.weakPassword
         }
-        guard let record = SecureAuthService.loadRecord(), record.email == challenge.email else {
-            throw AppError.noAccount
+
+        if RemoteAuthService.isConfigured {
+            do {
+                try await RemoteAuthService.resetPassword(email: normalizedEmail, newPassword: newPassword)
+                if var record = SecureAuthService.loadRecord(), record.email == normalizedEmail {
+                    record = try SecureAuthService.updatePassword(newPassword, for: record)
+                    try SecureAuthService.saveRecord(record)
+                }
+                return
+            } catch AppError.noAccount {
+                throw AppError.noAccount
+            } catch {
+                // Let local-only test accounts reset even when the backend is offline.
+            }
         }
 
-        _ = try SecureAuthService.updatePassword(newPassword, for: record)
-        StorageService.remove(forKey: .authSession)
-        pendingTwoFactorChallenge = nil
+        guard var record = SecureAuthService.loadRecord(), record.email == normalizedEmail else {
+            throw AppError.noAccount
+        }
+        record = try SecureAuthService.updatePassword(newPassword, for: record)
+        try SecureAuthService.saveRecord(record)
     }
 
-    private func sendTwoFactorChallenge(email: String, purpose: TwoFactorChallenge.Purpose) async throws -> TwoFactorChallenge {
-        let result = SecureAuthService.makeChallenge(email: email, purpose: purpose)
-        pendingTwoFactorChallenge = result.challenge
-        try await EmailVerificationService.send(code: result.code, to: email, purpose: purpose)
-        return result.challenge
+    private func cacheRemoteUser(_ remoteUser: RemoteAuthUser, password: String) throws {
+        var record = try SecureAuthService.createRecord(
+            email: remoteUser.email,
+            password: password,
+            name: remoteUser.name
+        )
+        record.createdAt = remoteUser.createdAt
+        record.onboardingProfile = remoteUser.onboardingProfile
+        try SecureAuthService.saveRecord(record)
     }
+
 }
 
 // MARK: - Errors
@@ -529,12 +757,9 @@ enum AppError: LocalizedError {
     case invalidCredentials
     case accountDataMissing
     case emailAlreadyExists
-    case invalidVerificationCode
     case weakPassword
     case secureStorageFailed
-    case emailDeliveryUnavailable
-    case emailNotVerified
-    case registrationCodeAlreadySent
+    case remoteAuthUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -542,12 +767,9 @@ enum AppError: LocalizedError {
         case .invalidCredentials: return "Invalid email or password."
         case .accountDataMissing: return "Account data missing. Please register again."
         case .emailAlreadyExists: return "An account with this email already exists."
-        case .invalidVerificationCode: return "That verification code is invalid or expired."
         case .weakPassword: return "Password must be at least 8 characters."
         case .secureStorageFailed: return "Could not save credentials securely."
-        case .emailDeliveryUnavailable: return "Email delivery is not configured yet."
-        case .emailNotVerified: return "Please verify your email from the code sent during registration."
-        case .registrationCodeAlreadySent: return "Registration codes are sent once when you create the account."
+        case .remoteAuthUnavailable: return "The online Mivo account server is not reachable yet."
         }
     }
 }

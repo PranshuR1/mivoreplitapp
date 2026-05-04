@@ -30,11 +30,29 @@ struct Session: Codable, Identifiable {
     let reflectionNote: String
 }
 
+struct PendingSessionFeedback: Codable, Identifiable {
+    let id: String
+    let intention: Intention
+    let plannedDuration: Int
+    let actualDuration: Int
+    let startTime: String
+    let endTime: String
+    let extendedOnce: Bool
+}
+
 struct TruthCheckGuess: Codable, Identifiable {
     let id: String
     let date: String
     let guess: Int
     let actual: Int
+}
+
+struct TimeTruthPrompt: Identifiable, Equatable {
+    let id: String
+    let date: String
+    let actualMinutes: Int
+    let scheduledHour: Int
+    let scheduledMinute: Int
 }
 
 struct UserProfile: Codable {
@@ -108,4 +126,27 @@ struct FocusRecommendation: Codable {
     let restMinutes: Int
     let rationale: String
     let dailySchedule: String
+}
+
+struct ScreenScrollWindow: Codable, Identifiable {
+    let id: String
+    let title: String
+    let startHour: Int
+    let endHour: Int
+    let minutes: Int
+    let reason: String
+}
+
+struct ScreenTimeReductionPlan: Codable, Identifiable {
+    let id: String
+    let collecting: Bool
+    let daysCollected: Int
+    let daysNeeded: Int
+    let dayIndex: Int
+    let baselineMinutes: Int
+    let targetMinutes: Int
+    let strictnessPercent: Int
+    let summary: String
+    let decisionReason: String
+    let windows: [ScreenScrollWindow]
 }

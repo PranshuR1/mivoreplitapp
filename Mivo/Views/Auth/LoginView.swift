@@ -5,6 +5,7 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var showPassword = false
+    @State private var rememberMe = true
     @State private var loading = false
     @State private var error = ""
     @State private var goToRegister = false
@@ -124,6 +125,34 @@ struct LoginView: View {
                                     .frame(maxWidth: .infinity, alignment: .trailing)
                             }
 
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                    rememberMe.toggle()
+                                }
+                                HapticsService.selection()
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: rememberMe ? "checkmark.square.fill" : "square")
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundColor(rememberMe ? MivoColors.accent : MivoColors.textMuted)
+                                        .frame(width: 24)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Remember me")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundColor(MivoColors.textPrimary)
+                                        Text("Keep me signed in on this device.")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(MivoColors.textMuted)
+                                    }
+                                    Spacer()
+                                }
+                                .padding(14)
+                                .background(MivoColors.card.opacity(0.72))
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(MivoColors.border.opacity(0.7), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+
                             if !error.isEmpty {
                                 Text(error)
                                     .font(.system(size: 13))
@@ -170,12 +199,23 @@ struct LoginView: View {
                     }
                     .padding(28)
                 }
+
+                if loading {
+                    MivoLoadingOverlay(message: "Signing you in...")
+                        .transition(.opacity)
+                }
             }
             .navigationDestination(isPresented: $goToRegister) {
                 RegisterView()
             }
             .navigationDestination(isPresented: $goToForgotPassword) {
                 ForgotPasswordView()
+            }
+            .onAppear {
+                if let remembered = StorageService.load(String.self, forKey: .rememberedEmail), !remembered.isEmpty {
+                    email = remembered
+                    rememberMe = true
+                }
             }
         }
     }
@@ -191,14 +231,21 @@ struct LoginView: View {
         }
         error = ""
         loading = true
-        do {
-            try appVM.login(
-                email: email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
-                password: password
-            )
-        } catch {
-            self.error = error.localizedDescription
+        Task {
+            do {
+                try await appVM.login(
+                    email: email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+                    password: password,
+                    rememberMe: rememberMe
+                )
+            } catch {
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                }
+            }
+            await MainActor.run {
+                loading = false
+            }
         }
-        loading = false
     }
 }

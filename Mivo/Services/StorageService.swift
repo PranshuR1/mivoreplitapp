@@ -7,7 +7,10 @@ enum StorageKey: String {
     case settings = "mivo_settings"
     case credentials = "mivo_credentials"
     case authSession = "mivo_auth_session"
+    case rememberedEmail = "mivo_remembered_email"
     case onboardingProfile = "mivo_onboarding_profile"
+    case pendingSessionFeedback = "mivo_pending_session_feedback"
+    case timeTruthNotificationSchedule = "mivo_time_truth_notification_schedule"
     // AI dataset storage - aggregated inputs for the AI engine
     case aiDataset = "mivo_ai_dataset"
 }

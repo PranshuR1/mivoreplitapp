@@ -9,6 +9,10 @@ import FamilyControls
 import DeviceActivity
 #endif
 
+#if canImport(ManagedSettings)
+import ManagedSettings
+#endif
+
 @available(iOS 15.0, *)
 @MainActor
 final class FamilyControlsManager: ObservableObject {
@@ -18,8 +22,15 @@ final class FamilyControlsManager: ObservableObject {
     // Updated app group identifier (ensure this group is registered in Apple Developer portal)
     let appGroup = "group.com.mivo.mivoapp"
     private let selectedAppsKey = "mivo.selectedApps"
+    private let familyActivitySelectionKey = "mivo.familyActivitySelection"
+    private let impulseProtectionEnabledKey = "mivo.impulseProtectionEnabled"
+    private let impulseProtectionSignedInKey = "mivo.impulseProtectionSignedIn"
+    private let mivoSessionActiveKey = "mivo.sessionActive"
+    private let mivoSessionEndsAtKey = "mivo.sessionEndsAt"
+    private let pendingInterventionSetupKey = "mivo.pendingInterventionSetup"
     private let lastReportKey = "mivo.lastDeviceActivityReport"
     private let authFlagKey = "mivo.familyControlsAuthorized"
+    private var sessionRelockWorkItem: DispatchWorkItem?
 
     private init() {}
 
@@ -43,6 +54,155 @@ final class FamilyControlsManager: ObservableObject {
     func loadSelectedBundleIdentifiers() -> [String] {
         return userDefaults?.stringArray(forKey: selectedAppsKey) ?? []
     }
+
+    #if canImport(FamilyControls) && canImport(ManagedSettings)
+    @available(iOS 16.0, *)
+    func saveFamilyActivitySelection(_ selection: FamilyActivitySelection) {
+        guard let data = try? JSONEncoder().encode(selection) else { return }
+        userDefaults?.set(data, forKey: familyActivitySelectionKey)
+        userDefaults?.synchronize()
+        applyImpulseProtectionIfNeeded()
+    }
+
+    @available(iOS 16.0, *)
+    func loadFamilyActivitySelection() -> FamilyActivitySelection {
+        guard let data = userDefaults?.data(forKey: familyActivitySelectionKey),
+              let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else {
+            return FamilyActivitySelection()
+        }
+        return selection
+    }
+
+    @available(iOS 16.0, *)
+    func hasImpulseSelection() -> Bool {
+        let selection = loadFamilyActivitySelection()
+        return !selection.applicationTokens.isEmpty
+            || !selection.categoryTokens.isEmpty
+            || !selection.webDomainTokens.isEmpty
+    }
+
+    func isImpulseProtectionEnabled() -> Bool {
+        userDefaults?.bool(forKey: impulseProtectionEnabledKey) ?? false
+    }
+
+    func setSignedInForImpulseProtection(_ signedIn: Bool) {
+        userDefaults?.set(signedIn, forKey: impulseProtectionSignedInKey)
+        userDefaults?.synchronize()
+
+        if !signedIn {
+            setMivoSessionActive(false)
+            if #available(iOS 16.0, *) {
+                clearImpulseProtection()
+            }
+        } else if #available(iOS 16.0, *) {
+            applyImpulseProtectionIfNeeded()
+        }
+    }
+
+    func isSignedInForImpulseProtection() -> Bool {
+        userDefaults?.bool(forKey: impulseProtectionSignedInKey) ?? false
+    }
+
+    func setMivoSessionActive(_ active: Bool, plannedMinutes: Int = 0, exactDurationSeconds: Int? = nil) {
+        sessionRelockWorkItem?.cancel()
+        sessionRelockWorkItem = nil
+
+        userDefaults?.set(active, forKey: mivoSessionActiveKey)
+        if active {
+            let graceSeconds = exactDurationSeconds ?? max(15 * 60, plannedMinutes * 60 + 10 * 60)
+            userDefaults?.set(Date().addingTimeInterval(TimeInterval(graceSeconds)).timeIntervalSince1970, forKey: mivoSessionEndsAtKey)
+            scheduleSessionRelock(after: TimeInterval(graceSeconds))
+        } else {
+            userDefaults?.removeObject(forKey: mivoSessionEndsAtKey)
+        }
+        userDefaults?.synchronize()
+
+        if #available(iOS 16.0, *) {
+            applyImpulseProtectionIfNeeded()
+        }
+    }
+
+    private func scheduleSessionRelock(after delay: TimeInterval) {
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.userDefaults?.set(false, forKey: self.mivoSessionActiveKey)
+                self.userDefaults?.removeObject(forKey: self.mivoSessionEndsAtKey)
+                self.userDefaults?.synchronize()
+                if #available(iOS 16.0, *) {
+                    self.applyImpulseProtectionIfNeeded()
+                }
+            }
+        }
+        sessionRelockWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    func isMivoSessionActive() -> Bool {
+        guard userDefaults?.bool(forKey: mivoSessionActiveKey) == true else { return false }
+        let endsAt = userDefaults?.double(forKey: mivoSessionEndsAtKey) ?? 0
+        if endsAt > 0 && endsAt < Date().timeIntervalSince1970 {
+            userDefaults?.set(false, forKey: mivoSessionActiveKey)
+            userDefaults?.removeObject(forKey: mivoSessionEndsAtKey)
+            userDefaults?.synchronize()
+            return false
+        }
+        return true
+    }
+
+    func requestInterventionSetupFromShield() {
+        userDefaults?.set(true, forKey: pendingInterventionSetupKey)
+        userDefaults?.synchronize()
+    }
+
+    func consumePendingInterventionSetup() -> Bool {
+        guard userDefaults?.bool(forKey: pendingInterventionSetupKey) == true else { return false }
+        userDefaults?.set(false, forKey: pendingInterventionSetupKey)
+        userDefaults?.synchronize()
+        return true
+    }
+
+    @available(iOS 16.0, *)
+    func setImpulseProtectionEnabled(_ enabled: Bool) {
+        userDefaults?.set(enabled, forKey: impulseProtectionEnabledKey)
+        userDefaults?.synchronize()
+
+        if enabled {
+            applyImpulseProtectionIfNeeded()
+        } else {
+            clearImpulseProtection()
+        }
+    }
+
+    @available(iOS 16.0, *)
+    func applyImpulseProtectionIfNeeded() {
+        guard isImpulseProtectionEnabled(), isSignedInForImpulseProtection() else {
+            clearImpulseProtection()
+            return
+        }
+
+        guard !isMivoSessionActive() else {
+            clearImpulseProtection()
+            return
+        }
+
+        let selection = loadFamilyActivitySelection()
+        let store = ManagedSettingsStore()
+        store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
+        store.shield.applicationCategories = selection.categoryTokens.isEmpty ? nil : .specific(selection.categoryTokens)
+        store.shield.webDomains = selection.webDomainTokens.isEmpty ? nil : selection.webDomainTokens
+    }
+
+    @available(iOS 16.0, *)
+    func clearImpulseProtection() {
+        let store = ManagedSettingsStore()
+        store.shield.applications = nil
+        store.shield.applicationCategories = nil
+        store.shield.webDomains = nil
+    }
+    #else
+    func isImpulseProtectionEnabled() -> Bool { false }
+    #endif
 
     // Save a raw JSON summary from the extension (the extension should write the report JSON into the same app group)
     func saveReportJSON(_ json: String) {
@@ -166,4 +326,5 @@ final class FamilyControlsManager: ObservableObject {
 // Notification name when the extension writes new data into the app group
 extension Notification.Name {
     static let mivoDeviceActivityDidUpdate = Notification.Name("mivoDeviceActivityDidUpdate")
+    static let mivoSessionHistoryDidUpdate = Notification.Name("mivoSessionHistoryDidUpdate")
 }

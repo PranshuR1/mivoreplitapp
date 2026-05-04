@@ -188,6 +188,7 @@ struct ReflectionView: View {
             reflectionNote: withReflection ? note.trimmingCharacters(in: .whitespaces) : ""
         )
         appVM.addSession(session)
+        appVM.finishMivoSession()
         // Pop back to the tab root via the onSaved callback
         dismiss()
         onSaved?()
