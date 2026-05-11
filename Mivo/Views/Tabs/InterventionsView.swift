@@ -8,17 +8,29 @@ struct InterventionsView: View {
     @EnvironmentObject var appVM: AppViewModel
     @State private var selectedIntention: Intention? = nil
     @State private var selectedDuration: Int? = nil
+    @State private var customDurationText = ""
+    @State private var durationLimitNotice: String? = nil
     @State private var showIntervention = false
     @State private var appear = false
     @State private var pulse = false
+    @FocusState private var customDurationFocused: Bool
 
-    var canStart: Bool { selectedIntention != nil && selectedDuration != nil }
+    var durationLimit: (maxMinutes: Int, isLimited: Bool, message: String, windowTitle: String) {
+        appVM.adaptiveSessionDurationLimit()
+    }
+    var selectedDurationAllowed: Bool {
+        guard let selectedDuration else { return false }
+        return selectedDuration >= 1 && selectedDuration <= durationLimit.maxMinutes
+    }
+    var canStart: Bool { selectedIntention != nil && selectedDurationAllowed }
     var startSelection: (intention: Intention, duration: Int)? {
-        guard let intention = selectedIntention, let duration = selectedDuration else { return nil }
+        guard let intention = selectedIntention, let duration = selectedDuration, selectedDurationAllowed else { return nil }
         return (intention, duration)
     }
     var statusText: String {
         if let selection = startSelection { return "\(selection.intention.rawValue) · \(selection.duration) min" }
+        if durationLimit.maxMinutes == 0 { return "No scroll window open" }
+        if let selectedDuration, selectedDuration > durationLimit.maxMinutes { return "Mivo recommends \(durationLimit.maxMinutes) min or less" }
         if selectedIntention != nil { return "Choose a time limit" }
         return "Choose why you are opening it"
     }
@@ -51,6 +63,18 @@ struct InterventionsView: View {
         .onAppear {
             withAnimation(.spring(response: 0.62, dampingFraction: 0.86)) { appear = true }
             withAnimation(.easeInOut(duration: 1.45).repeatForever(autoreverses: true)) { pulse = true }
+            clampSelectedDurationIfNeeded()
+        }
+        .onChange(of: customDurationText) { value in
+            applyCustomDuration(value)
+        }
+        .alert("Adaptive limit", isPresented: Binding(
+            get: { durationLimitNotice != nil },
+            set: { if !$0 { durationLimitNotice = nil } }
+        )) {
+            Button("Got it", role: .cancel) {}
+        } message: {
+            Text(durationLimitNotice ?? "")
         }
     }
 
@@ -81,7 +105,7 @@ struct InterventionsView: View {
 
             HStack(spacing: 10) {
                 heroMetric(title: "Session", value: canStart ? "Ready" : "Setup", icon: canStart ? "checkmark" : "slider.horizontal.3")
-                heroMetric(title: "Limit", value: selectedDuration.map { "\($0)m" } ?? "Choose", icon: "timer")
+                heroMetric(title: durationLimit.windowTitle, value: durationLimit.maxMinutes > 0 ? "\(durationLimit.maxMinutes)m left" : "Closed", icon: "timer")
             }
         }
         .padding(20)
@@ -172,11 +196,32 @@ struct InterventionsView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(MivoColors.textSecondary)
 
+                HStack(spacing: 8) {
+                    Image(systemName: durationLimit.maxMinutes > 0 ? "calendar.badge.clock" : "lock.fill")
+                        .font(.system(size: 12, weight: .bold))
+                    Text(durationLimit.windowTitle)
+                    Spacer(minLength: 0)
+                    Text(durationLimit.maxMinutes > 0 ? "\(durationLimit.maxMinutes) min available" : "come back later")
+                }
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(durationLimit.maxMinutes > 0 ? MivoColors.accent : MivoColors.textMuted)
+                .padding(10)
+                .background(MivoColors.background)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 86), spacing: 8)], spacing: 8) {
                     ForEach(durations, id: \.value) { item in
                         durationChip(item)
                     }
                 }
+
+                customDurationField
+
+                Label(durationLimit.message, systemImage: durationLimit.isLimited ? "sparkles" : "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(18)
@@ -222,21 +267,63 @@ struct InterventionsView: View {
 
     private func durationChip(_ item: (label: String, value: Int)) -> some View {
         let selected = selectedDuration == item.value
+        let locked = item.value > durationLimit.maxMinutes
         return Button {
+            guard !locked else {
+                durationLimitNotice = durationLimit.maxMinutes == 0
+                    ? durationLimit.message
+                    : "\(durationLimit.message)\n\nChoose \(durationLimit.maxMinutes) min or less."
+                HapticsService.warning()
+                return
+            }
             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                 selectedDuration = item.value
+                customDurationText = ""
+                customDurationFocused = false
             }
         } label: {
-            Text(item.label)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(selected ? MivoColors.heroText : MivoColors.textSecondary)
+            HStack(spacing: 5) {
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                Text(item.label)
+                    .font(.system(size: 14, weight: .bold))
+            }
+                .foregroundColor(selected ? MivoColors.heroText : (locked ? MivoColors.textMuted : MivoColors.textSecondary))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(selected ? MivoColors.accent : MivoColors.background)
+                .background(selected ? MivoColors.accent : MivoColors.background.opacity(locked ? 0.48 : 1))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(selected ? Color.clear : MivoColors.border.opacity(0.38), lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+
+    private var customDurationField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "keyboard")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(MivoColors.accent)
+                .frame(width: 30, height: 30)
+                .background(MivoColors.background)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            TextField("Custom minutes", text: $customDurationText)
+                .keyboardType(.numberPad)
+                .focused($customDurationFocused)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(MivoColors.textPrimary)
+                .disabled(durationLimit.maxMinutes == 0)
+
+            Text("min")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(MivoColors.textMuted)
+        }
+        .padding(12)
+        .background(MivoColors.white.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(MivoColors.border.opacity(0.48), lineWidth: 1))
     }
 
     private var practiceCard: some View {
@@ -283,11 +370,18 @@ struct InterventionsView: View {
 
     private var startSessionButton: some View {
         let selection = startSelection
-        let buttonText = selection.map { "Start \($0.duration) min session" } ?? "Choose intention and duration"
+        let buttonText = durationLimit.maxMinutes == 0
+            ? "Come back at planned time"
+            : (selection.map { "Start \($0.duration) min session" } ?? "Choose intention and duration")
 
         return NavigationLink {
             if let selection {
-                ActiveSessionView(intention: selection.intention, plannedMinutes: selection.duration)
+                ActiveSessionView(
+                    intention: selection.intention,
+                    plannedMinutes: selection.duration,
+                    urgeReason: nil,
+                    urgeNote: nil
+                )
             }
         } label: {
             HStack(spacing: 10) {
@@ -343,6 +437,41 @@ struct InterventionsView: View {
         case .bored: return "sparkles"
         case .lookingForSomethingSpecific: return "magnifyingglass"
         }
+    }
+
+    private func applyCustomDuration(_ value: String) {
+        let digits = value.filter(\.isNumber)
+        if digits != value {
+            customDurationText = digits
+            return
+        }
+
+        guard let minutes = Int(digits), minutes > 0 else {
+            if selectedDuration != nil && customDurationFocused {
+                selectedDuration = nil
+            }
+            return
+        }
+
+        let capped = min(minutes, 240)
+        if capped != minutes {
+            customDurationText = "\(capped)"
+        }
+
+        guard capped <= durationLimit.maxMinutes else {
+            selectedDuration = nil
+            durationLimitNotice = durationLimit.maxMinutes == 0
+                ? durationLimit.message
+                : "\(durationLimit.message)\n\nChoose \(durationLimit.maxMinutes) min or less."
+            return
+        }
+
+        selectedDuration = capped
+    }
+
+    private func clampSelectedDurationIfNeeded() {
+        guard let selectedDuration, selectedDuration > durationLimit.maxMinutes else { return }
+        self.selectedDuration = nil
     }
 
 }

@@ -28,11 +28,27 @@ struct WeeklyReportView: View {
     var avgMinutes: Int { sessionCount > 0 ? totalMinutes / sessionCount : 0 }
     var overLimitCount: Int { weekSessions.filter { $0.actualDuration > $0.plannedDuration }.count }
     var reflectedCount: Int { weekSessions.filter { $0.reflection != nil }.count }
+    var emergencyUnlockCount: Int { weekSessions.filter { $0.emergencyUnlockUsed == true }.count }
+    var recoveredMinutes: Int { max(0, (appVM.onboardingProfile.scrollEstimateMinutes ?? totalMinutes) - totalMinutes) }
 
     var topIntention: String? {
         var counts: [String: Int] = [:]
         weekSessions.forEach { counts[$0.intention.rawValue, default: 0] += 1 }
         return counts.max(by: { $0.value < $1.value })?.key
+    }
+
+    var topUrge: String? {
+        var counts: [String: Int] = [:]
+        weekSessions.compactMap(\.urgeReason).forEach { counts[$0.rawValue, default: 0] += 1 }
+        return counts.max(by: { $0.value < $1.value })?.key
+    }
+
+    var hardestWindow: String {
+        appVM.makeCurrentWeeklyReportSnapshot().hardestWindow
+    }
+
+    var weeklyRecommendation: String {
+        appVM.makeCurrentWeeklyReportSnapshot().recommendation
     }
 
     var weekTruthChecks: [TruthCheckGuess] {
@@ -84,11 +100,11 @@ struct WeeklyReportView: View {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             SummaryStatCard(value: "\(sessionCount)", label: "Sessions")
                             SummaryStatCard(value: formatDuration(totalMinutes), label: "Total time")
-                            SummaryStatCard(value: formatDuration(avgMinutes), label: "Avg length")
+                            SummaryStatCard(value: formatDuration(recoveredMinutes), label: "Recovered")
                             SummaryStatCard(
-                                value: sessionCount > 0 ? "\(Int((Double(overLimitCount) / Double(sessionCount)) * 100))%" : "0%",
-                                label: "Over limit",
-                                alertColor: overLimitCount > sessionCount / 2 ? MivoColors.timerOrange : nil
+                                value: "\(emergencyUnlockCount)",
+                                label: "Emergency",
+                                alertColor: emergencyUnlockCount > 0 ? MivoColors.timerOrange : nil
                             )
                         }
                         .padding(.bottom, 28)
@@ -153,6 +169,10 @@ struct WeeklyReportView: View {
                                 if let top = topIntention {
                                     insightRow("Most common reason to scroll: \(top.lowercased())")
                                 }
+                                if let topUrge {
+                                    insightRow("Most common urge: \(topUrge.lowercased())")
+                                }
+                                insightRow("Hardest time window: \(hardestWindow)")
                                 if reflectedCount > 0 {
                                     insightRow("Reflected after \(reflectedCount) of \(sessionCount) sessions")
                                 }
@@ -167,6 +187,10 @@ struct WeeklyReportView: View {
                                 if overLimitCount > 0 {
                                     insightRow("Went over your session limit \(overLimitCount) time\(overLimitCount == 1 ? "" : "s")")
                                 }
+                                if emergencyUnlockCount > 0 {
+                                    insightRow("Used emergency unlock \(emergencyUnlockCount) time\(emergencyUnlockCount == 1 ? "" : "s")")
+                                }
+                                insightRow("Next week: \(weeklyRecommendation)")
                             }
                         }
                         .padding(.bottom, 40)

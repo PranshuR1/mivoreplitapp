@@ -9,6 +9,8 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     private let sessionActiveKey = "mivo.sessionActive"
     private let sessionEndsAtKey = "mivo.sessionEndsAt"
     private let pendingInterventionSetupKey = "mivo.pendingInterventionSetup"
+    private let pendingInterventionSetupAtKey = "mivo.pendingInterventionSetupAt"
+    private let pendingSetupFreshnessWindow: TimeInterval = 10 * 60
 
     override func configuration(shielding application: Application) -> ShieldConfiguration {
         makePauseConfiguration()
@@ -34,7 +36,7 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         return ShieldConfiguration(
             backgroundBlurStyle: .systemUltraThinMaterialLight,
             backgroundColor: UIColor(red: 0.96, green: 0.95, blue: 0.91, alpha: 1.0),
-            icon: timerIcon(isCountingDown: isCountingDown, isLocked: !hasActiveSession),
+            icon: timerIcon(isCountingDown: isCountingDown, isLocked: needsMivoSetup || !hasActiveSession),
             title: ShieldConfiguration.Label(
                 text: shieldTitle(hasActiveSession: hasActiveSession, isCountingDown: isCountingDown, needsMivoSetup: needsMivoSetup),
                 color: UIColor(red: 0.10, green: 0.11, blue: 0.10, alpha: 1.0)
@@ -44,9 +46,11 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
                 color: UIColor(red: 0.31, green: 0.30, blue: 0.27, alpha: 1.0)
             ),
             primaryButtonLabel: ShieldConfiguration.Label(
-                text: hasActiveSession
-                    ? (isCountingDown ? "Opening soon..." : "Start 5-second pause")
-                    : (needsMivoSetup ? "Open Mivo" : "Start 5-second hold"),
+                text: needsMivoSetup
+                    ? "Open Mivo"
+                    : (hasActiveSession
+                        ? (isCountingDown ? "Opening soon..." : "Start 5-second pause")
+                        : "Start 5-second hold"),
                 color: .white
             ),
             primaryButtonBackgroundColor: UIColor(red: 0.12, green: 0.16, blue: 0.15, alpha: 1.0),
@@ -58,23 +62,23 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     }
 
     private func shieldTitle(hasActiveSession: Bool, isCountingDown: Bool, needsMivoSetup: Bool) -> String {
+        if needsMivoSetup {
+            return "Open Mivo to start session"
+        }
         if hasActiveSession {
             return isCountingDown ? "5-second pause running" : "Take a 5-second pause"
-        }
-        if needsMivoSetup {
-            return "Open Mivo to set intervention"
         }
         return isCountingDown ? "Hold for 5 seconds" : "Pause before opening"
     }
 
     private func shieldSubtitle(hasActiveSession: Bool, isCountingDown: Bool, needsMivoSetup: Bool) -> String {
+        if needsMivoSetup {
+            return "The pause is complete. This app stays locked until you open Mivo, choose why you are opening it, and start a timed session."
+        }
         if hasActiveSession {
             return isCountingDown
                 ? "Breathe. The selected app will open when this reaches zero."
                 : "Mivo is giving you a short moment to choose with intention. Press continue, breathe, then the app will open."
-        }
-        if needsMivoSetup {
-            return "This selected app stays locked. Open Mivo now and it will take you straight to Interventions so you can choose why and set a time limit."
         }
         return isCountingDown
             ? "Keep holding. After this, Mivo will ask you to set the intervention before this app can open."
@@ -103,6 +107,10 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         if endsAt > 0 && endsAt < Date().timeIntervalSince1970 {
             defaults.set(false, forKey: sessionActiveKey)
             defaults.removeObject(forKey: sessionEndsAtKey)
+            defaults.set(true, forKey: pendingInterventionSetupKey)
+            defaults.set(Date().timeIntervalSince1970, forKey: pendingInterventionSetupAtKey)
+            defaults.removeObject(forKey: countdownUntilKey)
+            defaults.removeObject(forKey: countdownRemainingKey)
             defaults.synchronize()
             return false
         }
@@ -111,7 +119,31 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     }
 
     private func pendingInterventionSetup() -> Bool {
-        UserDefaults(suiteName: appGroup)?.bool(forKey: pendingInterventionSetupKey) == true
+        guard let defaults = UserDefaults(suiteName: appGroup),
+              defaults.bool(forKey: pendingInterventionSetupKey) else {
+            return false
+        }
+        
+        let createdAt = defaults.double(forKey: pendingInterventionSetupAtKey)
+        guard createdAt > 0 else {
+            clearStalePendingInterventionSetup(defaults)
+            return false
+        }
+        
+        if Date().timeIntervalSince1970 - createdAt > pendingSetupFreshnessWindow {
+            clearStalePendingInterventionSetup(defaults)
+            return false
+        }
+        
+        return true
+    }
+    
+    private func clearStalePendingInterventionSetup(_ defaults: UserDefaults) {
+        defaults.set(false, forKey: pendingInterventionSetupKey)
+        defaults.removeObject(forKey: pendingInterventionSetupAtKey)
+        defaults.removeObject(forKey: countdownUntilKey)
+        defaults.removeObject(forKey: countdownRemainingKey)
+        defaults.synchronize()
     }
 
     private func timerIcon(isCountingDown: Bool, isLocked: Bool) -> UIImage {

@@ -14,18 +14,22 @@ struct AIDataStore {
     private static let maxEntries = 50
 
     static func appendEntry(_ summary: String) {
-        var entries = StorageService.load([AIDataEntry].self, forKey: .aiDataset) ?? []
+        let email = StorageService.activeUserEmail
+        var entries = email.flatMap { StorageService.load([AIDataEntry].self, forKey: .aiDataset, email: $0) } ?? []
         let entry = AIDataEntry(id: UUID().uuidString, timestamp: ISO8601DateFormatter().string(from: Date()), summary: summary)
         entries.insert(entry, at: 0)
         if entries.count > maxEntries { entries = Array(entries.prefix(maxEntries)) }
-        StorageService.save(entries, forKey: .aiDataset)
+        if let email {
+            StorageService.save(entries, forKey: .aiDataset, email: email)
+        }
     }
 
     static func recentEntries(limit: Int = 5) -> [AIDataEntry] {
-        if let entries = StorageService.load([AIDataEntry].self, forKey: .aiDataset) {
+        guard let email = StorageService.activeUserEmail else { return [] }
+        if let entries = StorageService.load([AIDataEntry].self, forKey: .aiDataset, email: email) {
             return Array(entries.prefix(limit))
         }
-        let legacySummaries = StorageService.load([String].self, forKey: .aiDataset) ?? []
+        let legacySummaries = StorageService.load([String].self, forKey: .aiDataset, email: email) ?? []
         let entries = legacySummaries.map {
             AIDataEntry(id: UUID().uuidString, timestamp: "Saved profile", summary: $0)
         }

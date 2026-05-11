@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: mivo-email-server
+    name: mivo-auth-server
     env: node
     rootDir: backend
     plan: free
@@ -12,11 +12,5 @@ services:
       mountPath: /var/data
       sizeGB: 1
     envVars:
-      - key: MIVO_GMAIL_USER
-        value: info.mivoapp@gmail.com
       - key: MIVO_DATA_DIR
         value: /var/data
-      - key: MIVO_GMAIL_APP_PASSWORD
-        sync: false
-      - key: MIVO_EMAIL_API_KEY
-        generateValue: true

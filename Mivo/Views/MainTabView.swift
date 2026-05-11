@@ -78,16 +78,18 @@ struct MainTabView: View {
             UITabBar.appearance().scrollEdgeAppearance = appearance
             appVM.scheduleTimeTruthNotification()
             appVM.evaluateTimeTruthPrompt()
+            appVM.recoverExpiredRunningSessionIfNeeded()
 
             if shouldShowTutorial {
                 selectedTab = tutorialSteps[tutorialStep].tab
             } else {
-                routeToPendingInterventionIfNeeded()
+                routeForForegroundOpen()
             }
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase) { phase in
             guard phase == .active, !shouldShowTutorial else { return }
-            routeToPendingInterventionIfNeeded()
+            appVM.recoverExpiredRunningSessionIfNeeded()
+            routeForForegroundOpen()
             appVM.scheduleTimeTruthNotification()
             appVM.evaluateTimeTruthPrompt()
         }
@@ -99,7 +101,7 @@ struct MainTabView: View {
             guard scenePhase == .active, !shouldShowTutorial else { return }
             routeToPendingInterventionIfNeeded()
         }
-        .onChange(of: tutorialStep) { _, newValue in
+        .onChange(of: tutorialStep) { newValue in
             selectedTab = tutorialSteps[newValue].tab
             tutorialMessage = nil
         }
@@ -111,10 +113,15 @@ struct MainTabView: View {
                 startTime: feedback.startTime,
                 endTime: feedback.endTime,
                 extendedOnce: feedback.extendedOnce,
+                urgeReason: feedback.urgeReason,
+                urgeNote: feedback.urgeNote,
+                emergencyUnlockUsed: feedback.emergencyUnlockUsed == true,
+                emergencyUnlockReason: feedback.emergencyUnlockReason,
                 onSaved: {
                     appVM.clearPendingSessionFeedback()
                 }
             )
+            .interactiveDismissDisabled()
         }
         .fullScreenCover(item: $appVM.pendingTimeTruthPrompt) { prompt in
             TimeTruthCheckView(prompt: prompt)
@@ -127,11 +134,19 @@ struct MainTabView: View {
     private var shouldShowTutorial: Bool {
         appVM.settings.onboardingComplete && appVM.settings.tutorialComplete != true
     }
+    
+    private func routeForForegroundOpen() {
+        if !routeToPendingInterventionIfNeeded() {
+            selectedTab = 0
+        }
+    }
 
-    private func routeToPendingInterventionIfNeeded() {
-        guard appVM.consumePendingInterventionSetup() else { return }
+    @discardableResult
+    private func routeToPendingInterventionIfNeeded() -> Bool {
+        guard appVM.consumePendingInterventionSetup() else { return false }
         selectedTab = 2
         HapticsService.selection()
+        return true
     }
 
     private func advanceTutorial() {

@@ -9,34 +9,68 @@ struct SecureAuthRecord: Codable {
     var passwordHash: String
     var passwordSalt: String
     var passwordIterations: Int
+    var isAdmin: Bool?
+    var adminToken: String?
     var onboardingProfile: OnboardingProfile?
 }
 
 enum SecureAuthService {
     private static let keychainService = "app.mivo.auth"
-    private static let userAccount = "primary-user"
+    private static let legacyUserAccount = "primary-user"
+    private static let userAccountPrefix = "user-"
     private static let passwordIterations = 120_000
 
     static func loadRecord() -> SecureAuthRecord? {
-        guard let data = KeychainStore.read(service: keychainService, account: userAccount) else {
+        if let email = StorageService.load(String.self, forKey: .rememberedEmail),
+           let record = loadRecord(email: email) {
+            return record
+        }
+
+        guard let data = KeychainStore.read(service: keychainService, account: legacyUserAccount),
+              let record = try? JSONDecoder().decode(SecureAuthRecord.self, from: data) else {
             return migrateLegacyCredentialsIfNeeded()
         }
-        return try? JSONDecoder().decode(SecureAuthRecord.self, from: data)
+        try? saveRecord(record)
+        return record
+    }
+
+    static func loadRecord(email: String) -> SecureAuthRecord? {
+        let normalized = normalizeEmail(email)
+        if let data = KeychainStore.read(service: keychainService, account: accountKey(for: normalized)),
+           let record = try? JSONDecoder().decode(SecureAuthRecord.self, from: data) {
+            return record
+        }
+
+        guard let data = KeychainStore.read(service: keychainService, account: legacyUserAccount),
+              let legacyRecord = try? JSONDecoder().decode(SecureAuthRecord.self, from: data),
+              normalizeEmail(legacyRecord.email) == normalized else {
+            return nil
+        }
+        try? saveRecord(legacyRecord)
+        return legacyRecord
     }
 
     static func saveRecord(_ record: SecureAuthRecord) throws {
-        let data = try JSONEncoder().encode(record)
-        try KeychainStore.save(data, service: keychainService, account: userAccount)
+        var normalizedRecord = record
+        normalizedRecord.email = normalizeEmail(record.email)
+        let data = try JSONEncoder().encode(normalizedRecord)
+        try KeychainStore.save(data, service: keychainService, account: accountKey(for: normalizedRecord.email))
     }
 
     static func deleteRecord() {
-        KeychainStore.delete(service: keychainService, account: userAccount)
+        if let email = StorageService.load(String.self, forKey: .rememberedEmail) {
+            deleteRecord(email: email)
+        }
+    }
+
+    static func deleteRecord(email: String) {
+        KeychainStore.delete(service: keychainService, account: accountKey(for: normalizeEmail(email)))
     }
 
     static func createRecord(email: String, password: String, name: String) throws -> SecureAuthRecord {
         let salt = randomBytes(count: 32)
         let record = SecureAuthRecord(
-            email: email,
+            email: normalizeEmail(email),
             name: name,
             createdAt: ISO8601DateFormatter().string(from: Date()),
             passwordHash: hashPassword(password, salt: salt, iterations: passwordIterations),
@@ -65,6 +99,14 @@ enum SecureAuthService {
         updated.passwordHash = hashPassword(password, salt: salt, iterations: passwordIterations)
         try saveRecord(updated)
         return updated
+    }
+
+    private static func accountKey(for email: String) -> String {
+        "\(userAccountPrefix)\(simpleHash(normalizeEmail(email)))"
+    }
+
+    private static func normalizeEmail(_ email: String) -> String {
+        email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func hashPassword(_ password: String, salt: Data, iterations: Int) -> String {

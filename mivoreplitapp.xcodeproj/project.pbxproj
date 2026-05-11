@@ -30,6 +30,8 @@
 		3F2000032FA2000000000001 /* MivoShieldConfigurationExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 3F2000042FA2000000000001 /* MivoShieldConfigurationExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		3F2001012FA2000000000001 /* MivoShieldActionExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F2001022FA2000000000001 /* MivoShieldActionExtension.swift */; };
 		3F2001032FA2000000000001 /* MivoShieldActionExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 3F2001042FA2000000000001 /* MivoShieldActionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4F3000012FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3000022FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift */; };
+		4F3000032FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 4F3000042FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2ABB1EAABB2C457C759A4ED9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 825473780CCF565309E59996 /* HomeView.swift */; };
 		31EA0E76E4C1A150D615DC6F /* WeeklyReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A927AC28F9838387580E5F7C /* WeeklyReportView.swift */; };
 		36E209E3016E99C04CA79F09 /* OnboardingCalibrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00AD3F6DBBFDA083CC9797 /* OnboardingCalibrationView.swift */; };
@@ -78,6 +80,13 @@
 			remoteGlobalIDString = 3F2001062FA2000000000001;
 			remoteInfo = MivoShieldActionExtension;
 		};
+		4F3000052FA3000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3CEAA518FD9FE3C7D2DC52B6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4F3000062FA3000000000001;
+			remoteInfo = MivoDeviceActivityMonitorExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -90,6 +99,7 @@
 				2F1000032FA1000000000001 /* MivoScreenTimeReportExtension.appex in Embed App Extensions */,
 				3F2000032FA2000000000001 /* MivoShieldConfigurationExtension.appex in Embed App Extensions */,
 				3F2001032FA2000000000001 /* MivoShieldActionExtension.appex in Embed App Extensions */,
+				4F3000032FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -126,6 +136,10 @@
 		3F2001042FA2000000000001 /* MivoShieldActionExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MivoShieldActionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3F2001082FA2000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		3F2001092FA2000000000001 /* MivoShieldActionExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MivoShieldActionExtension.entitlements; sourceTree = "<group>"; };
+		4F3000022FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoDeviceActivityMonitorExtension.swift; sourceTree = "<group>"; };
+		4F3000042FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MivoDeviceActivityMonitorExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4F3000082FA3000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		4F3000092FA3000000000001 /* MivoDeviceActivityMonitorExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MivoDeviceActivityMonitorExtension.entitlements; sourceTree = "<group>"; };
 		34191824CA5D84892229698E /* StorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageService.swift; sourceTree = "<group>"; };
 		34191825CA5D84892229698F /* AIDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDataStore.swift; sourceTree = "<group>"; };
 		34191826CA5D848922296990 /* RemoteAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAuthService.swift; sourceTree = "<group>"; };
@@ -186,6 +200,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4F30000A2FA3000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -196,6 +217,7 @@
 				2F1000042FA1000000000001 /* MivoScreenTimeReportExtension.appex */,
 				3F2000042FA2000000000001 /* MivoShieldConfigurationExtension.appex */,
 				3F2001042FA2000000000001 /* MivoShieldActionExtension.appex */,
+				4F3000042FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -207,6 +229,7 @@
 				2F10000B2FA1000000000001 /* MivoScreenTimeReportExtension */,
 				3F20000B2FA2000000000001 /* MivoShieldConfigurationExtension */,
 				3F20010B2FA2000000000001 /* MivoShieldActionExtension */,
+				4F30000B2FA3000000000001 /* MivoDeviceActivityMonitorExtension */,
 				048F4804EED2B58C3E9D6D8C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -239,6 +262,16 @@
 				3F2001092FA2000000000001 /* MivoShieldActionExtension.entitlements */,
 			);
 			path = MivoShieldActionExtension;
+			sourceTree = "<group>";
+		};
+		4F30000B2FA3000000000001 /* MivoDeviceActivityMonitorExtension */ = {
+			isa = PBXGroup;
+			children = (
+				4F3000022FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift */,
+				4F3000082FA3000000000001 /* Info.plist */,
+				4F3000092FA3000000000001 /* MivoDeviceActivityMonitorExtension.entitlements */,
+			);
+			path = MivoDeviceActivityMonitorExtension;
 			sourceTree = "<group>";
 		};
 		1A968DCE56935E2C49EAB331 /* Models */ = {
@@ -399,6 +432,7 @@
 				2F10000C2FA1000000000001 /* PBXTargetDependency */,
 				3F20000C2FA2000000000001 /* PBXTargetDependency */,
 				3F20010C2FA2000000000001 /* PBXTargetDependency */,
+				4F30000C2FA3000000000001 /* PBXTargetDependency */,
 			);
 			name = Mivo;
 			productName = Mivo;
@@ -456,6 +490,23 @@
 			productReference = 3F2001042FA2000000000001 /* MivoShieldActionExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		4F3000062FA3000000000001 /* MivoDeviceActivityMonitorExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4F30000D2FA3000000000001 /* Build configuration list for PBXNativeTarget "MivoDeviceActivityMonitorExtension" */;
+			buildPhases = (
+				4F30000E2FA3000000000001 /* Sources */,
+				4F30000F2FA3000000000001 /* Resources */,
+				4F30000A2FA3000000000001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MivoDeviceActivityMonitorExtension;
+			productName = MivoDeviceActivityMonitorExtension;
+			productReference = 4F3000042FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -473,6 +524,9 @@
 						CreatedOnToolsVersion = 15.0;
 					};
 					3F2001062FA2000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					4F3000062FA3000000000001 = {
 						CreatedOnToolsVersion = 15.0;
 					};
 					65C4AA6A8E422295B136D3FC = {
@@ -497,6 +551,7 @@
 				2F1000062FA1000000000001 /* MivoScreenTimeReportExtension */,
 				3F2000062FA2000000000001 /* MivoShieldConfigurationExtension */,
 				3F2001062FA2000000000001 /* MivoShieldActionExtension */,
+				4F3000062FA3000000000001 /* MivoDeviceActivityMonitorExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -530,6 +585,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		3F20010F2FA2000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4F30000F2FA3000000000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -604,6 +666,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4F30000E2FA3000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4F3000012FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -621,6 +691,11 @@
 			isa = PBXTargetDependency;
 			target = 3F2001062FA2000000000001 /* MivoShieldActionExtension */;
 			targetProxy = 3F2001052FA2000000000001 /* PBXContainerItemProxy */;
+		};
+		4F30000C2FA3000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4F3000062FA3000000000001 /* MivoDeviceActivityMonitorExtension */;
+			targetProxy = 4F3000052FA3000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -853,6 +928,64 @@
 			};
 			name = Release;
 		};
+		4F3000102FA3000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = MivoDeviceActivityMonitorExtension/MivoDeviceActivityMonitorExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 45UT26F58Q;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MivoDeviceActivityMonitorExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoDeviceActivityMonitorExtension;
+				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4F3000112FA3000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = MivoDeviceActivityMonitorExtension/MivoDeviceActivityMonitorExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 45UT26F58Q;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MivoDeviceActivityMonitorExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoDeviceActivityMonitorExtension;
+				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		D8257AF867AF152B35ADE7C2 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -985,6 +1118,15 @@
 			buildConfigurations = (
 				3F2001102FA2000000000001 /* Debug */,
 				3F2001112FA2000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4F30000D2FA3000000000001 /* Build configuration list for PBXNativeTarget "MivoDeviceActivityMonitorExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4F3000102FA3000000000001 /* Debug */,
+				4F3000112FA3000000000001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

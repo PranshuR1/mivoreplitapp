@@ -21,6 +21,8 @@ struct InterventionView: View {
     @State private var prompt: String
     @State private var opacity = 0.0
     @State private var showSession = false
+    @State private var selectedUrge: UrgeReason? = nil
+    @State private var urgeNote = ""
 
     var isSessionStart: Bool { intention != nil && duration != nil }
 
@@ -114,6 +116,10 @@ struct InterventionView: View {
                         .multilineTextAlignment(.center)
                         .lineSpacing(6)
                         .padding(.horizontal, 8)
+
+                    if isSessionStart && canProceed {
+                        urgeJournal
+                    }
                 }
                 .opacity(opacity)
 
@@ -123,17 +129,22 @@ struct InterventionView: View {
                 VStack(spacing: 10) {
                     if let intention, let duration {
                         NavigationLink {
-                            ActiveSessionView(intention: intention, plannedMinutes: duration)
+                            ActiveSessionView(
+                                intention: intention,
+                                plannedMinutes: duration,
+                                urgeReason: selectedUrge,
+                                urgeNote: selectedUrge == .other ? urgeNote.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+                            )
                         } label: {
-                            Text(canProceed ? "Begin session" : "Wait \(countdown)s...")
+                            Text(sessionButtonTitle)
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(MivoColors.white)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .background(canProceed ? MivoColors.accent : MivoColors.accentLight)
+                                .background(canBeginSession ? MivoColors.accent : MivoColors.accentLight)
                                 .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
-                        .disabled(!canProceed)
+                        .disabled(!canBeginSession)
                     } else {
                         Button {
                             complete()
@@ -167,6 +178,58 @@ struct InterventionView: View {
             withAnimation(.easeIn(duration: 0.6)) { opacity = 1 }
             startCountdown()
         }
+    }
+
+    private var canBeginSession: Bool {
+        guard canProceed else { return false }
+        guard isSessionStart else { return true }
+        return selectedUrge != nil
+    }
+
+    private var sessionButtonTitle: String {
+        if !canProceed { return "Wait \(countdown)s..." }
+        if selectedUrge == nil { return "Choose why first" }
+        return "Begin session"
+    }
+
+    private var urgeJournal: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Why did you open this?")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(MivoColors.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(UrgeReason.allCases) { reason in
+                    Button {
+                        selectedUrge = reason
+                        HapticsService.selection()
+                    } label: {
+                        Text(reason.rawValue)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(selectedUrge == reason ? MivoColors.white : MivoColors.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(selectedUrge == reason ? MivoColors.accent : MivoColors.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(selectedUrge == reason ? MivoColors.accent : MivoColors.border, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if selectedUrge == .other {
+                TextField("Optional note", text: $urgeNote)
+                    .font(.system(size: 14))
+                    .padding(12)
+                    .background(MivoColors.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(MivoColors.border, lineWidth: 1))
+            }
+        }
+        .padding(14)
+        .background(MivoColors.white.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     func startCountdown() {

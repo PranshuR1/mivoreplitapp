@@ -28,6 +28,8 @@ final class FamilyControlsManager: ObservableObject {
     private let mivoSessionActiveKey = "mivo.sessionActive"
     private let mivoSessionEndsAtKey = "mivo.sessionEndsAt"
     private let pendingInterventionSetupKey = "mivo.pendingInterventionSetup"
+    private let pendingInterventionSetupAtKey = "mivo.pendingInterventionSetupAt"
+    private let sessionRelockActivityName = "mivo.session.relock"
     private let lastReportKey = "mivo.lastDeviceActivityReport"
     private let authFlagKey = "mivo.familyControlsAuthorized"
     private var sessionRelockWorkItem: DispatchWorkItem?
@@ -109,14 +111,33 @@ final class FamilyControlsManager: ObservableObject {
 
         userDefaults?.set(active, forKey: mivoSessionActiveKey)
         if active {
+            clearPendingInterventionSetup()
             let graceSeconds = exactDurationSeconds ?? max(15 * 60, plannedMinutes * 60 + 10 * 60)
             userDefaults?.set(Date().addingTimeInterval(TimeInterval(graceSeconds)).timeIntervalSince1970, forKey: mivoSessionEndsAtKey)
             scheduleSessionRelock(after: TimeInterval(graceSeconds))
+            scheduleSystemSessionRelock(after: TimeInterval(graceSeconds))
         } else {
             userDefaults?.removeObject(forKey: mivoSessionEndsAtKey)
+            stopSystemSessionRelock()
         }
         userDefaults?.synchronize()
 
+        if #available(iOS 16.0, *) {
+            applyImpulseProtectionIfNeeded()
+        }
+    }
+    
+    func endSessionAndRelockForIntervention() {
+        sessionRelockWorkItem?.cancel()
+        sessionRelockWorkItem = nil
+        stopSystemSessionRelock()
+        
+        userDefaults?.set(false, forKey: mivoSessionActiveKey)
+        userDefaults?.removeObject(forKey: mivoSessionEndsAtKey)
+        userDefaults?.set(true, forKey: pendingInterventionSetupKey)
+        userDefaults?.set(Date().timeIntervalSince1970, forKey: pendingInterventionSetupAtKey)
+        userDefaults?.synchronize()
+        
         if #available(iOS 16.0, *) {
             applyImpulseProtectionIfNeeded()
         }
@@ -128,6 +149,8 @@ final class FamilyControlsManager: ObservableObject {
                 guard let self else { return }
                 self.userDefaults?.set(false, forKey: self.mivoSessionActiveKey)
                 self.userDefaults?.removeObject(forKey: self.mivoSessionEndsAtKey)
+                self.userDefaults?.set(true, forKey: self.pendingInterventionSetupKey)
+                self.userDefaults?.set(Date().timeIntervalSince1970, forKey: self.pendingInterventionSetupAtKey)
                 self.userDefaults?.synchronize()
                 if #available(iOS 16.0, *) {
                     self.applyImpulseProtectionIfNeeded()
@@ -138,12 +161,48 @@ final class FamilyControlsManager: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
+    private func scheduleSystemSessionRelock(after delay: TimeInterval) {
+        #if canImport(DeviceActivity)
+        guard #available(iOS 16.0, *) else { return }
+
+        let center = DeviceActivityCenter()
+        let activity = DeviceActivityName(sessionRelockActivityName)
+        center.stopMonitoring([activity])
+
+        let calendar = Calendar.current
+        let now = Date()
+        let end = now.addingTimeInterval(max(1, delay))
+        let startComponents = calendar.dateComponents([.hour, .minute, .second], from: now)
+        let endComponents = calendar.dateComponents([.hour, .minute, .second], from: end)
+        let schedule = DeviceActivitySchedule(
+            intervalStart: startComponents,
+            intervalEnd: endComponents,
+            repeats: false
+        )
+
+        do {
+            try center.startMonitoring(activity, during: schedule)
+        } catch {
+            print("[FamilyControlsManager] Failed to schedule system session relock: \(error.localizedDescription)")
+        }
+        #endif
+    }
+
+    private func stopSystemSessionRelock() {
+        #if canImport(DeviceActivity)
+        guard #available(iOS 16.0, *) else { return }
+        DeviceActivityCenter().stopMonitoring([DeviceActivityName(sessionRelockActivityName)])
+        #endif
+    }
+
     func isMivoSessionActive() -> Bool {
         guard userDefaults?.bool(forKey: mivoSessionActiveKey) == true else { return false }
         let endsAt = userDefaults?.double(forKey: mivoSessionEndsAtKey) ?? 0
         if endsAt > 0 && endsAt < Date().timeIntervalSince1970 {
             userDefaults?.set(false, forKey: mivoSessionActiveKey)
             userDefaults?.removeObject(forKey: mivoSessionEndsAtKey)
+            userDefaults?.set(true, forKey: pendingInterventionSetupKey)
+            userDefaults?.set(Date().timeIntervalSince1970, forKey: pendingInterventionSetupAtKey)
             userDefaults?.synchronize()
             return false
         }
@@ -152,14 +211,18 @@ final class FamilyControlsManager: ObservableObject {
 
     func requestInterventionSetupFromShield() {
         userDefaults?.set(true, forKey: pendingInterventionSetupKey)
+        userDefaults?.set(Date().timeIntervalSince1970, forKey: pendingInterventionSetupAtKey)
         userDefaults?.synchronize()
     }
 
     func consumePendingInterventionSetup() -> Bool {
-        guard userDefaults?.bool(forKey: pendingInterventionSetupKey) == true else { return false }
+        userDefaults?.bool(forKey: pendingInterventionSetupKey) == true
+    }
+
+    func clearPendingInterventionSetup() {
         userDefaults?.set(false, forKey: pendingInterventionSetupKey)
+        userDefaults?.removeObject(forKey: pendingInterventionSetupAtKey)
         userDefaults?.synchronize()
-        return true
     }
 
     @available(iOS 16.0, *)

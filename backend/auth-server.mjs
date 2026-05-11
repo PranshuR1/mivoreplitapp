@@ -2,15 +2,13 @@ import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import tls from "node:tls";
 
 const port = Number(process.env.PORT || 8787);
-const gmailUser = process.env.MIVO_GMAIL_USER || "info.mivoapp@gmail.com";
-const gmailAppPassword = process.env.MIVO_GMAIL_APP_PASSWORD;
-const emailApiKey = process.env.MIVO_EMAIL_API_KEY;
 const dataDir = process.env.MIVO_DATA_DIR || path.join(process.cwd(), "backend-data");
 const usersPath = path.join(dataDir, "users.json");
 const passwordIterations = 180_000;
+const adminEmail = normalizeEmail(process.env.MIVO_ADMIN_EMAIL || "useparkez@gmail.com");
+const adminPassword = process.env.MIVO_ADMIN_PASSWORD || "Pranshu@123";
 
 function jsonResponse(res, status, payload) {
   res.writeHead(status, {
@@ -32,15 +30,28 @@ function publicUser(record) {
     name: record.name,
     createdAt: record.createdAt,
     onboardingProfile: record.onboardingProfile || null,
+    isAdmin: record.role === "admin",
+  };
+}
+
+function adminUser(record) {
+  return {
+    ...publicUser(record),
+    role: record.role || "user",
+    lastLoginAt: record.lastLoginAt || null,
+    updatedAt: record.updatedAt || null,
   };
 }
 
 async function readUsers() {
   try {
     const raw = await fs.readFile(usersPath, "utf8");
-    return JSON.parse(raw);
+    const db = JSON.parse(raw);
+    if (!db.users) db.users = {};
+    if (!db.adminSessions) db.adminSessions = {};
+    return db;
   } catch (error) {
-    if (error.code === "ENOENT") return { users: {} };
+    if (error.code === "ENOENT") return { users: {}, adminSessions: {} };
     throw error;
   }
 }
@@ -59,6 +70,49 @@ function hashPassword(password, saltHex = crypto.randomBytes(32).toString("hex")
     hash: hash.toString("hex"),
     iterations: passwordIterations,
   };
+}
+
+function ensureAdminUser(db) {
+  if (!adminEmail || !adminPassword) return false;
+  const existing = db.users[adminEmail];
+  const password = hashPassword(adminPassword, existing?.passwordSalt);
+  const adminRecord = {
+    ...(existing || {}),
+    email: adminEmail,
+    name: existing?.name || "Mivo Admin",
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    passwordHash: password.hash,
+    passwordSalt: password.salt,
+    passwordIterations: password.iterations,
+    onboardingProfile: existing?.onboardingProfile || null,
+    role: "admin",
+    updatedAt: new Date().toISOString(),
+  };
+  db.users[adminEmail] = adminRecord;
+  return (
+    !existing ||
+    existing.role !== "admin" ||
+    existing.passwordHash !== adminRecord.passwordHash ||
+    existing.passwordIterations !== adminRecord.passwordIterations
+  );
+}
+
+function issueAdminToken(db, email) {
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiresAt = Date.now() + 1000 * 60 * 60 * 24 * 14;
+  db.adminSessions[token] = { email, expiresAt };
+  return token;
+}
+
+function requireAdmin(db, payload) {
+  const token = String(payload.adminToken || "");
+  const session = db.adminSessions[token];
+  if (!session || session.expiresAt < Date.now()) {
+    if (token) delete db.adminSessions[token];
+    return null;
+  }
+  const record = db.users[session.email];
+  return record?.role === "admin" ? record : null;
 }
 
 function verifyPassword(password, record) {
@@ -346,14 +400,18 @@ async function handleAuth(req, res) {
   const payload = JSON.parse(body || "{}");
   const email = normalizeEmail(payload.email);
   const db = await readUsers();
+  const adminSeeded = ensureAdminUser(db);
   const existing = db.users[email];
 
-  if (!email || !email.includes("@")) {
+  const isAdminRoute = req.url.startsWith("/auth/admin/");
+
+  if (!isAdminRoute && (!email || !email.includes("@"))) {
     jsonResponse(res, 400, { error: "invalidEmail" });
     return;
   }
 
   if (req.url === "/auth/exists") {
+    if (adminSeeded) await writeUsers(db);
     jsonResponse(res, 200, { ok: true, exists: Boolean(existing) });
     return;
   }
@@ -377,6 +435,7 @@ async function handleAuth(req, res) {
       passwordSalt: password.salt,
       passwordIterations: password.iterations,
       onboardingProfile: payload.onboardingProfile || null,
+      role: "user",
     };
     db.users[email] = record;
     await writeUsers(db);
@@ -389,7 +448,10 @@ async function handleAuth(req, res) {
       jsonResponse(res, 401, { error: "invalidCredentials" });
       return;
     }
-    jsonResponse(res, 200, { ok: true, user: publicUser(existing) });
+    existing.lastLoginAt = new Date().toISOString();
+    const adminToken = existing.role === "admin" ? issueAdminToken(db, existing.email) : null;
+    await writeUsers(db);
+    jsonResponse(res, 200, { ok: true, user: publicUser(existing), adminToken });
     return;
   }
 
@@ -417,11 +479,69 @@ async function handleAuth(req, res) {
       return;
     }
     existing.onboardingProfile = payload.onboardingProfile || null;
+    existing.updatedAt = new Date().toISOString();
     await writeUsers(db);
     jsonResponse(res, 200, { ok: true, user: publicUser(existing) });
     return;
   }
 
+  if (req.url === "/auth/admin/users") {
+    const admin = requireAdmin(db, payload);
+    if (!admin) {
+      await writeUsers(db);
+      jsonResponse(res, 403, { error: "adminRequired" });
+      return;
+    }
+    const users = Object.values(db.users)
+      .map(adminUser)
+      .sort((a, b) => a.email.localeCompare(b.email));
+    if (adminSeeded) await writeUsers(db);
+    jsonResponse(res, 200, { ok: true, users });
+    return;
+  }
+
+  if (req.url === "/auth/admin/user") {
+    const admin = requireAdmin(db, payload);
+    if (!admin) {
+      await writeUsers(db);
+      jsonResponse(res, 403, { error: "adminRequired" });
+      return;
+    }
+    const target = db.users[normalizeEmail(payload.targetEmail)];
+    if (!target) {
+      if (adminSeeded) await writeUsers(db);
+      jsonResponse(res, 404, { error: "noAccount" });
+      return;
+    }
+    if (adminSeeded) await writeUsers(db);
+    jsonResponse(res, 200, { ok: true, user: adminUser(target) });
+    return;
+  }
+
+  if (req.url === "/auth/admin/delete-user") {
+    const admin = requireAdmin(db, payload);
+    if (!admin) {
+      await writeUsers(db);
+      jsonResponse(res, 403, { error: "adminRequired" });
+      return;
+    }
+    const targetEmail = normalizeEmail(payload.targetEmail);
+    if (targetEmail === admin.email || targetEmail === adminEmail) {
+      jsonResponse(res, 400, { error: "cannotDeleteAdmin" });
+      return;
+    }
+    if (!db.users[targetEmail]) {
+      if (adminSeeded) await writeUsers(db);
+      jsonResponse(res, 404, { error: "noAccount" });
+      return;
+    }
+    delete db.users[targetEmail];
+    await writeUsers(db);
+    jsonResponse(res, 200, { ok: true });
+    return;
+  }
+
+  if (adminSeeded) await writeUsers(db);
   jsonResponse(res, 404, { error: "Not found" });
 }
 
@@ -440,108 +560,6 @@ function readBody(req) {
   });
 }
 
-function smtpCommand(socket, command, expected) {
-  return new Promise((resolve, reject) => {
-    let buffer = "";
-
-    function onData(data) {
-      buffer += data.toString("utf8");
-      const lines = buffer.trimEnd().split(/\r?\n/);
-      const last = lines[lines.length - 1] || "";
-
-      if (!/^\d{3} /.test(last)) return;
-
-      socket.off("data", onData);
-      const code = Number(last.slice(0, 3));
-      if (!expected.includes(code)) {
-        reject(new Error(`SMTP expected ${expected.join("/")} but received: ${buffer}`));
-        return;
-      }
-      resolve(buffer);
-    }
-
-    socket.on("data", onData);
-    if (command) socket.write(`${command}\r\n`);
-  });
-}
-
-function encodeBase64(value) {
-  return Buffer.from(value, "utf8").toString("base64");
-}
-
-function buildEmail({ from, to, subject, code }) {
-  const safeSubject = subject || "Your Mivo verification code";
-  const text = [
-    `Your Mivo verification code is ${code}.`,
-    "",
-    "This code expires in 10 minutes.",
-    "If you did not request this, you can ignore this email.",
-  ].join("\n");
-
-  const html = [
-    "<div style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.5;color:#2E2E2E\">",
-    "<h2 style=\"margin:0 0 12px\">Mivo verification code</h2>",
-    `<p>Your verification code is <strong style=\"font-size:24px;letter-spacing:3px\">${code}</strong>.</p>`,
-    "<p>This code expires in 10 minutes.</p>",
-    "<p style=\"color:#777\">If you did not request this, you can ignore this email.</p>",
-    "</div>",
-  ].join("");
-
-  return [
-    `From: Mivo <${from}>`,
-    `To: ${to}`,
-    `Subject: ${safeSubject}`,
-    "MIME-Version: 1.0",
-    "Content-Type: multipart/alternative; boundary=mivo-boundary",
-    "",
-    "--mivo-boundary",
-    "Content-Type: text/plain; charset=utf-8",
-    "",
-    text,
-    "--mivo-boundary",
-    "Content-Type: text/html; charset=utf-8",
-    "",
-    html,
-    "--mivo-boundary--",
-    "",
-  ].join("\r\n");
-}
-
-async function sendWithGmailSMTP(payload) {
-  if (!gmailAppPassword) {
-    throw new Error("Missing MIVO_GMAIL_APP_PASSWORD. Create a Gmail app password and set it before starting the server.");
-  }
-
-  const from = gmailUser;
-  const { to, subject, code } = payload;
-  if (!to || !code || !/^\d{6}$/.test(String(code))) {
-    throw new Error("Expected JSON body with to and 6-digit code.");
-  }
-
-  const message = buildEmail({ from, to, subject, code });
-  const socket = tls.connect(465, "smtp.gmail.com", { servername: "smtp.gmail.com" });
-
-  await new Promise((resolve, reject) => {
-    socket.once("secureConnect", resolve);
-    socket.once("error", reject);
-  });
-
-  try {
-    await smtpCommand(socket, null, [220]);
-    await smtpCommand(socket, "EHLO mivo.local", [250]);
-    await smtpCommand(socket, "AUTH LOGIN", [334]);
-    await smtpCommand(socket, encodeBase64(gmailUser), [334]);
-    await smtpCommand(socket, encodeBase64(gmailAppPassword), [235]);
-    await smtpCommand(socket, `MAIL FROM:<${from}>`, [250]);
-    await smtpCommand(socket, `RCPT TO:<${to}>`, [250, 251]);
-    await smtpCommand(socket, "DATA", [354]);
-    await smtpCommand(socket, `${message}\r\n.`, [250]);
-    await smtpCommand(socket, "QUIT", [221]);
-  } finally {
-    socket.end();
-  }
-}
-
 const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") {
     jsonResponse(res, 204, {});
@@ -552,8 +570,6 @@ const server = http.createServer(async (req, res) => {
     jsonResponse(res, 200, {
       ok: true,
       service: "mivo-backend",
-      gmailConfigured: Boolean(gmailAppPassword),
-      apiKeyRequired: Boolean(emailApiKey),
       authDatabase: usersPath,
     });
     return;
@@ -579,34 +595,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method !== "POST" || req.url !== "/send-verification-code") {
-    jsonResponse(res, 404, { error: "Not found" });
-    return;
-  }
-
-  try {
-    if (emailApiKey && req.headers["x-mivo-email-key"] !== emailApiKey) {
-      jsonResponse(res, 401, { error: "Unauthorized" });
-      return;
-    }
-
-    const body = await readBody(req);
-    const payload = JSON.parse(body || "{}");
-    await sendWithGmailSMTP(payload);
-    jsonResponse(res, 200, { ok: true });
-  } catch (error) {
-    console.error("[Mivo email server]", error.message);
-    jsonResponse(res, 500, { error: "Email delivery failed" });
-  }
+  jsonResponse(res, 404, { error: "Not found" });
 });
 
 server.listen(port, () => {
   console.log(`Mivo backend listening on port ${port}`);
   console.log(`Health check: /health`);
-  console.log(`Verification endpoint: /send-verification-code`);
   console.log(`Auth endpoints: /auth/register /auth/login /auth/exists /auth/reset-password /auth/profile`);
   console.log(`AI endpoints: /api/ai/recommend-focus /api/ai/recommend-protected-apps /api/ai/estimate-saved /api/ai/estimate-life-breakdown /api/ai/screen-time-plan`);
   console.log(`Auth database: ${usersPath}`);
-  console.log(`Sending as ${gmailUser}`);
-  console.log(`API key required: ${emailApiKey ? "yes" : "no"}`);
 });

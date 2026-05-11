@@ -414,11 +414,12 @@ class AIService {
             let reason = scores[key, default: 0] > 0
                 ? "Chosen because your collected sessions cluster here."
                 : info.fallbackReason
+            let windowSpanHours = minutes >= 20 ? 2 : 1
             return ScreenScrollWindow(
                 id: "\(key)-\(index)",
                 title: index == 0 ? "Scroll session 1" : "Scroll session 2",
                 startHour: info.start,
-                endHour: info.end,
+                endHour: min(24, info.start + windowSpanHours),
                 minutes: minutes,
                 reason: reason
             )

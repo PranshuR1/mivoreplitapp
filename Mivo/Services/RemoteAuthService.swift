@@ -5,6 +5,20 @@ struct RemoteAuthUser: Codable {
     let name: String
     let createdAt: String
     let onboardingProfile: OnboardingProfile?
+    let isAdmin: Bool?
+    let adminToken: String?
+}
+
+struct AdminUser: Codable, Identifiable {
+    var id: String { email }
+    let email: String
+    let name: String
+    let createdAt: String
+    let onboardingProfile: OnboardingProfile?
+    let isAdmin: Bool?
+    let role: String?
+    let lastLoginAt: String?
+    let updatedAt: String?
 }
 
 struct PendingRegistration {
@@ -21,10 +35,17 @@ enum RemoteAuthService {
         let onboardingProfile: OnboardingProfile?
     }
 
+    private struct AdminRequest: Codable {
+        let adminToken: String
+        let targetEmail: String?
+    }
+
     private struct AuthResponse: Codable {
         let ok: Bool?
         let exists: Bool?
         let user: RemoteAuthUser?
+        let adminToken: String?
+        let users: [AdminUser]?
         let error: String?
     }
 
@@ -49,9 +70,18 @@ enum RemoteAuthService {
     }
 
     static func login(email: String, password: String) async throws -> RemoteAuthUser {
-        try await request(
+        let response: AuthResponse = try await rawRequest(
             path: "/auth/login",
             body: AuthRequest(email: email, password: password, name: nil, onboardingProfile: nil)
+        )
+        guard let user = response.user else { throw AppError.accountDataMissing }
+        return RemoteAuthUser(
+            email: user.email,
+            name: user.name,
+            createdAt: user.createdAt,
+            onboardingProfile: user.onboardingProfile,
+            isAdmin: user.isAdmin,
+            adminToken: response.adminToken
         )
     }
 
@@ -77,13 +107,46 @@ enum RemoteAuthService {
         )
     }
 
+    static func adminUsers(adminToken: String) async throws -> [AdminUser] {
+        let response: AuthResponse = try await rawRequest(
+            path: "/auth/admin/users",
+            body: AdminRequest(adminToken: adminToken, targetEmail: nil)
+        )
+        return response.users ?? []
+    }
+
+    static func adminUser(adminToken: String, email: String) async throws -> AdminUser {
+        let response: AuthResponse = try await rawRequest(
+            path: "/auth/admin/user",
+            body: AdminRequest(adminToken: adminToken, targetEmail: email)
+        )
+        guard let user = response.user else { throw AppError.noAccount }
+        return AdminUser(
+            email: user.email,
+            name: user.name,
+            createdAt: user.createdAt,
+            onboardingProfile: user.onboardingProfile,
+            isAdmin: user.isAdmin,
+            role: nil,
+            lastLoginAt: nil,
+            updatedAt: nil
+        )
+    }
+
+    static func adminDeleteUser(adminToken: String, email: String) async throws {
+        let _: AuthResponse = try await rawRequest(
+            path: "/auth/admin/delete-user",
+            body: AdminRequest(adminToken: adminToken, targetEmail: email)
+        )
+    }
+
     private static func request(path: String, body: AuthRequest) async throws -> RemoteAuthUser {
         let response: AuthResponse = try await rawRequest(path: path, body: body)
         guard let user = response.user else { throw AppError.accountDataMissing }
         return user
     }
 
-    private static func rawRequest<Response: Decodable>(path: String, body: AuthRequest) async throws -> Response {
+    private static func rawRequest<Response: Decodable, Body: Encodable>(path: String, body: Body) async throws -> Response {
         guard let baseURL else { throw AppError.remoteAuthUnavailable }
         let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         var request = URLRequest(url: url)
@@ -108,6 +171,7 @@ enum RemoteAuthService {
             case "invalidCredentials": throw AppError.invalidCredentials
             case "noAccount": throw AppError.noAccount
             case "weakPassword": throw AppError.weakPassword
+            case "adminRequired", "cannotDeleteAdmin": throw AppError.adminRequired
             default: throw AppError.remoteAuthUnavailable
             }
         }

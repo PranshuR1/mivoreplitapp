@@ -27,6 +27,12 @@ struct SettingsView: View {
     @State private var interventionSelectionSummaryText = "Checking selected apps..."
     @State private var monitoringActiveState = false
     @State private var cachedScreenTimeAuthorization = FamilyControlsManager.shared.cachedAuthorizationStatus()
+    @State private var accountabilityEnabled = false
+    @State private var accountabilityShareText = ""
+    @State private var adminUsers: [AdminUser] = []
+    @State private var adminLoading = false
+    @State private var adminMessage: String? = nil
+    @State private var adminDeleteCandidate: AdminUser? = nil
     #if DEBUG
     @State private var extensionLogs: [String] = []
     #endif
@@ -49,10 +55,22 @@ struct SettingsView: View {
                         accountSummaryRow
                     }
 
+                    if appVM.isAdminUser {
+                        settingsSection("Admin") {
+                            adminPanel
+                        }
+                    }
+
                     settingsSection("Preferences") {
                         dailyReminderRow
                         rowSeparator()
                         interventionRows
+                    }
+
+                    settingsSection("Accountability & Rules") {
+                        accountabilityRow
+                        rowSeparator()
+                        appRulesRows
                     }
 
                     settingsSection("Screen Time") {
@@ -110,10 +128,13 @@ struct SettingsView: View {
             refreshSettingsSnapshot()
             applyImpulseProtectionAfterRender()
             refreshProtectedAppRecommendation()
+            if appVM.isAdminUser {
+                Task { await refreshAdminUsers() }
+            }
         }
         #if canImport(FamilyControls)
         .familyActivityPicker(isPresented: $showImpulsePicker, selection: $impulseSelection)
-        .onChange(of: impulseSelection) { _, newValue in
+        .onChange(of: impulseSelection) { newValue in
             if #available(iOS 16.0, *) {
                 FamilyControlsManager.shared.saveFamilyActivitySelection(newValue)
                 if FamilyControlsManager.shared.hasImpulseSelection() {
@@ -135,6 +156,16 @@ struct SettingsView: View {
             Button("Delete all data", role: .destructive) { appVM.resetAllData() }
         } message: {
             Text("This will delete your account, credentials, onboarding, sessions, and local app data permanently.")
+        }
+        .alert(item: $adminDeleteCandidate) { user in
+            Alert(
+                title: Text("Delete user?"),
+                message: Text("Delete \(user.email) from the online Mivo database? This cannot be undone."),
+                primaryButton: .destructive(Text("Delete")) {
+                    Task { await deleteAdminUser(user) }
+                },
+                secondaryButton: .cancel()
+            )
         }
         // Simple status alert for informational messages
         .alert("Family Controls", isPresented: $showFamilyControlsAlert, actions: {
@@ -276,13 +307,128 @@ struct SettingsView: View {
                 Text(appVM.user?.name ?? "Anonymous")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(MivoColors.textPrimary)
-                Text(appVM.user?.email ?? "No email")
-                    .font(.system(size: 13, weight: .medium))
+                HStack(spacing: 6) {
+                    Text(appVM.user?.email ?? "No email")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                        .lineLimit(1)
+                    if appVM.isAdminUser {
+                        Text("ADMIN")
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundColor(MivoColors.heroText)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(MivoColors.accent)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+
+            Spacer()
+        }
+        .padding(15)
+    }
+
+    private var adminPanel: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                settingsIcon("person.3.sequence.fill", color: MivoColors.accent)
+                rowText(
+                    title: "User database",
+                    subtitle: adminLoading ? "Loading online users..." : "\(adminUsers.count) online users loaded"
+                )
+                Spacer()
+                Button {
+                    Task { await refreshAdminUsers() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.accent)
+                        .frame(width: 34, height: 34)
+                        .background(MivoColors.background)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(adminLoading)
+            }
+            .padding(15)
+
+            if let adminMessage {
+                rowSeparator()
+                Text(adminMessage)
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(MivoColors.textSecondary)
+                    .lineSpacing(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(15)
+            }
+
+            if !adminUsers.isEmpty {
+                rowSeparator()
+                VStack(spacing: 0) {
+                    ForEach(adminUsers) { user in
+                        adminUserRow(user)
+                        if user.id != adminUsers.last?.id {
+                            rowSeparator()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func adminUserRow(_ user: AdminUser) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(user.isAdmin == true ? MivoColors.accent : MivoColors.background)
+                    .frame(width: 38, height: 38)
+                Text(String(user.name.prefix(1).uppercased()))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(user.isAdmin == true ? MivoColors.heroText : MivoColors.textPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(user.name)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.textPrimary)
+                        .lineLimit(1)
+                    if user.isAdmin == true {
+                        Text("ADMIN")
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundColor(MivoColors.accent)
+                    }
+                }
+                Text(user.email)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineLimit(1)
+                Text(adminUserMeta(user))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(MivoColors.textMuted)
                     .lineLimit(1)
             }
 
             Spacer()
+
+            if user.isAdmin == true {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.textMuted)
+            } else {
+                Button {
+                    adminDeleteCandidate = user
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.red)
+                        .frame(width: 34, height: 34)
+                        .background(Color.red.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(15)
     }
@@ -308,7 +454,7 @@ struct SettingsView: View {
             Toggle("", isOn: $impulseProtectionEnabled)
                 .tint(MivoColors.accent)
                 .labelsHidden()
-                .onChange(of: impulseProtectionEnabled) { _, enabled in
+                .onChange(of: impulseProtectionEnabled) { enabled in
                     setImpulseProtection(enabled)
                 }
         }
@@ -404,6 +550,96 @@ struct SettingsView: View {
                 }
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(MivoColors.accent)
+            }
+        }
+        .padding(15)
+    }
+
+    private var accountabilityRow: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                settingsIcon("person.2.wave.2.fill", color: MivoColors.accent)
+                rowText(title: "Accountability summary", subtitle: "Create a private weekly share text")
+                Spacer()
+                Toggle("", isOn: $accountabilityEnabled)
+                    .tint(MivoColors.accent)
+                    .labelsHidden()
+                    .onChange(of: accountabilityEnabled) { enabled in
+                        appVM.updateAccountabilityEnabled(enabled)
+                        accountabilityShareText = appVM.accountabilityShareText()
+                    }
+            }
+            .padding(15)
+
+            if accountabilityEnabled {
+                rowSeparator()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(accountabilityShareText.isEmpty ? appVM.accountabilityShareText() : accountabilityShareText)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(MivoColors.textSecondary)
+                        .lineSpacing(3)
+                    Button {
+                        let text = appVM.accountabilityShareText()
+                        UIPasteboard.general.string = text
+                        accountabilityShareText = text
+                        lastActionLog = "Accountability summary copied"
+                        HapticsService.success()
+                    } label: {
+                        Label("Copy share text", systemImage: "doc.on.doc")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(MivoColors.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(15)
+            }
+        }
+    }
+
+    private var appRulesRows: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                settingsIcon("slider.horizontal.3", color: MivoColors.blue)
+                rowText(title: "App-specific rules", subtitle: "Exact app identity may fall back to the protected group")
+                Spacer()
+            }
+            .padding(15)
+
+            ForEach(appVM.appInterventionRules) { rule in
+                rowSeparator()
+                appRuleRow(rule)
+            }
+        }
+    }
+
+    private func appRuleRow(_ rule: AppInterventionRule) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(rule.appName)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Text(rule.mode.rawValue)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(MivoColors.textMuted)
+            }
+            Spacer()
+            Menu {
+                ForEach(AppRuleMode.allCases) { mode in
+                    Button(mode.rawValue) {
+                        var updated = rule
+                        updated.mode = mode
+                        appVM.updateAppInterventionRule(updated)
+                        refreshSettingsSnapshot()
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.accent)
+                    .frame(width: 34, height: 34)
+                    .background(MivoColors.background)
+                    .clipShape(Circle())
             }
         }
         .padding(15)
@@ -547,6 +783,50 @@ struct SettingsView: View {
         }
     }
 
+    private func adminUserMeta(_ user: AdminUser) -> String {
+        if let lastLogin = user.lastLoginAt, let date = ISO8601DateFormatter().date(from: lastLogin) {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            return "Last login \(formatter.string(from: date))"
+        }
+        if let created = ISO8601DateFormatter().date(from: user.createdAt) {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            return "Created \(formatter.string(from: created))"
+        }
+        return "Created \(user.createdAt)"
+    }
+
+    @MainActor
+    private func refreshAdminUsers() async {
+        guard appVM.isAdminUser else { return }
+        adminLoading = true
+        adminMessage = nil
+        do {
+            adminUsers = try await appVM.loadAdminUsers()
+            adminMessage = adminUsers.isEmpty ? "No users found yet." : "Loaded every account from the online Mivo database."
+        } catch {
+            adminUsers = []
+            adminMessage = "Admin tools need the online Mivo backend running and configured in MIVO_AUTH_API_URL. The admin account can sign in, but user management cannot load without that server."
+        }
+        adminLoading = false
+    }
+
+    @MainActor
+    private func deleteAdminUser(_ user: AdminUser) async {
+        adminLoading = true
+        do {
+            try await appVM.deleteAdminUser(email: user.email)
+            adminUsers.removeAll { $0.email == user.email }
+            adminMessage = "Deleted \(user.email)."
+        } catch {
+            adminMessage = error.localizedDescription
+        }
+        adminLoading = false
+    }
+
     private var chevron: some View {
         Image(systemName: "chevron.right")
             .font(.system(size: 13, weight: .bold))
@@ -570,6 +850,8 @@ struct SettingsView: View {
     private func refreshSettingsSnapshot() {
         impulseProtectionEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
         cachedScreenTimeAuthorization = FamilyControlsManager.shared.cachedAuthorizationStatus()
+        accountabilityEnabled = appVM.settings.accountabilityEnabled == true
+        accountabilityShareText = appVM.accountabilityShareText()
         if #available(iOS 16.0, *) {
             #if canImport(FamilyControls)
             impulseSelection = FamilyControlsManager.shared.loadFamilyActivitySelection()
@@ -696,7 +978,7 @@ struct SettingsView: View {
                     Toggle("", isOn: $impulseProtectionEnabled)
                         .tint(MivoColors.accent)
                         .labelsHidden()
-                        .onChange(of: impulseProtectionEnabled) { _, enabled in
+                        .onChange(of: impulseProtectionEnabled) { enabled in
                             setImpulseProtection(enabled)
                         }
                 }

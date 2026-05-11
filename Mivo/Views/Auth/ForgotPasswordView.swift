@@ -22,7 +22,7 @@ struct ForgotPasswordView: View {
                         Text("Reset password")
                             .font(.system(size: 28, weight: .bold))
                             .foregroundColor(MivoColors.textPrimary)
-                        Text("Email verification is off for now. Enter your email and a new password.")
+                        Text("Enter your email and choose a new password.")
                             .font(.system(size: 15))
                             .foregroundColor(MivoColors.textSecondary)
                     }

@@ -51,18 +51,18 @@ struct HomeView: View {
             appVM.refreshScreenTimeData()
             Task { await refreshAdaptivePlan() }
         }
-        .onChange(of: appVM.sessions.count) { _, _ in
+        .onChange(of: appVM.sessions.count) { _ in
             Task { await refreshAdaptivePlan() }
         }
-        .onChange(of: appVM.truthChecks.count) { _, _ in
+        .onChange(of: appVM.truthChecks.count) { _ in
             Task { await refreshAdaptivePlan() }
         }
-        .onChange(of: appVM.deviceActivityMinutesToday) { _, _ in
+        .onChange(of: appVM.deviceActivityMinutesToday) { _ in
             Task { await refreshAdaptivePlan() }
         }
         #if canImport(FamilyControls)
         .familyActivityPicker(isPresented: $showImpulsePicker, selection: $impulseSelection)
-        .onChange(of: impulseSelection) { _, newValue in
+        .onChange(of: impulseSelection) { newValue in
             if #available(iOS 16.0, *) {
                 FamilyControlsManager.shared.saveFamilyActivitySelection(newValue)
                 if FamilyControlsManager.shared.hasImpulseSelection() {
@@ -252,7 +252,7 @@ struct HomeView: View {
             Toggle("", isOn: $protectionEnabled)
                 .tint(MivoColors.accent)
                 .labelsHidden()
-                .onChange(of: protectionEnabled) { _, newValue in
+                .onChange(of: protectionEnabled) { newValue in
                     setImpulseProtection(newValue)
                 }
         }

@@ -23,7 +23,7 @@ struct RegisterView: View {
                             .font(.system(size: 28, weight: .bold))
                             .foregroundColor(MivoColors.textPrimary)
                             .tracking(-0.8)
-                        Text("Create your account. No email verification required.")
+                        Text("Create your account and save your progress across devices.")
                             .font(.system(size: 15))
                             .foregroundColor(MivoColors.textSecondary)
                     }

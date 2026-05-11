@@ -10,11 +10,13 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     private let sessionActiveKey = "mivo.sessionActive"
     private let sessionEndsAtKey = "mivo.sessionEndsAt"
     private let pendingInterventionSetupKey = "mivo.pendingInterventionSetup"
+    private let pendingInterventionSetupAtKey = "mivo.pendingInterventionSetupAt"
     private let countdownUntilKey = "mivo.shieldCountdownUntil"
     private let countdownRemainingKey = "mivo.shieldCountdownRemaining"
     private let countdownDuration: TimeInterval = 5
     private let interventionRelockDelay: TimeInterval = 2
     private let sessionRelockDelay: TimeInterval = 90
+    private let pendingSetupFreshnessWindow: TimeInterval = 10 * 60
     private let store = ManagedSettingsStore()
 
     override func handle(
@@ -118,33 +120,33 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     }
 
     private func unlock(application: ApplicationToken, relockDelay: TimeInterval, requestSetupOnRelock: Bool) {
+        var selection = loadSelection()
+        selection.applicationTokens.remove(application)
         if requestSetupOnRelock {
             requestInterventionSetup()
         }
-        var selection = loadSelection()
-        selection.applicationTokens.remove(application)
         apply(selection: selection)
-        scheduleRelock(after: relockDelay)
+        scheduleRelock(after: relockDelay, requestSetupOnRelock: requestSetupOnRelock)
     }
 
     private func unlock(category: ActivityCategoryToken, relockDelay: TimeInterval, requestSetupOnRelock: Bool) {
+        var selection = loadSelection()
+        selection.categoryTokens.remove(category)
         if requestSetupOnRelock {
             requestInterventionSetup()
         }
-        var selection = loadSelection()
-        selection.categoryTokens.remove(category)
         apply(selection: selection)
-        scheduleRelock(after: relockDelay)
+        scheduleRelock(after: relockDelay, requestSetupOnRelock: requestSetupOnRelock)
     }
 
     private func unlock(webDomain: WebDomainToken, relockDelay: TimeInterval, requestSetupOnRelock: Bool) {
+        var selection = loadSelection()
+        selection.webDomainTokens.remove(webDomain)
         if requestSetupOnRelock {
             requestInterventionSetup()
         }
-        var selection = loadSelection()
-        selection.webDomainTokens.remove(webDomain)
         apply(selection: selection)
-        scheduleRelock(after: relockDelay)
+        scheduleRelock(after: relockDelay, requestSetupOnRelock: requestSetupOnRelock)
     }
 
     private func loadSelection() -> FamilyActivitySelection {
@@ -179,27 +181,58 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         store.shield.webDomains = selection.webDomainTokens.isEmpty ? nil : selection.webDomainTokens
     }
 
-    private func scheduleRelock(after delay: TimeInterval) {
+    private func scheduleRelock(after delay: TimeInterval, requestSetupOnRelock: Bool) {
         let defaults = UserDefaults(suiteName: appGroup)
         defaults?.removeObject(forKey: countdownUntilKey)
         defaults?.removeObject(forKey: countdownRemainingKey)
         defaults?.synchronize()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            self.apply(selection: self.loadSelection())
+        let relockOffsets: [TimeInterval] = [delay, delay + 0.25, delay + 0.75, delay + 1.5, delay + 3.0]
+        for offset in relockOffsets {
+            DispatchQueue.main.asyncAfter(deadline: .now() + offset) {
+                if requestSetupOnRelock {
+                    self.requestInterventionSetup()
+                }
+                self.apply(selection: self.loadSelection())
+            }
         }
     }
 
     private func requestInterventionSetup() {
         let defaults = UserDefaults(suiteName: appGroup)
         defaults?.set(true, forKey: pendingInterventionSetupKey)
+        defaults?.set(Date().timeIntervalSince1970, forKey: pendingInterventionSetupAtKey)
         defaults?.removeObject(forKey: countdownUntilKey)
         defaults?.removeObject(forKey: countdownRemainingKey)
         defaults?.synchronize()
     }
 
     private func isInterventionSetupPending() -> Bool {
-        UserDefaults(suiteName: appGroup)?.bool(forKey: pendingInterventionSetupKey) == true
+        guard let defaults = UserDefaults(suiteName: appGroup),
+              defaults.bool(forKey: pendingInterventionSetupKey) else {
+            return false
+        }
+        
+        let createdAt = defaults.double(forKey: pendingInterventionSetupAtKey)
+        guard createdAt > 0 else {
+            clearStalePendingInterventionSetup(defaults)
+            return false
+        }
+        
+        if Date().timeIntervalSince1970 - createdAt > pendingSetupFreshnessWindow {
+            clearStalePendingInterventionSetup(defaults)
+            return false
+        }
+        
+        return true
+    }
+    
+    private func clearStalePendingInterventionSetup(_ defaults: UserDefaults) {
+        defaults.set(false, forKey: pendingInterventionSetupKey)
+        defaults.removeObject(forKey: pendingInterventionSetupAtKey)
+        defaults.removeObject(forKey: countdownUntilKey)
+        defaults.removeObject(forKey: countdownRemainingKey)
+        defaults.synchronize()
     }
 
     private func isSessionActive() -> Bool {
@@ -212,6 +245,10 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         if endsAt > 0 && endsAt < Date().timeIntervalSince1970 {
             defaults.set(false, forKey: sessionActiveKey)
             defaults.removeObject(forKey: sessionEndsAtKey)
+            defaults.set(true, forKey: pendingInterventionSetupKey)
+            defaults.set(Date().timeIntervalSince1970, forKey: pendingInterventionSetupAtKey)
+            defaults.removeObject(forKey: countdownUntilKey)
+            defaults.removeObject(forKey: countdownRemainingKey)
             defaults.synchronize()
             return false
         }

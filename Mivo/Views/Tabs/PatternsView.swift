@@ -99,7 +99,7 @@ struct PatternsView: View {
         .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
             refreshPatternsData()
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase) { phase in
             if phase == .active {
                 refreshPatternsData()
             }
@@ -225,10 +225,11 @@ struct PatternsView: View {
                 statTile("Today scrolled", value: formatDuration(todayLoggedMinutes), icon: "clock.fill", tint: MivoColors.accent)
                 statTile("Longest scroll", value: longestScrollText, icon: "arrow.up.right", tint: MivoColors.blue)
                 statTile("Avg scroll", value: appVM.sessions.isEmpty ? "0m" : formatDuration(averageSessionMinutes), icon: "chart.bar.xaxis", tint: MivoColors.secondary)
-                statTile("Over limit", value: formatDuration(totalOverPlanMinutes), icon: "timer", tint: MivoColors.timerRed)
+                statTile("Emergency", value: "\(emergencyUnlockCount)", icon: "exclamationmark.triangle.fill", tint: MivoColors.timerRed)
             }
 
             scrollBehaviorCard
+            triggerMapCard
             rhythmCard
             behaviorMixCard
             aiInsightCard
@@ -304,6 +305,34 @@ struct PatternsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
+    private var triggerMapCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(icon: "map.fill", title: "Trigger Map", subtitle: triggerMapSummary)
+
+            VStack(spacing: 8) {
+                insightMetricRow("Strongest urge", value: topUrgeText)
+                insightMetricRow("Hardest time", value: highestDurationScrollWindow)
+                insightMetricRow("Most regretted", value: mostRegrettedTriggerText)
+                insightMetricRow("Emergency unlocks", value: "\(emergencyUnlockCount)")
+                insightMetricRow("Not worth it", value: notWorthItRateText)
+            }
+
+            if let trigger = triggerInsightText {
+                Text(trigger)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineSpacing(3)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(MivoColors.white.opacity(0.46))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
+        .padding(14)
+        .background(MivoColors.heroText.opacity(0.82))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
     private func rhythmRow(_ item: DayPartStat) -> some View {
         VStack(spacing: 6) {
             HStack {
@@ -335,6 +364,7 @@ struct PatternsView: View {
 
             VStack(spacing: 8) {
                 insightMetricRow("Most common reason", value: mostCommonIntention)
+                insightMetricRow("Most common urge", value: topUrgeText)
                 insightMetricRow("Longest trigger", value: longestIntention)
                 insightMetricRow("Extended sessions", value: "\(extendedRate)%")
                 insightMetricRow("Felt intentional", value: reflectionWinRateText)
@@ -582,10 +612,15 @@ struct PatternsView: View {
                         selectedDayTile("Total", value: formatDuration(selectedDayTotalMinutes), icon: "clock")
                         selectedDayTile("Sessions", value: "\(selectedSessions.count)", icon: "number")
                         selectedDayTile("Longest", value: formatDuration(selectedDayLongestMinutes), icon: "arrow.up.right")
-                        selectedDayTile("Over plan", value: "\(selectedDayOverrunCount)", icon: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
+                        selectedDayTile("Emergency", value: "\(selectedDayEmergencyCount)", icon: "exclamationmark.triangle")
                     }
 
                     insightMetricRow("Primary reason", value: selectedDayTopIntention)
+                        .padding(14)
+                        .background(MivoColors.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                    insightMetricRow("Primary urge", value: selectedDayTopUrge)
                         .padding(14)
                         .background(MivoColors.card)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -599,6 +634,11 @@ struct PatternsView: View {
                                 Text(session.intention.rawValue)
                                     .font(.system(size: 12))
                                     .foregroundColor(MivoColors.textSecondary)
+                                if let urge = session.urgeReason {
+                                    Text("Urge: \(urge.rawValue)")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(MivoColors.textMuted)
+                                }
                             }
                             Spacer()
                             Text(formatDuration(session.actualDuration))
@@ -694,6 +734,16 @@ struct PatternsView: View {
         return top.key.rawValue
     }
 
+    var selectedDayTopUrge: String {
+        let grouped = Dictionary(grouping: selectedSessions.compactMap(\.urgeReason), by: { $0 })
+        guard let top = grouped.max(by: { $0.value.count < $1.value.count }) else { return "Not logged yet" }
+        return top.key.rawValue
+    }
+
+    var selectedDayEmergencyCount: Int {
+        selectedSessions.filter { $0.emergencyUnlockUsed == true }.count
+    }
+
     var totalLoggedMinutes: Int {
         appVM.sessions.reduce(0) { $0 + $1.actualDuration }
     }
@@ -725,6 +775,10 @@ struct PatternsView: View {
         appVM.sessions.reduce(0) { total, session in
             total + max(0, session.actualDuration - session.plannedDuration)
         }
+    }
+
+    var emergencyUnlockCount: Int {
+        appVM.sessions.filter { $0.emergencyUnlockUsed == true }.count
     }
 
     var averageOverrunText: String {
@@ -835,6 +889,42 @@ struct PatternsView: View {
 
     var behaviorSummary: String {
         appVM.sessions.isEmpty ? "Waiting for first session" : "\(mostCommonIntention.lowercased()) shows up most"
+    }
+
+    var topUrgeText: String {
+        let grouped = Dictionary(grouping: appVM.sessions.compactMap(\.urgeReason), by: { $0 })
+        guard let top = grouped.max(by: { $0.value.count < $1.value.count }) else { return "Not logged yet" }
+        return top.key.rawValue
+    }
+
+    var notWorthItRateText: String {
+        let outcomes = appVM.sessions.compactMap(\.outcomeScore)
+        guard !outcomes.isEmpty else { return "No outcomes yet" }
+        let count = outcomes.filter { $0 == .notWorthIt }.count
+        return "\(Int((Double(count) / Double(outcomes.count) * 100).rounded()))%"
+    }
+
+    var mostRegrettedTriggerText: String {
+        let regretted = appVM.sessions.filter { $0.outcomeScore == .notWorthIt }.compactMap(\.urgeReason)
+        let grouped = Dictionary(grouping: regretted, by: { $0 })
+        guard let top = grouped.max(by: { $0.value.count < $1.value.count }) else { return "Not enough data" }
+        return top.key.rawValue
+    }
+
+    var triggerMapSummary: String {
+        if appVM.sessions.isEmpty { return "Waiting for sessions" }
+        return "\(topUrgeText) is the strongest recorded urge"
+    }
+
+    var triggerInsightText: String? {
+        guard !appVM.sessions.isEmpty else { return nil }
+        if emergencyUnlockCount > 0 {
+            return "Emergency unlocks are your highest-friction moments. Mivo will treat these as signals when deciding whether more time should be allowed."
+        }
+        if topUrgeText != "Not logged yet" {
+            return "\(topUrgeText) is showing up most. Before that urge, pick one tiny replacement action before opening the selected app."
+        }
+        return "Complete one new intervention session to start mapping urges to timing and outcomes."
     }
 
     private var aiInsightSubtitle: String {

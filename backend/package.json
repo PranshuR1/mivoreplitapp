@@ -1,10 +1,10 @@
 {
-  "name": "mivo-email-server",
+  "name": "mivo-auth-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node email-server.mjs"
+    "start": "node auth-server.mjs"
   },
   "engines": {
     "node": ">=20"
