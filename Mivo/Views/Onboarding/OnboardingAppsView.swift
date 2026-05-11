@@ -1,5 +1,10 @@
 import SwiftUI
 import UIKit
+import UserNotifications
+
+#if canImport(FamilyControls)
+import FamilyControls
+#endif
 
 private let availableApps = [
     "Instagram", "TikTok", "Twitter / X", "YouTube",
@@ -12,6 +17,18 @@ struct OnboardingAppsView: View {
     @State private var selected: Set<String> = []
     @State private var loading = false
     @State private var appear = false
+    @State private var notificationsEnabled = false
+    @State private var notificationChoiceMade = false
+    @State private var showNotificationChoice = false
+    @State private var protectedAppsEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
+    @State private var setupMessage: String? = nil
+    @State private var goToAge = false
+    @State private var aiRecommendation: ProtectedAppRecommendation?
+    @State private var aiRecommendationLoading = false
+    #if canImport(FamilyControls)
+    @State private var impulseSelection = FamilyActivitySelection()
+    @State private var showImpulsePicker = false
+    #endif
 
     var body: some View {
         ZStack {
@@ -31,6 +48,9 @@ struct OnboardingAppsView: View {
 
                         selectedSummary
                             .onboardingEntrance(appear, delay: 0.08)
+
+                        setupPromptCard
+                            .onboardingEntrance(appear, delay: 0.12)
 
                         FlowLayout(spacing: 10) {
                             ForEach(Array(availableApps.enumerated()), id: \.element) { index, app in
@@ -77,34 +97,55 @@ struct OnboardingAppsView: View {
                 }
 
                 OnboardingBottomBar {
-                    NavigationLink {
-                        AgeOnboardingView_Internal()
+                    Button {
+                        continueAfterRequiredSetup()
                     } label: {
                         HStack(spacing: 8) {
-                            Text("I'm ready")
+                            Text(setupComplete ? "I'm ready" : requiredSetupButtonTitle)
                                 .font(.system(size: 16, weight: .semibold))
-                            Image(systemName: "checkmark")
+                            Image(systemName: setupComplete ? "checkmark" : "lock.fill")
                                 .font(.system(size: 16, weight: .medium))
                         }
                         .foregroundColor(MivoColors.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 17)
-                        .background(MivoColors.textPrimary)
+                        .background(setupComplete ? MivoColors.textPrimary : MivoColors.textMuted.opacity(0.52))
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
+                        .shadow(color: setupComplete ? MivoColors.textPrimary.opacity(0.18) : .clear, radius: 16, y: 8)
                     }
-                    .simultaneousGesture(TapGesture().onEnded {
-                        loading = true
-                        var profile = OnboardingProfile()
-                        profile.preferredApps = Array(selected)
-                        appVM.saveOnboardingProfile(profile)
-                        HapticsService.impact(style: .light)
-                    })
                     .disabled(loading)
                 }
             }
         }
         .navigationBarBackButtonHidden()
+        .navigationDestination(isPresented: $goToAge) {
+            AgeOnboardingView_Internal()
+        }
+        .confirmationDialog("Notifications", isPresented: $showNotificationChoice, titleVisibility: .visible) {
+            Button("Allow notifications") {
+                requestNotifications()
+            }
+            Button("Not now") {
+                declineNotifications()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Mivo can send reminders and time truth check-ins. You can also continue without them.")
+        }
+        #if canImport(FamilyControls)
+        .familyActivityPicker(isPresented: $showImpulsePicker, selection: $impulseSelection)
+        .onChange(of: impulseSelection) { newValue in
+            if #available(iOS 16.0, *) {
+                FamilyControlsManager.shared.saveFamilyActivitySelection(newValue)
+                if FamilyControlsManager.shared.hasImpulseSelection() {
+                    protectedAppsEnabled = true
+                    FamilyControlsManager.shared.setImpulseProtectionEnabled(true)
+                    setupMessage = "Protected apps are on. Mivo will pause before those apps open."
+                    HapticsService.success()
+                }
+            }
+        }
+        #endif
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button { dismiss() } label: {
@@ -112,19 +153,29 @@ struct OnboardingAppsView: View {
                         .foregroundColor(MivoColors.textSecondary)
                 }
             }
-            // Add a Skip action to let users finish onboarding quickly
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Skip") {
-                    // Save whatever was selected (if anything) and complete
-                    var profile = OnboardingProfile()
-                    profile.preferredApps = Array(selected)
-                    appVM.saveOnboardingProfile(profile)
-                    appVM.completeOnboarding()
-                }
-                .foregroundColor(MivoColors.textSecondary)
-            }
         }
-        .onAppear { appear = true }
+        .onAppear {
+            appear = true
+            refreshSetupState()
+            refreshAIRecommendation()
+        }
+        .onChange(of: selected) { _ in
+            refreshAIRecommendation()
+        }
+    }
+
+    private var setupComplete: Bool {
+        protectedAppsEnabled && notificationChoiceMade
+    }
+
+    private var requiredSetupButtonTitle: String {
+        if !protectedAppsEnabled && !notificationChoiceMade {
+            return "Choose protection and notifications"
+        }
+        if !protectedAppsEnabled {
+            return "Choose protected apps"
+        }
+        return "Choose notification preference"
     }
 
     private var selectedSummary: some View {
@@ -149,6 +200,298 @@ struct OnboardingAppsView: View {
         .background(MivoColors.white.opacity(0.62))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private var notificationPreferenceTitle: String {
+        if notificationsEnabled {
+            return "Notifications on"
+        }
+        if notificationChoiceMade {
+            return "Notifications off"
+        }
+        return "Choose notifications"
+    }
+
+    private var notificationPreferenceSubtitle: String {
+        if notificationsEnabled {
+            return "Mivo can send helpful reminders."
+        }
+        if notificationChoiceMade {
+            return "You can turn reminders on later in Settings."
+        }
+        return "Allow reminders, or choose Not now and continue."
+    }
+
+    private var notificationPreferenceActionTitle: String {
+        if notificationsEnabled {
+            return "On"
+        }
+        if notificationChoiceMade {
+            return "Change"
+        }
+        return "Choose"
+    }
+
+    private var setupPromptCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "checklist.checked")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(MivoColors.accent)
+                    .frame(width: 40, height: 40)
+                    .background(MivoColors.accent.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Turn on Mivo’s protection")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundColor(MivoColors.textPrimary)
+                    Text("Choose the apps that should pause, then decide whether Mivo can send reminders at the right moments.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                        .lineSpacing(3)
+                }
+            }
+
+            aiRecommendationCard
+
+            VStack(spacing: 10) {
+                setupActionRow(
+                    icon: protectedAppsEnabled ? "shield.checkered" : "shield",
+                    title: protectedAppsEnabled ? "Apps protected" : "Choose apps to protect",
+                    subtitle: protectedAppsEnabled ? "Your selected apps will show the Mivo pause." : "Open Apple’s picker and select distracting apps.",
+                    isComplete: protectedAppsEnabled,
+                    actionTitle: protectedAppsEnabled ? "Change" : "Choose",
+                    action: chooseProtectedApps
+                )
+
+                setupActionRow(
+                    icon: notificationChoiceMade ? (notificationsEnabled ? "bell.badge.fill" : "bell.slash") : "bell",
+                    title: notificationPreferenceTitle,
+                    subtitle: notificationPreferenceSubtitle,
+                    isComplete: notificationChoiceMade,
+                    actionTitle: notificationPreferenceActionTitle,
+                    action: { showNotificationChoice = true }
+                )
+            }
+
+            if let setupMessage {
+                Text(setupMessage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .padding(.top, 2)
+            }
+        }
+        .padding(18)
+        .background(MivoColors.white.opacity(0.66))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.04), radius: 16, y: 8)
+    }
+
+    private var aiRecommendationCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.accent)
+                Text(aiRecommendationLoading ? "Mivo is thinking..." : "Mivo recommends protecting")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Spacer()
+            }
+
+            if let recommendation = aiRecommendation {
+                FlowLayout(spacing: 7) {
+                    ForEach(recommendation.apps, id: \.self) { app in
+                        Label(app, systemImage: appIcon(for: app))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(MivoColors.accent)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(MivoColors.accent.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Text(recommendation.rationale)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(MivoColors.textMuted)
+                    .lineSpacing(2)
+            } else {
+                Text("Pick a few familiar apps below and Mivo will suggest what to protect first.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(MivoColors.textMuted)
+            }
+        }
+        .padding(12)
+        .background(MivoColors.background.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func setupActionRow(
+        icon: String,
+        title: String,
+        subtitle: String,
+        isComplete: Bool,
+        actionTitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(isComplete ? MivoColors.secondary : MivoColors.accent)
+                    .frame(width: 34, height: 34)
+                    .background((isComplete ? MivoColors.secondary : MivoColors.accent).opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.textPrimary)
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(MivoColors.textMuted)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Text(actionTitle)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(isComplete ? MivoColors.secondary : MivoColors.white)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 8)
+                    .background(isComplete ? MivoColors.secondary.opacity(0.12) : MivoColors.accent)
+                    .clipShape(Capsule())
+            }
+            .padding(12)
+            .background(MivoColors.background.opacity(0.62))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func refreshSetupState() {
+        protectedAppsEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
+        #if canImport(FamilyControls)
+        if #available(iOS 16.0, *) {
+            impulseSelection = FamilyControlsManager.shared.loadFamilyActivitySelection()
+            protectedAppsEnabled = protectedAppsEnabled && FamilyControlsManager.shared.hasImpulseSelection()
+        }
+        #endif
+
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                let isEnabled = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral
+                let hasSystemChoice = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral || settings.authorizationStatus == .denied
+                notificationsEnabled = isEnabled
+                notificationChoiceMade = appVM.settings.notificationsChoiceMade ?? hasSystemChoice
+                var updated = appVM.settings
+                updated.notificationsEnabled = isEnabled
+                updated.notificationsChoiceMade = notificationChoiceMade
+                appVM.settings = updated
+                appVM.persistCurrentSettings()
+            }
+        }
+    }
+
+    private func continueAfterRequiredSetup() {
+        refreshSetupState()
+        guard setupComplete else {
+            if !protectedAppsEnabled && !notificationChoiceMade {
+                setupMessage = "Choose protected apps and choose a notification preference to continue."
+            } else if !protectedAppsEnabled {
+                setupMessage = "Choose at least one app to protect before continuing."
+            } else {
+                setupMessage = "Choose whether to allow notifications before continuing."
+            }
+            HapticsService.warning()
+            return
+        }
+
+        loading = true
+        var profile = OnboardingProfile()
+        profile.preferredApps = Array(selected)
+        appVM.saveOnboardingProfile(profile)
+        HapticsService.impact(style: .light)
+        goToAge = true
+        loading = false
+    }
+
+    private func chooseProtectedApps() {
+        HapticsService.selection()
+        #if canImport(FamilyControls)
+        guard #available(iOS 16.0, *) else {
+            setupMessage = "App protection needs iOS Screen Time support."
+            return
+        }
+
+        FamilyControlsManager.shared.requestAuthorization { granted in
+            DispatchQueue.main.async {
+                FamilyControlsManager.shared.saveAuthorizationFlag(granted)
+                if granted {
+                    showImpulsePicker = true
+                } else {
+                    setupMessage = "Screen Time permission is needed before choosing protected apps."
+                    HapticsService.warning()
+                }
+            }
+        }
+        #else
+        setupMessage = "App protection is unavailable in this build."
+        #endif
+    }
+
+    private func refreshAIRecommendation() {
+        aiRecommendationLoading = true
+        let selectedApps = Array(selected)
+        Task {
+            var profile = appVM.onboardingProfile
+            if !selectedApps.isEmpty {
+                profile.preferredApps = selectedApps
+            }
+            let recommendation = await AIService.recommendProtectedApps(
+                profile: profile,
+                selectedApps: selectedApps,
+                recentSessionSummary: AIDataStore.recentSummary(limit: 4)
+            )
+            await MainActor.run {
+                aiRecommendation = recommendation
+                aiRecommendationLoading = false
+            }
+        }
+    }
+
+    private func requestNotifications() {
+        HapticsService.selection()
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+            DispatchQueue.main.async {
+                notificationsEnabled = granted
+                notificationChoiceMade = true
+                var updated = appVM.settings
+                updated.notificationsEnabled = granted
+                updated.notificationsChoiceMade = true
+                appVM.settings = updated
+                appVM.persistCurrentSettings()
+                setupMessage = granted ? "Notifications are on." : "Notifications were not enabled. You can turn them on later in Settings."
+                granted ? HapticsService.success() : HapticsService.warning()
+            }
+        }
+    }
+
+    private func declineNotifications() {
+        HapticsService.selection()
+        notificationsEnabled = false
+        notificationChoiceMade = true
+        var updated = appVM.settings
+        updated.notificationsEnabled = false
+        updated.notificationsChoiceMade = true
+        appVM.settings = updated
+        appVM.persistCurrentSettings()
+        setupMessage = "Notifications are off. You can turn them on later in Settings."
+        HapticsService.success()
     }
 
     private func appIcon(for app: String) -> String {
@@ -709,7 +1052,7 @@ private struct ResultOnboardingView_Internal: View {
                     VStack(spacing: 24) {
                         OnboardingStepHeader(
                             step: 5,
-                            total: 5,
+                            total: 6,
                             eyebrow: "Recovery",
                             title: "We can recover this time",
                             subtitle: "Small pauses compound. Mivo turns tiny choices into visible time we can bring back."
@@ -730,16 +1073,25 @@ private struct ResultOnboardingView_Internal: View {
                 }
 
                 OnboardingBottomBar {
-                    OnboardingPrimaryButton("Finish setup") {
-                        Image(systemName: "checkmark")
-                    } action: {
-                        dismiss()
-                        Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 50_000_000)
-                            appVM.completeOnboarding()
-                            HapticsService.success()
+                    NavigationLink {
+                        WidgetOnboardingView_Internal()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text("Continue")
+                                .font(.system(size: 16, weight: .semibold))
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 15, weight: .semibold))
                         }
+                        .foregroundColor(MivoColors.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 17)
+                        .background(MivoColors.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
                     }
+                    .simultaneousGesture(TapGesture().onEnded {
+                        HapticsService.impact(style: .light)
+                    })
                 }
             }
             .onAppear {
@@ -834,13 +1186,9 @@ private struct ResultOnboardingView_Internal: View {
     }
 
     func computeEstimates() {
-        // Use AI service to estimate saved minutes, with fallback to offline heuristic
         let profile = appVM.onboardingProfile
-        Task {
-            // Get AI estimate (may be remote or offline heuristic inside AIService)
-            let aiSaved = await AIService.estimateSavedMinutes(profile: profile)
 
-            // Local heuristic so recovered minutes are always tied to user input
+        func heuristicSavedMinutes() -> Int {
             let scroll = Double(profile.scrollEstimateMinutes ?? 60)
             var multiplier: Double = 0.10
             if !profile.intentions.isEmpty {
@@ -860,47 +1208,179 @@ private struct ResultOnboardingView_Internal: View {
                 if primary == .killTime || primary == .bored { heuristicSaved += Int(Double(max(heuristicSaved, 1)) * 0.12) }
             }
             if heuristicSaved < 3 { heuristicSaved = 3 }
+            return min(heuristicSaved, 240)
+        }
 
-            // Use the stronger of the AI or heuristic so the recovered time reflects onboarding answers
-            var saved = max(aiSaved, heuristicSaved)
-            if saved < 3 { saved = 3 }
-            if saved > 240 { saved = 240 }
-
-            // Compute years recovered using remaining life based on providedAge (or profile)
+        func yearsRecovered(for saved: Int) -> Double {
             let life = 80
             let age = providedAge ?? profile.age ?? 30
             var remaining = life - age
             if remaining <= 0 { remaining = life }
-            let yearsRecovered = (Double(saved) / (60.0 * 24.0)) * Double(remaining)
+            return (Double(saved) / (60.0 * 24.0)) * Double(remaining)
+        }
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                // animate setting the raw states used by other UI
-                withAnimation(.easeOut(duration: 1.6)) { estimateMinutes = saved; estimateYears = yearsRecovered }
-                // animate a small numeric count for the years in the wheel center
-                displayYears = 0
-                let steps = 40
-                let duration: Double = 1.4
-                for i in 0...steps {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * (duration / Double(steps))) {
-                        let pct = Double(i) / Double(steps)
-                        displayYears = pct * yearsRecovered
-                    }
+        func publishEstimate(saved: Int, shouldSaveSummary: Bool) {
+            let yearsRecovered = yearsRecovered(for: saved)
+            withAnimation(.easeOut(duration: 0.85)) {
+                estimateMinutes = saved
+                estimateYears = yearsRecovered
+            }
+            displayYears = 0
+            let steps = 22
+            let duration: Double = 0.72
+            for i in 0...steps {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * (duration / Double(steps))) {
+                    let pct = Double(i) / Double(steps)
+                    displayYears = pct * yearsRecovered
                 }
-                // stronger haptics
-                for i in 0..<6 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.12 + Double(i) * 0.06) { HapticsService.impact(style: .heavy) } }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { HapticsService.success() }
+            }
+            HapticsService.impact(style: .medium)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { HapticsService.success() }
 
-                // save AI summary (include the computed numeric estimates)
-                var parts: [String] = []
-                if !profile.intentions.isEmpty { let names = profile.intentions.map { $0.rawValue }; parts.append("Intentions: \(names.joined(separator: ", "))") }
-                if let s = profile.scrollEstimateMinutes { parts.append("RawEstimate: \(s) min/day") }
-                parts.append("PredictedSavedMinPerDay: \(saved)")
-                parts.append(String(format: "PredictedRecoveredYears: %.2f", yearsRecovered))
-                if let a = profile.age { parts.append("Age: \(a)") }
-                let summary = parts.joined(separator: " | ")
-                appVM.appendAISummary(summary)
+            guard shouldSaveSummary else { return }
+            var parts: [String] = []
+            if !profile.intentions.isEmpty {
+                let names = profile.intentions.map { $0.rawValue }
+                parts.append("Intentions: \(names.joined(separator: ", "))")
+            }
+            if let s = profile.scrollEstimateMinutes { parts.append("RawEstimate: \(s) min/day") }
+            parts.append("PredictedSavedMinPerDay: \(saved)")
+            parts.append(String(format: "PredictedRecoveredYears: %.2f", yearsRecovered))
+            if let a = profile.age { parts.append("Age: \(a)") }
+            appVM.appendAISummary(parts.joined(separator: " | "))
+        }
+
+        let heuristicSaved = heuristicSavedMinutes()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            publishEstimate(saved: heuristicSaved, shouldSaveSummary: false)
+        }
+
+        Task {
+            let aiSaved = await AIService.estimateSavedMinutes(profile: profile)
+            var saved = max(aiSaved, heuristicSaved)
+            if saved < 3 { saved = 3 }
+            if saved > 240 { saved = 240 }
+            await MainActor.run {
+                if saved != heuristicSaved {
+                    publishEstimate(saved: saved, shouldSaveSummary: true)
+                } else {
+                    publishEstimate(saved: saved, shouldSaveSummary: true)
+                }
             }
         }
+    }
+}
+
+private struct WidgetOnboardingView_Internal: View {
+    @EnvironmentObject var appVM: AppViewModel
+    @Environment(\.dismiss) var dismiss
+    @State private var appear = false
+    
+    var body: some View {
+        ZStack {
+            OnboardingBackdrop()
+            
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        OnboardingStepHeader(
+                            step: 6,
+                            total: 6,
+                            eyebrow: "Widget",
+                            title: "Keep Mivo visible",
+                            subtitle: "Add the Mivo widget so your scroll time and next window stay visible before you drift."
+                        )
+                        .onboardingEntrance(appear)
+                        
+                        widgetPreview
+                            .onboardingEntrance(appear, delay: 0.08)
+                        
+                        VStack(spacing: 12) {
+                            widgetInstruction(number: "1", text: "Long-press your Home Screen.")
+                            widgetInstruction(number: "2", text: "Tap +, search Mivo, then choose the small or medium widget.")
+                            widgetInstruction(number: "3", text: "Place it somewhere you will see before opening scroll apps.")
+                        }
+                        .onboardingEntrance(appear, delay: 0.16)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 124)
+                }
+                
+                OnboardingBottomBar {
+                    OnboardingPrimaryButton("I added it") {
+                        Image(systemName: "checkmark")
+                    } action: {
+                        dismiss()
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 50_000_000)
+                            appVM.completeOnboarding()
+                            HapticsService.success()
+                        }
+                    }
+                }
+            }
+            .onAppear { appear = true }
+        }
+        .navigationBarBackButtonHidden(true)
+    }
+    
+    private var widgetPreview: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 9) {
+                Text("Mivo")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Text("42m")
+                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .foregroundColor(MivoColors.textPrimary)
+                Text("scrolled today")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(MivoColors.textSecondary)
+                Spacer()
+                Text("Learning mode")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+            }
+            .padding(18)
+            .frame(width: 150, height: 150)
+            .background(Color(hex: "#F2E8DC"))
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .shadow(color: Color.black.opacity(0.08), radius: 18, y: 10)
+            
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Today’s scroll time", systemImage: "iphone")
+                Label("Next scroll window", systemImage: "clock")
+                Label("Current plan state", systemImage: "target")
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(MivoColors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    
+    private func widgetInstruction(number: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Text(number)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(MivoColors.white)
+                .frame(width: 28, height: 28)
+                .background(MivoColors.textPrimary)
+                .clipShape(Circle())
+            
+            Text(text)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(MivoColors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MivoColors.white.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(MivoColors.white.opacity(0.7), lineWidth: 1)
+        )
     }
 }
 

@@ -7,7 +7,7 @@ The onboarding experience has been completely redesigned to go deeper into under
 
 ### Step 1: Welcome (Existing - Updated)
 **File:** `OnboardingWelcomeView.swift`
-- **What changed:** Now flows into the new PhoneRelationshipView instead of WhyView
+- **What changed:** Now flows i nto the new PhoneRelationshipView instead of WhyView
 - **Purpose:** Set the tone and introduce Mivo's philosophy
 
 ---

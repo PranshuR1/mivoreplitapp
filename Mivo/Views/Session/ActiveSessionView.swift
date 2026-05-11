@@ -1,21 +1,35 @@
 import SwiftUI
+import UserNotifications
 
 struct ActiveSessionView: View {
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.dismiss) var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     let intention: Intention
     let plannedMinutes: Int
+    let urgeReason: UrgeReason?
+    let urgeNote: String?
 
     @State private var elapsed = 0
     @State private var extraSeconds = 0
     @State private var extensionUsed = false
     @State private var startTime = Date()
+    @State private var didStart = false
     @State private var showReflection = false
     @State private var showQuitAlert = false
     @State private var sessionTimer: Timer? = nil
     @State private var scale: CGFloat = 1.0
     @State private var sessionDone = false
+    @State private var didPulseAtLimit = false
+    @State private var interruptionSaved = false
+    @State private var feedbackPresentedForTimeLimit = false
+    @State private var sessionEndedGateActive = false
+    @State private var extensionDecisionAlert: SessionExtensionDecision? = nil
+    @State private var showEmergencyUnlock = false
+    @State private var emergencyUnlockReason = ""
+    @State private var emergencyUnlockUsed = false
+    @State private var emergencyUnlockSavedReason: String? = nil
 
     var totalPlanned: Int { plannedMinutes * 60 + extraSeconds }
     var remaining: Int { totalPlanned - elapsed }
@@ -27,6 +41,7 @@ struct ActiveSessionView: View {
     }
 
     var nudgeMessage: String {
+        if sessionEndedGateActive { return "Time is up. Mivo has locked the selected app again until you add approved time or save this session." }
         if isOvertime { return "You've gone past your limit. Finish up when ready." }
         if progress > 0.9 { return "Almost done. Wrap up soon." }
         if progress > 0.7 { return "\(Int(ceil(Double(remaining) / 60))) minutes left. Start winding down." }
@@ -39,11 +54,17 @@ struct ActiveSessionView: View {
             VStack(spacing: 0) {
                 // Top bar
                 HStack {
-                    Button { showQuitAlert = true } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18))
-                            .foregroundColor(MivoColors.textSecondary)
-                            .frame(width: 44, height: 44)
+                    Group {
+                        if sessionEndedGateActive {
+                            Color.clear.frame(width: 44, height: 44)
+                        } else {
+                            Button { showQuitAlert = true } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(MivoColors.textSecondary)
+                                    .frame(width: 44, height: 44)
+                            }
+                        }
                     }
                     Spacer()
                     Text(intention.rawValue)
@@ -112,43 +133,20 @@ struct ActiveSessionView: View {
 
                 // Actions
                 VStack(spacing: 12) {
-                    if !extensionUsed && isOvertime {
-                        Button { extend() } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 16))
-                                Text("Add 5 more minutes (once only)")
-                                    .font(.system(size: 15, weight: .medium))
-                            }
-                            .foregroundColor(MivoColors.accent)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(MivoColors.accentMuted)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(MivoColors.accentLight, lineWidth: 1))
+                    if sessionEndedGateActive {
+                        sessionEndedActions
+                    } else {
+                        Button { endSession() } label: {
+                            Text("Done scrolling")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(MivoColors.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(MivoColors.accent)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
+                        .buttonStyle(.plain)
                     }
-
-                    NavigationLink {
-                        ReflectionView(
-                            intention: intention,
-                            plannedDuration: plannedMinutes,
-                            actualDuration: max(1, Int((Double(elapsed) / 60).rounded())),
-                            startTime: ISO8601DateFormatter().string(from: startTime),
-                            endTime: ISO8601DateFormatter().string(from: Date()),
-                            extendedOnce: extensionUsed,
-                            onSaved: { dismiss() }
-                        )
-                    } label: {
-                        Text("Done scrolling")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(MivoColors.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(MivoColors.accent)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                    }
-                    .simultaneousGesture(TapGesture().onEnded { endSession() })
                 }
             }
             .padding(.horizontal, 24)
@@ -157,34 +155,369 @@ struct ActiveSessionView: View {
         }
         .navigationBarHidden(true)
         .onAppear { startTimer() }
-        .onDisappear { sessionTimer?.invalidate() }
+        .onDisappear {
+            sessionTimer?.invalidate()
+            if !showReflection {
+                saveRunningSessionSnapshot()
+            }
+            if showReflection || sessionDone {
+                cancelSessionNotifications()
+            }
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                updateElapsed()
+            } else if phase == .background || phase == .inactive {
+                updateElapsed()
+                saveRunningSessionSnapshot()
+            }
+        }
         .alert("End session?", isPresented: $showQuitAlert) {
             Button("Keep going", role: .cancel) {}
             Button("End now") { endSession() }
         } message: {
             Text("Your time will be recorded as-is.")
         }
+        .alert(item: $extensionDecisionAlert) { decision in
+            Alert(
+                title: Text(decision.title),
+                message: Text(decision.message),
+                dismissButton: .default(Text("Got it"))
+            )
+        }
+        .sheet(isPresented: $showEmergencyUnlock) {
+            emergencyUnlockSheet
+        }
+        .fullScreenCover(isPresented: $showReflection) {
+            ReflectionView(
+                intention: intention,
+                plannedDuration: plannedMinutes,
+                actualDuration: max(1, Int((Double(elapsed) / 60).rounded())),
+                startTime: ISO8601DateFormatter().string(from: startTime),
+                endTime: ISO8601DateFormatter().string(from: Date()),
+                extendedOnce: extensionUsed,
+                urgeReason: urgeReason,
+                urgeNote: urgeNote,
+                emergencyUnlockUsed: emergencyUnlockUsed,
+                emergencyUnlockReason: emergencyUnlockSavedReason,
+                onSaved: {
+                    cancelSessionNotifications()
+                    dismiss()
+                }
+            )
+            .interactiveDismissDisabled()
+        }
     }
 
-    func startTimer() {
-        startTime = Date()
-        sessionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            elapsed += 1
-            if elapsed == totalPlanned {
-                scale = 1.06
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { scale = 1.0 }
+    var sessionEndedActions: some View {
+        VStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 13, weight: .bold))
+                    Text("Session locked on Mivo")
+                        .font(.system(size: 14, weight: .bold))
+                }
+                .foregroundColor(MivoColors.accent)
+
+                Text("The selected app is closed again. Choose more time only if Mivo approves it, or save the session to finish.")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineSpacing(3)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(MivoColors.card)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(MivoColors.border, lineWidth: 1))
+
+            Button { requestMoreTime() } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 16))
+                    Text("Add more time?")
+                        .font(.system(size: 15, weight: .bold))
+                }
+                .foregroundColor(MivoColors.accent)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(MivoColors.accentMuted)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(MivoColors.accentLight, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+
+            Button { showEmergencyUnlock = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 15))
+                    Text("Emergency unlock")
+                        .font(.system(size: 15, weight: .bold))
+                }
+                .foregroundColor(MivoColors.timerOrange)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(MivoColors.timerOrange.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+
+            Button { finishForReflection() } label: {
+                Text("Save and finish session")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(MivoColors.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(MivoColors.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var emergencyUnlockSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Emergency unlock")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+
+                Text("Mivo will give you 5 more minutes, but only after you write why this needs to happen now.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineSpacing(4)
+
+                TextEditor(text: $emergencyUnlockReason)
+                    .font(.system(size: 15))
+                    .foregroundColor(MivoColors.textPrimary)
+                    .scrollContentBackground(.hidden)
+                    .padding(10)
+                    .frame(minHeight: 120)
+                    .background(MivoColors.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(MivoColors.border, lineWidth: 1))
+
+                Button {
+                    applyEmergencyUnlock()
+                } label: {
+                    Text("Unlock 5 minutes")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(MivoColors.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(canUseEmergencyUnlock ? MivoColors.accent : MivoColors.accentLight)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .disabled(!canUseEmergencyUnlock)
+
+                Spacer()
+            }
+            .padding(22)
+            .background(MivoColors.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showEmergencyUnlock = false }
+                }
             }
         }
     }
 
-    func endSession() {
+    private var canUseEmergencyUnlock: Bool {
+        emergencyUnlockReason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+    }
+
+    func startTimer() {
+        if !didStart {
+            startTime = Date()
+            didStart = true
+            scheduleSessionNotifications()
+            appVM.markMivoSessionActiveFor(seconds: totalPlanned)
+            saveRunningSessionSnapshot()
+        }
+        updateElapsed()
         sessionTimer?.invalidate()
+        sessionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            updateElapsed()
+        }
+    }
+
+    func saveRunningSessionSnapshot() {
+        guard didStart, !showReflection else { return }
+        appVM.saveRunningSession(
+            RunningMivoSession(
+                id: UUID().uuidString,
+                intention: intention,
+                plannedDuration: plannedMinutes,
+                plannedSeconds: totalPlanned,
+                startTime: ISO8601DateFormatter().string(from: startTime),
+                urgeReason: urgeReason,
+                urgeNote: urgeNote,
+                extendedOnce: extensionUsed,
+                emergencyUnlockUsed: emergencyUnlockUsed,
+                emergencyUnlockReason: emergencyUnlockSavedReason
+            )
+        )
+    }
+
+    func updateElapsed() {
+        elapsed = max(0, Int(Date().timeIntervalSince(startTime)))
+        if elapsed >= totalPlanned && !didPulseAtLimit {
+            didPulseAtLimit = true
+            scale = 1.06
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { scale = 1.0 }
+        }
+        if elapsed >= totalPlanned && !sessionDone {
+            completeTimeLimit()
+        }
+    }
+
+    func endSession() {
+        updateElapsed()
+        sessionDone = true
+        cancelSessionNotifications()
+        sessionTimer?.invalidate()
+        appVM.finishMivoSession()
         showReflection = true
     }
 
-    func extend() {
-        extraSeconds = 5 * 60
+    func persistInterruptedSessionIfNeeded() {
+        guard !interruptionSaved, !showReflection, !sessionDone else { return }
+        updateElapsed()
+        interruptionSaved = true
+        appVM.savePendingSessionFeedback(
+            PendingSessionFeedback(
+                id: UUID().uuidString,
+                intention: intention,
+                plannedDuration: plannedMinutes,
+                actualDuration: max(1, Int((Double(elapsed) / 60).rounded())),
+                startTime: ISO8601DateFormatter().string(from: startTime),
+                endTime: ISO8601DateFormatter().string(from: Date()),
+                extendedOnce: extensionUsed,
+                urgeReason: urgeReason,
+                urgeNote: urgeNote,
+                emergencyUnlockUsed: emergencyUnlockUsed,
+                emergencyUnlockReason: emergencyUnlockSavedReason
+            )
+        )
+    }
+
+    func completeTimeLimit() {
+        guard !feedbackPresentedForTimeLimit else { return }
+        feedbackPresentedForTimeLimit = true
+        sessionDone = true
+        sessionTimer?.invalidate()
+        sessionEndedGateActive = true
+        saveRunningSessionSnapshot()
+        cancelSessionNotifications()
+        appVM.finishMivoSession(requiresReview: true)
+    }
+
+    func requestMoreTime() {
+        updateElapsed()
+        let decision = appVM.sessionExtensionDecision(
+            intention: intention,
+            plannedMinutes: plannedMinutes,
+            elapsedSeconds: elapsed,
+            extensionUsed: extensionUsed
+        )
+
+        guard decision.allowed else {
+            extensionDecisionAlert = decision
+            showEmergencyUnlock = true
+            HapticsService.warning()
+            return
+        }
+
+        extraSeconds += decision.addedMinutes * 60
         extensionUsed = true
+        didPulseAtLimit = false
+        feedbackPresentedForTimeLimit = false
+        sessionDone = false
+        sessionEndedGateActive = false
+        scheduleSessionNotifications()
+        appVM.markMivoSessionActiveFor(seconds: max(1, totalPlanned - elapsed))
+        saveRunningSessionSnapshot()
+        startTimer()
+        updateElapsed()
+        extensionDecisionAlert = decision
+        HapticsService.success()
+    }
+
+    func applyEmergencyUnlock() {
+        let reason = emergencyUnlockReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard reason.count >= 3 else { return }
+        emergencyUnlockUsed = true
+        emergencyUnlockSavedReason = reason
+        extraSeconds += 5 * 60
+        extensionUsed = true
+        didPulseAtLimit = false
+        feedbackPresentedForTimeLimit = false
+        sessionDone = false
+        sessionEndedGateActive = false
+        showEmergencyUnlock = false
+        scheduleSessionNotifications()
+        appVM.markMivoSessionActiveFor(seconds: max(1, totalPlanned - elapsed))
+        saveRunningSessionSnapshot()
+        startTimer()
+        updateElapsed()
+        HapticsService.success()
+    }
+
+    func finishForReflection() {
+        updateElapsed()
+        sessionDone = true
+        sessionEndedGateActive = false
+        cancelSessionNotifications()
+        sessionTimer?.invalidate()
+        appVM.finishMivoSession()
+        showReflection = true
+    }
+
+    func scheduleSessionNotifications() {
+        cancelSessionNotifications()
+
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
+        let remainingSeconds = max(1, totalPlanned - elapsed)
+
+        if remainingSeconds > 60 {
+            let warningContent = UNMutableNotificationContent()
+            warningContent.title = "1 minute left"
+            warningContent.body = "Wrap up now. Mivo will lock protected apps again when the timer ends."
+            warningContent.sound = .default
+
+            let warningTrigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(remainingSeconds - 60), repeats: false)
+            let warningRequest = UNNotificationRequest(
+                identifier: "mivo.intervention.oneMinute",
+                content: warningContent,
+                trigger: warningTrigger
+            )
+            center.add(warningRequest)
+        }
+
+        let doneContent = UNMutableNotificationContent()
+        doneContent.title = "Intervention ended"
+        doneContent.body = "Mivo locked the app again. Open Mivo to add approved time or save the session."
+        doneContent.sound = .default
+        doneContent.userInfo = ["mivoRoute": "sessionEnded"]
+        if #available(iOS 15.0, *) {
+            doneContent.interruptionLevel = .timeSensitive
+        }
+
+        let doneTrigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(remainingSeconds), repeats: false)
+        let doneRequest = UNNotificationRequest(
+            identifier: "mivo.intervention.done",
+            content: doneContent,
+            trigger: doneTrigger
+        )
+        center.add(doneRequest)
+    }
+
+    func cancelSessionNotifications() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [
+            "mivo.intervention.oneMinute",
+            "mivo.intervention.done"
+        ])
     }
 
     func interpolateColor(progress: Double) -> Color {

@@ -10,7 +10,6 @@ struct RegisterView: View {
     @State private var showPassword = false
     @State private var loading = false
     @State private var error = ""
-    @State private var twoFactorChallenge: TwoFactorChallenge?
 
     var body: some View {
         ZStack {
@@ -24,7 +23,7 @@ struct RegisterView: View {
                             .font(.system(size: 28, weight: .bold))
                             .foregroundColor(MivoColors.textPrimary)
                             .tracking(-0.8)
-                        Text("Everything stays on your device.")
+                        Text("Create your account and save your progress across devices.")
                             .font(.system(size: 15))
                             .foregroundColor(MivoColors.textSecondary)
                     }
@@ -34,6 +33,7 @@ struct RegisterView: View {
                         fieldView(label: "Name", placeholder: "Your name", text: $name)
                         fieldView(label: "Email", placeholder: "Enter your email", text: $email, keyboard: .emailAddress)
                         passwordFieldView(label: "Password", placeholder: "Create a password", text: $password)
+                        PasswordStrengthView(password: password, confirmPassword: confirmPassword)
                         passwordFieldView(label: "Confirm Password", placeholder: "Confirm your password", text: $confirmPassword)
                     }
 
@@ -71,6 +71,11 @@ struct RegisterView: View {
                 .padding(.bottom, 40)
             }
             .scrollContentBackground(.hidden)
+
+            if loading {
+                MivoLoadingOverlay(message: "Creating your account...")
+                    .transition(.opacity)
+            }
         }
         .navigationBarBackButtonHidden()
         .toolbar {
@@ -87,9 +92,6 @@ struct RegisterView: View {
         .navigationBarTitleDisplayMode(.inline)
         .tint(MivoColors.textSecondary)
         .toolbarColorScheme(.light, for: .navigationBar)
-        .navigationDestination(item: $twoFactorChallenge) { challenge in
-            TwoFactorView(challenge: challenge)
-        }
     }
 
     @ViewBuilder
@@ -165,19 +167,21 @@ struct RegisterView: View {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { error = "Please enter your name."; return }
         guard !email.trimmingCharacters(in: .whitespaces).isEmpty else { error = "Please enter your email."; return }
         guard !password.isEmpty else { error = "Please enter a password."; return }
-        guard password.count >= 8 else { error = "Password must be at least 8 characters."; return }
+        guard PasswordRules.evaluate(password, confirmPassword: confirmPassword).isAcceptable else {
+            error = "Password must be at least 8 characters and match the confirmation."
+            return
+        }
         guard password == confirmPassword else { error = "Passwords do not match."; return }
         error = ""
         loading = true
         Task {
             do {
-                let challenge = try await appVM.beginRegistration(
+                try await appVM.registerDirectly(
                     email: email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
                     password: password,
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
                 await MainActor.run {
-                    twoFactorChallenge = challenge
                     loading = false
                 }
             } catch {
@@ -186,6 +190,107 @@ struct RegisterView: View {
                     loading = false
                 }
             }
+        }
+    }
+}
+
+struct PasswordRules {
+    let hasLength: Bool
+    let hasUppercase: Bool
+    let hasLowercase: Bool
+    let hasNumber: Bool
+    let hasSymbol: Bool
+    let matchesConfirmation: Bool
+
+    var score: Int {
+        [hasLength, hasUppercase, hasLowercase, hasNumber, hasSymbol].filter { $0 }.count
+    }
+
+    var isAcceptable: Bool {
+        hasLength && matchesConfirmation
+    }
+
+    var title: String {
+        switch score {
+        case 0, 1: return "Weak"
+        case 2, 3: return "Getting better"
+        case 4: return "Strong"
+        default: return "Very strong"
+        }
+    }
+
+    var color: Color {
+        switch score {
+        case 0, 1: return MivoColors.timerRed
+        case 2, 3: return MivoColors.accent
+        case 4: return MivoColors.blue
+        default: return MivoColors.timerGreen
+        }
+    }
+
+    static func evaluate(_ password: String, confirmPassword: String) -> PasswordRules {
+        PasswordRules(
+            hasLength: password.count >= 8,
+            hasUppercase: password.rangeOfCharacter(from: .uppercaseLetters) != nil,
+            hasLowercase: password.rangeOfCharacter(from: .lowercaseLetters) != nil,
+            hasNumber: password.rangeOfCharacter(from: .decimalDigits) != nil,
+            hasSymbol: password.rangeOfCharacter(from: CharacterSet.alphanumerics.inverted) != nil,
+            matchesConfirmation: !confirmPassword.isEmpty && password == confirmPassword
+        )
+    }
+}
+
+struct PasswordStrengthView: View {
+    let password: String
+    let confirmPassword: String
+
+    private var rules: PasswordRules {
+        PasswordRules.evaluate(password, confirmPassword: confirmPassword)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Password strength")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                Spacer()
+                Text(rules.title)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(rules.color)
+            }
+
+            HStack(spacing: 6) {
+                ForEach(0..<5, id: \.self) { index in
+                    Capsule()
+                        .fill(index < rules.score ? rules.color : MivoColors.border.opacity(0.55))
+                        .frame(height: 6)
+                }
+            }
+
+            VStack(spacing: 7) {
+                requirementRow("At least 8 characters", met: rules.hasLength)
+                requirementRow("Uppercase and lowercase letters", met: rules.hasUppercase && rules.hasLowercase)
+                requirementRow("At least 1 number", met: rules.hasNumber)
+                requirementRow("Symbol recommended", met: rules.hasSymbol, optional: true)
+                requirementRow("Passwords match", met: rules.matchesConfirmation)
+            }
+        }
+        .padding(14)
+        .background(MivoColors.white.opacity(0.52))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(MivoColors.border.opacity(0.6), lineWidth: 1))
+    }
+
+    private func requirementRow(_ text: String, met: Bool, optional: Bool = false) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: met ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(met ? MivoColors.timerGreen : MivoColors.textMuted)
+            Text(optional && !met ? "\(text)" : text)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(met ? MivoColors.textPrimary : MivoColors.textMuted)
+            Spacer()
         }
     }
 }

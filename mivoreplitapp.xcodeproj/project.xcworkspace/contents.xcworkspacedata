@@ -5,36 +5,57 @@
       location = "self:">
    </FileRef>
    <FileRef
-      location = "group:OnboardingPhoneRelationshipView.swift">
+      location = "group:AdminModels.swift">
    </FileRef>
    <FileRef
-      location = "group:OnboardingTriggersView.swift">
+      location = "group:AdminService.swift">
    </FileRef>
    <FileRef
-      location = "group:OnboardingGoalsView.swift">
+      location = "group:AdminDashboardView.swift">
    </FileRef>
    <FileRef
-      location = "group:OnboardingCommitmentView.swift">
+      location = "group:AdminLoginView.swift">
    </FileRef>
    <FileRef
-      location = "group:ONBOARDING_ENHANCEMENT_SUMMARY.md">
+      location = "group:AdminSetupView.swift">
    </FileRef>
    <FileRef
-      location = "group:OnboardingComponents.swift">
+      location = "group:AdminAccessView.swift">
    </FileRef>
    <FileRef
-      location = "group:OnboardingExtras.swift">
+      location = "group:MivoColorsExtension.swift">
    </FileRef>
    <FileRef
-      location = "group:NewOnboardingViews.swift">
+      location = "group:ADMIN_README.md">
    </FileRef>
    <FileRef
-      location = "group:ScreenTimeDataCollector.swift">
+      location = "group:ADMIN_INTEGRATION_GUIDE.md">
    </FileRef>
    <FileRef
-      location = "group:SCREENTIME_IMPLEMENTATION.md">
+      location = "group:AdminTestView.swift">
    </FileRef>
    <FileRef
-      location = "group:ScreenTimeIntegration.swift">
+      location = "group:ADMIN_SUMMARY.md">
+   </FileRef>
+   <FileRef
+      location = "group:ADMIN_QUICK_REFERENCE.txt">
+   </FileRef>
+   <FileRef
+      location = "group:ADMIN_ARCHITECTURE.md">
+   </FileRef>
+   <FileRef
+      location = "group:ADMIN_CHANGELOG.md">
+   </FileRef>
+   <FileRef
+      location = "group:UserIsolatedStorage.swift">
+   </FileRef>
+   <FileRef
+      location = "group:PRIVACY_AND_ISOLATION.md">
+   </FileRef>
+   <FileRef
+      location = "group:PRIVACY_MIGRATION_GUIDE.md">
+   </FileRef>
+   <FileRef
+      location = "group:PRIVACY_SUMMARY.md">
    </FileRef>
 </Workspace>

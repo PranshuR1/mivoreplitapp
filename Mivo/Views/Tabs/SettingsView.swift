@@ -1,4 +1,8 @@
- import SwiftUI
+import SwiftUI
+
+#if canImport(FamilyControls)
+import FamilyControls
+#endif
 
 struct SettingsView: View {
     @EnvironmentObject var appVM: AppViewModel
@@ -17,6 +21,25 @@ struct SettingsView: View {
     @State private var showScreenTimeGuide: Bool = false
     @State private var provisioningDiagnostics: String? = nil
     @State private var showProvisioningDiagnosticsSheet: Bool = false
+    @State private var impulseProtectionEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
+    @State private var aiProtectedAppRecommendation: ProtectedAppRecommendation?
+    @State private var aiProtectedAppLoading = false
+    @State private var interventionSelectionSummaryText = "Checking selected apps..."
+    @State private var monitoringActiveState = false
+    @State private var cachedScreenTimeAuthorization = FamilyControlsManager.shared.cachedAuthorizationStatus()
+    @State private var accountabilityEnabled = false
+    @State private var accountabilityShareText = ""
+    @State private var adminUsers: [AdminUser] = []
+    @State private var adminLoading = false
+    @State private var adminMessage: String? = nil
+    @State private var adminDeleteCandidate: AdminUser? = nil
+    #if DEBUG
+    @State private var extensionLogs: [String] = []
+    #endif
+    #if canImport(FamilyControls)
+    @State private var impulseSelection = FamilyActivitySelection()
+    @State private var showImpulsePicker = false
+    #endif
     // Reuse a selection / impact haptic generator locally to avoid repeated allocations
     private let localSelectionGenerator = UISelectionFeedbackGenerator()
     private let localImpactGenerator = UIImpactFeedbackGenerator(style: .medium)
@@ -25,472 +48,70 @@ struct SettingsView: View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Settings")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
-                        .tracking(-0.8)
-                        .padding(.bottom, 20)
+                VStack(alignment: .leading, spacing: 20) {
+                    settingsHeader
 
-                    // Profile card
-                    HStack(spacing: 14) {
-                        ZStack {
-                            Circle()
-                                .fill(MivoColors.accent)
-                                .frame(width: 46, height: 46)
-                            Text(String(appVM.user?.name.prefix(1).uppercased() ?? "?"))
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(MivoColors.white)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(appVM.user?.name ?? "Anonymous")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(MivoColors.textPrimary)
-                            Text(appVM.user?.email ?? "")
-                                .font(.system(size: 13))
-                                .foregroundColor(MivoColors.textSecondary)
-                        }
-                        Spacer()
+                    settingsSection("Account") {
+                        accountSummaryRow
                     }
-                    .padding(16)
-                    .background(MivoColors.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MivoColors.border, lineWidth: 1))
-                    .padding(.bottom, 16)
 
-                    // Stats
-                    HStack {
-                        statCell(value: "\(appVM.sessions.count)", label: "Sessions")
-                        Divider().frame(height: 40).background(MivoColors.border)
-                        statCell(value: totalTimeLabel, label: "Total tracked")
-                        Divider().frame(height: 40).background(MivoColors.border)
-                        statCell(value: "\(appVM.truthChecks.count)", label: "Truth checks")
-                    }
-                    .padding(16)
-                    .background(MivoColors.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MivoColors.border, lineWidth: 1))
-                    .padding(.bottom, 28)
-
-                    // Preferences
-                    SectionHeader(title: "Preferences")
-                        .padding(.bottom, 10)
-                    
-                    // Screen Time Tracking
-                    if #available(iOS 16.0, *) {
-                        screenTimeSection
-                            .padding(.bottom, 12)
-                    }
-                    
-                    settingsCard {
-                        HStack {
-                            HStack(spacing: 12) {
-                                Image(systemName: "bell")
-                                    .foregroundColor(MivoColors.textSecondary)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("Daily reminders")
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundColor(MivoColors.textPrimary)
-                                    Text("Nudge to log sessions")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(MivoColors.textMuted)
-                                }
-                            }
-                            Spacer()
-                            Toggle("", isOn: $notificationsOn)
-                                .tint(MivoColors.accentLight)
-                                .labelsHidden()
-                        }
-                        .padding(16)
-                    }
-                    .padding(.bottom, 24)
-
-                    // Data
-                    SectionHeader(title: "Data")
-                        .padding(.bottom, 10)
-
-                    settingsCard {
-                        VStack(spacing: 0) {
-                            settingsRow(icon: "arrow.down.to.line", label: "Export data") {
-                                Task {
-                                    await exportDataAsync()
-                                }
-                            }
-                            rowSeparator()
-                            // Inline navigation link for Weekly report
-                            NavigationLink {
-                                WeeklyReportView()
-                            } label: {
-                                HStack {
-                                    Image(systemName: "calendar")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(MivoColors.textSecondary)
-                                        .frame(width: 20)
-                                    Text("Weekly report")
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundColor(MivoColors.textPrimary)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(MivoColors.textMuted)
-                                }
-                                .padding(16)
-                            }
-                            rowSeparator()
-                            NavigationLink {
-                                InterventionView(intention: nil, duration: nil)
-                            } label: {
-                                HStack {
-                                    Image(systemName: "shield")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(MivoColors.textSecondary)
-                                        .frame(width: 20)
-                                    Text("Intervention preview")
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundColor(MivoColors.textPrimary)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(MivoColors.textMuted)
-                                }
-                                .padding(16)
-                            }
+                    if appVM.isAdminUser {
+                        settingsSection("Admin") {
+                            adminPanel
                         }
                     }
-                    .padding(.bottom, 24)
 
-                    // Device Activity (Screen Time) — request system permission
-                    SectionHeader(title: "Device activity")
-                        .padding(.bottom, 10)
-                    settingsCard {
-                        VStack(spacing: 0) {
-                            // Clear row that explains this will trigger the system Screen Time / Family Controls prompt
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: "waveform.path.ecg")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(MivoColors.textSecondary)
-                                    .frame(width: 26)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Request Screen Time access")
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(MivoColors.textPrimary)
-                                    // Show cached status if available
-                                    if let cached = FamilyControlsManager.shared.cachedAuthorizationStatus() {
-                                        if cached {
-                                            Text("Status: Authorized")
-                                                .font(.system(size: 12))
-                                                .foregroundColor(MivoColors.accentLight)
-                                        } else {
-                                            Text("Status: Denied — open Settings to enable")
-                                                .font(.system(size: 12))
-                                                .foregroundColor(.red)
-                                        }
-                                    } else {
-                                        Text("We need Screen Time access to read device usage so Mivo can give accurate estimates. Tapping will show the system permission prompt.")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(MivoColors.textMuted)
-                                    }
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(MivoColors.textMuted)
-                            }
-                            .padding(16)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                // Call the same request flow but label is user-facing Screen Time language
-                                DispatchQueue.main.async {
-                                    lastActionLog = "Tapped: Request Screen Time access"
-                                    // Perform the request and update cached flag / UI accordingly
-                                    FamilyControlsManager.shared.requestAuthorization { granted in
-                                        DispatchQueue.main.async {
-                                            FamilyControlsManager.shared.saveAuthorizationFlag(granted)
-                                            if granted {
-                                                familyControlsMessage = "Screen Time access granted."
-                                                showFamilyControlsAlert = true
-                                            } else {
-                                                familyControlsMessage = "Screen Time access denied. You can enable it in Settings."
-                                                showFamilyControlsSettingsAlert = true
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Add an explicit 'Re-check' button for convenience
-                            HStack {
-                                Spacer()
-                                Button(action: {
-                                    // Attempt to request again (shows system prompt when possible)
-                                    FamilyControlsManager.shared.requestAuthorization { granted in
-                                        DispatchQueue.main.async {
-                                            FamilyControlsManager.shared.saveAuthorizationFlag(granted)
-                                            if granted {
-                                                familyControlsMessage = "Screen Time access granted."
-                                                showFamilyControlsAlert = true
-                                            } else {
-                                                familyControlsMessage = "Screen Time access denied. You can enable it in Settings."
-                                                showFamilyControlsSettingsAlert = true
-                                            }
-                                        }
-                                    }
-                                }) {
-                                    Text("Re-check / Request")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(MivoColors.accentLight)
-                                        .foregroundColor(.white)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                }
-                                Spacer()
-                            }
-                            .padding(.bottom, 6)
-                            
-                            // If cached status is Denied, offer a Clear & Re-request button to allow a fresh system prompt
-                            if FamilyControlsManager.shared.cachedAuthorizationStatus() == false {
-                                HStack {
-                                    Spacer()
-                                    Button(action: {
-                                        FamilyControlsManager.shared.clearCachedAuthorizationFlag()
-                                        // Slight delay to ensure UI updates
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                            FamilyControlsManager.shared.requestAuthorization { granted in
-                                                DispatchQueue.main.async {
-                                                    FamilyControlsManager.shared.saveAuthorizationFlag(granted)
-                                                    if granted {
-                                                        familyControlsMessage = "Screen Time access granted."
-                                                        showFamilyControlsAlert = true
-                                                    } else {
-                                                        familyControlsMessage = "Screen Time access denied. You can enable it in Settings."
-                                                        showFamilyControlsSettingsAlert = true
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }) {
-                                        Text("Clear & Re-request")
-                                            .font(.system(size: 14, weight: .semibold))
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .background(Color(.systemRed))
-                                            .foregroundColor(.white)
-                                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    }
-                                    Spacer()
-                                }
-                                .padding(.bottom, 8)
-                            }
-                            
-                            // If the OS per-app settings don't show Screen Time, offer a guide modal
-                            if FamilyControlsManager.shared.cachedAuthorizationStatus() != true {
-                                HStack {
-                                    Spacer()
-                                    Button(action: {
-                                        showScreenTimeGuide = true
-                                    }) {
-                                        Text("How to enable Screen Time")
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .padding(10)
-                                            .background(Color(.systemGray6))
-                                            .foregroundColor(MivoColors.textPrimary)
-                                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    }
-                                    Spacer()
-                                }
-                                .padding(.bottom, 8)
-                            }
-                            
-                            rowSeparator()
+                    settingsSection("Preferences") {
+                        dailyReminderRow
+                        rowSeparator()
+                        interventionRows
+                    }
 
-                            settingsRow(icon: "playpause", label: "Start daily monitoring") {
-                                DispatchQueue.main.async {
-                                    lastActionLog = "Tapped: Start daily monitoring"
-                                    startDailyMonitoring()
-                                }
-                            }
-                            
-                            rowSeparator()
-                            
-                            // Monitoring status
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: "chart.bar.fill")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(MivoColors.textSecondary)
-                                    .frame(width: 26)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Monitoring status")
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(MivoColors.textPrimary)
-                                    if #available(iOS 16.0, *), FamilyControlsManager.shared.isMonitoring() {
-                                        Text("Active - tracking device usage")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(MivoColors.accentLight)
-                                    } else {
-                                        Text("Inactive - tap 'Start daily monitoring' to begin")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(MivoColors.textMuted)
-                                    }
-                                }
-                                Spacer()
-                                if #available(iOS 16.0, *), FamilyControlsManager.shared.isMonitoring() {
-                                    Button(action: {
-                                        FamilyControlsManager.shared.stopMonitoring()
-                                        lastActionLog = "Monitoring stopped"
-                                    }) {
-                                        Text("Stop")
-                                            .font(.system(size: 14, weight: .semibold))
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 6)
-                                            .background(Color.red)
-                                            .foregroundColor(.white)
-                                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
+                    settingsSection("Accountability & Rules") {
+                        accountabilityRow
+                        rowSeparator()
+                        appRulesRows
+                    }
 
-                            rowSeparator()
+                    settingsSection("Screen Time") {
+                        screenTimeAccessRow
+                        rowSeparator()
+                        monitoringRow
+                    }
 
-                            // Show last report preview to the user (if available)
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Last device activity report")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(MivoColors.textSecondary)
-                                Text(appVM.lastDeviceActivityReportJSON ?? "No report yet")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(MivoColors.textPrimary)
-                                    .lineLimit(6)
-                                    .padding(.vertical, 6)
-                                
-                                // Show parsed usage if available
-                                if let minutes = appVM.deviceActivityMinutesToday {
-                                    HStack {
-                                        Image(systemName: "clock.fill")
-                                            .foregroundColor(MivoColors.accentLight)
-                                        Text("Total today: \(minutes) minutes (\(String(format: "%.1f", Double(minutes)/60.0)) hours)")
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundColor(MivoColors.textPrimary)
-                                    }
-                                    .padding(.vertical, 4)
-                                }
-                            }
-                            .padding(16)
-                            
-                            #if DEBUG
-                            rowSeparator()
-                            
-                            // View extension logs
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Extension logs (debug)")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(MivoColors.textSecondary)
-                                    Spacer()
-                                    Button(action: {
-                                        if #available(iOS 16.0, *) {
-                                            ScreenTimeDataCollector.shared.clearExtensionLogs()
-                                            lastActionLog = "Extension logs cleared"
-                                        }
-                                    }) {
-                                        Text("Clear")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                            .background(Color.red.opacity(0.7))
-                                            .foregroundColor(.white)
-                                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    }
-                                }
-                                
-                                if #available(iOS 16.0, *) {
-                                    let logs = ScreenTimeDataCollector.shared.getExtensionLogs()
-                                    if logs.isEmpty {
-                                        Text("No extension logs yet")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(MivoColors.textMuted)
-                                    } else {
-                                        ScrollView {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                ForEach(logs.reversed(), id: \.self) { log in
-                                                    Text(log)
-                                                        .font(.system(size: 11, design: .monospaced))
-                                                        .foregroundColor(MivoColors.textPrimary)
-                                                }
-                                            }
-                                        }
-                                        .frame(maxHeight: 150)
-                                        .padding(8)
-                                        .background(Color.black.opacity(0.05))
-                                        .cornerRadius(8)
-                                    }
-                                } else {
-                                    Text("iOS 16.0+ required")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(MivoColors.textMuted)
-                                }
-                            }
-                            .padding(16)
-                            #endif
-
-                            // App Group / entitlement diagnostics (one-tap)
-                            rowSeparator()
-                            HStack {
-                                Image(systemName: "wrench.and.screwdriver")
-                                    .foregroundColor(MivoColors.textSecondary)
-                                    .frame(width: 20)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Run entitlement diagnostics")
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundColor(MivoColors.textPrimary)
-                                    Text("Check whether the App Group is available and show next steps to fix provisioning.")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(MivoColors.textMuted)
-                                }
-                                Spacer()
-                                Button(action: {
-                                    runAppGroupDiagnostics()
-                                }) {
-                                    Text("Run")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(MivoColors.accentLight)
-                                        .foregroundColor(.white)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-
-                            if let log = lastActionLog {
-                                Text(log)
-                                    .font(.system(size: 12))
-                                    .foregroundColor(MivoColors.textMuted)
-                                    .padding(.horizontal, 16)
-                                    .padding(.bottom, 8)
-                            }
+                    settingsSection("Reports") {
+                        settingsNavigationRow(icon: "calendar", title: "Weekly report", subtitle: "Review your weekly pattern") {
+                            WeeklyReportView()
+                        }
+                        rowSeparator()
+                        settingsNavigationRow(icon: "shield", title: "Intervention preview", subtitle: "Practice the 5-second pause") {
+                            InterventionView(intention: nil, duration: nil)
+                        }
+                        rowSeparator()
+                        settingsActionRow(icon: "arrow.down.to.line", title: "Export data", subtitle: "Prepare your local Mivo data") {
+                            Task { await exportDataAsync() }
                         }
                     }
-                    .padding(.bottom, 24)
 
-                    // Account
-                    SectionHeader(title: "Account")
-                        .padding(.bottom, 10)
-                    settingsCard {
-                        VStack(spacing: 0) {
-                            settingsRow(icon: "rectangle.portrait.and.arrow.right", label: "Sign out", destructive: true) {
-                                showLogoutAlert = true
-                            }
-                            rowSeparator()
-                            settingsRow(icon: "trash", label: "Reset all data", destructive: true) {
-                                showResetAlert = true
-                            }
+                    settingsSection("Advanced") {
+                        deviceReportRow
+                        #if DEBUG
+                        rowSeparator()
+                        extensionLogsRow
+                        #endif
+                        rowSeparator()
+                        diagnosticsRow
+                    }
+
+                    settingsSection("Danger Zone") {
+                        settingsActionRow(icon: "rectangle.portrait.and.arrow.right", title: "Sign out", subtitle: "Return to the login screen", destructive: true) {
+                            showLogoutAlert = true
+                        }
+                        rowSeparator()
+                        settingsActionRow(icon: "trash", title: "Reset all data", subtitle: "Delete local account, sessions, and settings", destructive: true) {
+                            showResetAlert = true
                         }
                     }
-                    .padding(.bottom, 24)
 
                     Text("Mivo · Data stays on your device")
                         .font(.system(size: 12))
@@ -503,6 +124,27 @@ struct SettingsView: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            refreshSettingsSnapshot()
+            applyImpulseProtectionAfterRender()
+            refreshProtectedAppRecommendation()
+            if appVM.isAdminUser {
+                Task { await refreshAdminUsers() }
+            }
+        }
+        #if canImport(FamilyControls)
+        .familyActivityPicker(isPresented: $showImpulsePicker, selection: $impulseSelection)
+        .onChange(of: impulseSelection) { newValue in
+            if #available(iOS 16.0, *) {
+                FamilyControlsManager.shared.saveFamilyActivitySelection(newValue)
+                if FamilyControlsManager.shared.hasImpulseSelection() {
+                    impulseProtectionEnabled = true
+                    FamilyControlsManager.shared.setImpulseProtectionEnabled(true)
+                }
+                refreshSettingsSnapshot()
+            }
+        }
+        #endif
         .alert("Sign out", isPresented: $showLogoutAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Sign out", role: .destructive) { appVM.logout() }
@@ -514,6 +156,16 @@ struct SettingsView: View {
             Button("Delete all data", role: .destructive) { appVM.resetAllData() }
         } message: {
             Text("This will delete your account, credentials, onboarding, sessions, and local app data permanently.")
+        }
+        .alert(item: $adminDeleteCandidate) { user in
+            Alert(
+                title: Text("Delete user?"),
+                message: Text("Delete \(user.email) from the online Mivo database? This cannot be undone."),
+                primaryButton: .destructive(Text("Delete")) {
+                    Task { await deleteAdminUser(user) }
+                },
+                secondaryButton: .cancel()
+            )
         }
         // Simple status alert for informational messages
         .alert("Family Controls", isPresented: $showFamilyControlsAlert, actions: {
@@ -625,6 +277,800 @@ struct SettingsView: View {
     }
 
     // MARK: - Helpers
+
+    private var settingsHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Settings")
+                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .foregroundColor(MivoColors.textPrimary)
+                .tracking(-0.6)
+            Text("Manage your account, protection, and Screen Time connection.")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(MivoColors.textSecondary)
+        }
+        .padding(.top, 2)
+        .padding(.bottom, 2)
+    }
+
+    private var accountSummaryRow: some View {
+        HStack(spacing: 13) {
+            ZStack {
+                Circle()
+                    .fill(MivoColors.accent)
+                    .frame(width: 44, height: 44)
+                Text(String(appVM.user?.name.prefix(1).uppercased() ?? "?"))
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(MivoColors.heroText)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(appVM.user?.name ?? "Anonymous")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+                HStack(spacing: 6) {
+                    Text(appVM.user?.email ?? "No email")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                        .lineLimit(1)
+                    if appVM.isAdminUser {
+                        Text("ADMIN")
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundColor(MivoColors.heroText)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(MivoColors.accent)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+
+            Spacer()
+        }
+        .padding(15)
+    }
+
+    private var adminPanel: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                settingsIcon("person.3.sequence.fill", color: MivoColors.accent)
+                rowText(
+                    title: "User database",
+                    subtitle: adminLoading ? "Loading online users..." : "\(adminUsers.count) online users loaded"
+                )
+                Spacer()
+                Button {
+                    Task { await refreshAdminUsers() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.accent)
+                        .frame(width: 34, height: 34)
+                        .background(MivoColors.background)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(adminLoading)
+            }
+            .padding(15)
+
+            if let adminMessage {
+                rowSeparator()
+                Text(adminMessage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineSpacing(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(15)
+            }
+
+            if !adminUsers.isEmpty {
+                rowSeparator()
+                VStack(spacing: 0) {
+                    ForEach(adminUsers) { user in
+                        adminUserRow(user)
+                        if user.id != adminUsers.last?.id {
+                            rowSeparator()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func adminUserRow(_ user: AdminUser) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(user.isAdmin == true ? MivoColors.accent : MivoColors.background)
+                    .frame(width: 38, height: 38)
+                Text(String(user.name.prefix(1).uppercased()))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(user.isAdmin == true ? MivoColors.heroText : MivoColors.textPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(user.name)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.textPrimary)
+                        .lineLimit(1)
+                    if user.isAdmin == true {
+                        Text("ADMIN")
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundColor(MivoColors.accent)
+                    }
+                }
+                Text(user.email)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineLimit(1)
+                Text(adminUserMeta(user))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(MivoColors.textMuted)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            if user.isAdmin == true {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.textMuted)
+            } else {
+                Button {
+                    adminDeleteCandidate = user
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.red)
+                        .frame(width: 34, height: 34)
+                        .background(Color.red.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(15)
+    }
+
+    private var dailyReminderRow: some View {
+        HStack(spacing: 12) {
+            settingsIcon("bell", color: MivoColors.accent)
+            rowText(title: "Daily reminders", subtitle: "Nudge to log sessions")
+            Spacer()
+            Toggle("", isOn: $notificationsOn)
+                .tint(MivoColors.accent)
+                .labelsHidden()
+        }
+        .padding(15)
+    }
+
+    @ViewBuilder
+    private var interventionRows: some View {
+        HStack(alignment: .top, spacing: 12) {
+            settingsIcon("shield.lefthalf.filled", color: MivoColors.accent)
+            rowText(title: "Selected app intervention", subtitle: interventionSelectionSummaryText)
+            Spacer()
+            Toggle("", isOn: $impulseProtectionEnabled)
+                .tint(MivoColors.accent)
+                .labelsHidden()
+                .onChange(of: impulseProtectionEnabled) { enabled in
+                    setImpulseProtection(enabled)
+                }
+        }
+        .padding(15)
+
+        rowSeparator()
+
+        protectedAppRecommendationRow
+
+        rowSeparator()
+
+        Button {
+            #if canImport(FamilyControls)
+            if #available(iOS 16.0, *) {
+                showImpulsePicker = true
+            }
+            #endif
+        } label: {
+            HStack(spacing: 12) {
+                settingsIcon("app.badge.checkmark", color: MivoColors.blue)
+                rowText(title: "Change selected apps", subtitle: "Pick which apps get the 5-second Mivo pause")
+                Spacer()
+                chevron
+            }
+            .padding(15)
+        }
+        .buttonStyle(SettingsRowButtonStyle())
+    }
+
+    private var protectedAppRecommendationRow: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 12) {
+                settingsIcon("sparkles", color: MivoColors.accent)
+                rowText(
+                    title: aiProtectedAppLoading ? "Mivo is thinking..." : "AI recommendation",
+                    subtitle: aiProtectedAppRecommendation?.rationale ?? "Mivo can suggest which apps to choose in the picker"
+                )
+                Spacer()
+            }
+
+            if let recommendation = aiProtectedAppRecommendation {
+                HStack(spacing: 7) {
+                    ForEach(recommendation.apps.prefix(4), id: \.self) { app in
+                        Text(app)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(MivoColors.accent)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(MivoColors.accent.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+                }
+                .padding(.leading, 46)
+            }
+        }
+        .padding(15)
+    }
+
+    private var screenTimeAccessRow: some View {
+        Button {
+            requestScreenTimeAccess()
+        } label: {
+            HStack(spacing: 12) {
+                settingsIcon("waveform.path.ecg", color: screenTimeStatusColor)
+                rowText(title: "Screen Time access", subtitle: screenTimeStatusText)
+                Spacer()
+                chevron
+            }
+            .padding(15)
+        }
+        .buttonStyle(SettingsRowButtonStyle())
+    }
+
+    private var monitoringRow: some View {
+        HStack(spacing: 12) {
+            settingsIcon("chart.bar.fill", color: monitoringActiveState ? MivoColors.blue : MivoColors.textSecondary)
+            rowText(title: "Daily monitoring", subtitle: monitoringActiveState ? "Active - tracking device usage" : "Inactive")
+            Spacer()
+            if monitoringActiveState {
+                Button("Stop") {
+                    if #available(iOS 16.0, *) {
+                        FamilyControlsManager.shared.stopMonitoring()
+                        refreshSettingsSnapshot()
+                        lastActionLog = "Monitoring stopped"
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.red)
+            } else {
+                Button("Start") {
+                    lastActionLog = "Tapped: Start daily monitoring"
+                    startDailyMonitoring()
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(MivoColors.accent)
+            }
+        }
+        .padding(15)
+    }
+
+    private var accountabilityRow: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                settingsIcon("person.2.wave.2.fill", color: MivoColors.accent)
+                rowText(title: "Accountability summary", subtitle: "Create a private weekly share text")
+                Spacer()
+                Toggle("", isOn: $accountabilityEnabled)
+                    .tint(MivoColors.accent)
+                    .labelsHidden()
+                    .onChange(of: accountabilityEnabled) { enabled in
+                        appVM.updateAccountabilityEnabled(enabled)
+                        accountabilityShareText = appVM.accountabilityShareText()
+                    }
+            }
+            .padding(15)
+
+            if accountabilityEnabled {
+                rowSeparator()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(accountabilityShareText.isEmpty ? appVM.accountabilityShareText() : accountabilityShareText)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(MivoColors.textSecondary)
+                        .lineSpacing(3)
+                    Button {
+                        let text = appVM.accountabilityShareText()
+                        UIPasteboard.general.string = text
+                        accountabilityShareText = text
+                        lastActionLog = "Accountability summary copied"
+                        HapticsService.success()
+                    } label: {
+                        Label("Copy share text", systemImage: "doc.on.doc")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(MivoColors.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(15)
+            }
+        }
+    }
+
+    private var appRulesRows: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                settingsIcon("slider.horizontal.3", color: MivoColors.blue)
+                rowText(title: "App-specific rules", subtitle: "Exact app identity may fall back to the protected group")
+                Spacer()
+            }
+            .padding(15)
+
+            ForEach(appVM.appInterventionRules) { rule in
+                rowSeparator()
+                appRuleRow(rule)
+            }
+        }
+    }
+
+    private func appRuleRow(_ rule: AppInterventionRule) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(rule.appName)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Text(rule.mode.rawValue)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(MivoColors.textMuted)
+            }
+            Spacer()
+            Menu {
+                ForEach(AppRuleMode.allCases) { mode in
+                    Button(mode.rawValue) {
+                        var updated = rule
+                        updated.mode = mode
+                        appVM.updateAppInterventionRule(updated)
+                        refreshSettingsSnapshot()
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.accent)
+                    .frame(width: 34, height: 34)
+                    .background(MivoColors.background)
+                    .clipShape(Circle())
+            }
+        }
+        .padding(15)
+    }
+
+    private var deviceReportRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                settingsIcon("doc.text.magnifyingglass", color: MivoColors.textSecondary)
+                rowText(title: "Last device report", subtitle: appVM.deviceActivityMinutesToday.map { "\($0) minutes today" } ?? "No report yet")
+                Spacer()
+            }
+
+            if let report = appVM.lastDeviceActivityReportJSON, !report.isEmpty {
+                Text(report)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(MivoColors.textMuted)
+                    .lineLimit(4)
+                    .padding(.leading, 46)
+            }
+        }
+        .padding(15)
+    }
+
+    #if DEBUG
+    private var extensionLogsRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                settingsIcon("ladybug", color: MivoColors.textSecondary)
+                rowText(title: "Extension logs", subtitle: "Debug information")
+                Spacer()
+                Button("Clear") {
+                    if #available(iOS 16.0, *) {
+                        ScreenTimeDataCollector.shared.clearExtensionLogs()
+                        lastActionLog = "Extension logs cleared"
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.red)
+            }
+
+            if #available(iOS 16.0, *) {
+                if !extensionLogs.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(extensionLogs.suffix(4).reversed(), id: \.self) { log in
+                            Text(log)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(MivoColors.textMuted)
+                                .lineLimit(2)
+                        }
+                    }
+                    .padding(.leading, 46)
+                }
+            }
+        }
+        .padding(15)
+    }
+    #endif
+
+    private var diagnosticsRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                settingsIcon("wrench.and.screwdriver", color: MivoColors.textSecondary)
+                rowText(title: "Entitlement diagnostics", subtitle: "Check App Group and Screen Time setup")
+                Spacer()
+                Button("Run") {
+                    runAppGroupDiagnostics()
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(MivoColors.accent)
+            }
+
+            if let log = lastActionLog {
+                Text(log)
+                    .font(.system(size: 12))
+                    .foregroundColor(MivoColors.textMuted)
+                    .padding(.leading, 46)
+            }
+        }
+        .padding(15)
+    }
+
+    @ViewBuilder
+    private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(MivoColors.textMuted)
+                .padding(.horizontal, 4)
+            settingsCard {
+                VStack(spacing: 0) {
+                    content()
+                }
+            }
+        }
+    }
+
+    private func settingsActionRow(icon: String, title: String, subtitle: String, destructive: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                settingsIcon(icon, color: destructive ? .red : MivoColors.textSecondary)
+                rowText(title: title, subtitle: subtitle, destructive: destructive)
+                Spacer()
+                if destructive {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.red)
+                } else {
+                    chevron
+                }
+            }
+            .padding(15)
+        }
+        .buttonStyle(SettingsRowButtonStyle())
+    }
+
+    private func settingsNavigationRow<Destination: View>(icon: String, title: String, subtitle: String, @ViewBuilder destination: () -> Destination) -> some View {
+        NavigationLink {
+            destination()
+        } label: {
+            HStack(spacing: 12) {
+                settingsIcon(icon, color: MivoColors.textSecondary)
+                rowText(title: title, subtitle: subtitle)
+                Spacer()
+                chevron
+            }
+            .padding(15)
+        }
+        .buttonStyle(SettingsRowButtonStyle())
+    }
+
+    private func rowText(title: String, subtitle: String, destructive: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(destructive ? .red : MivoColors.textPrimary)
+            Text(subtitle)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(MivoColors.textMuted)
+                .lineLimit(2)
+        }
+    }
+
+    private func adminUserMeta(_ user: AdminUser) -> String {
+        if let lastLogin = user.lastLoginAt, let date = ISO8601DateFormatter().date(from: lastLogin) {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            return "Last login \(formatter.string(from: date))"
+        }
+        if let created = ISO8601DateFormatter().date(from: user.createdAt) {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            return "Created \(formatter.string(from: created))"
+        }
+        return "Created \(user.createdAt)"
+    }
+
+    @MainActor
+    private func refreshAdminUsers() async {
+        guard appVM.isAdminUser else { return }
+        adminLoading = true
+        adminMessage = nil
+        do {
+            adminUsers = try await appVM.loadAdminUsers()
+            adminMessage = adminUsers.isEmpty ? "No users found yet." : "Loaded every account from the online Mivo database."
+        } catch {
+            adminUsers = []
+            adminMessage = "Admin tools need the online Mivo backend running and configured in MIVO_AUTH_API_URL. The admin account can sign in, but user management cannot load without that server."
+        }
+        adminLoading = false
+    }
+
+    @MainActor
+    private func deleteAdminUser(_ user: AdminUser) async {
+        adminLoading = true
+        do {
+            try await appVM.deleteAdminUser(email: user.email)
+            adminUsers.removeAll { $0.email == user.email }
+            adminMessage = "Deleted \(user.email)."
+        } catch {
+            adminMessage = error.localizedDescription
+        }
+        adminLoading = false
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundColor(MivoColors.textMuted)
+    }
+
+    private var screenTimeStatusText: String {
+        if let cached = cachedScreenTimeAuthorization {
+            return cached ? "Authorized" : "Denied - open Settings to enable"
+        }
+        return "Tap to request access"
+    }
+
+    private var screenTimeStatusColor: Color {
+        if let cached = cachedScreenTimeAuthorization {
+            return cached ? MivoColors.blue : .red
+        }
+        return MivoColors.accent
+    }
+
+    private func refreshSettingsSnapshot() {
+        impulseProtectionEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
+        cachedScreenTimeAuthorization = FamilyControlsManager.shared.cachedAuthorizationStatus()
+        accountabilityEnabled = appVM.settings.accountabilityEnabled == true
+        accountabilityShareText = appVM.accountabilityShareText()
+        if #available(iOS 16.0, *) {
+            #if canImport(FamilyControls)
+            impulseSelection = FamilyControlsManager.shared.loadFamilyActivitySelection()
+            #endif
+            monitoringActiveState = FamilyControlsManager.shared.isMonitoring()
+        } else {
+            monitoringActiveState = false
+        }
+        interventionSelectionSummaryText = currentInterventionSelectionSummary()
+        #if DEBUG
+        if #available(iOS 16.0, *) {
+            extensionLogs = ScreenTimeDataCollector.shared.getExtensionLogs()
+        }
+        #endif
+    }
+
+    private func applyImpulseProtectionAfterRender() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            if #available(iOS 16.0, *) {
+                FamilyControlsManager.shared.applyImpulseProtectionIfNeeded()
+            }
+        }
+    }
+
+    private func requestScreenTimeAccess() {
+        lastActionLog = "Tapped: Request Screen Time access"
+        FamilyControlsManager.shared.requestAuthorization { granted in
+            DispatchQueue.main.async {
+                FamilyControlsManager.shared.saveAuthorizationFlag(granted)
+                refreshSettingsSnapshot()
+                if granted {
+                    familyControlsMessage = "Screen Time access granted."
+                    showFamilyControlsAlert = true
+                } else {
+                    familyControlsMessage = "Screen Time access denied. You can enable it in Settings."
+                    showFamilyControlsSettingsAlert = true
+                }
+            }
+        }
+    }
+
+    private var settingsHero: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(MivoColors.accent)
+                        .frame(width: 54, height: 54)
+                    Text(String(appVM.user?.name.prefix(1).uppercased() ?? "?"))
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundColor(MivoColors.heroText)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Settings")
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .foregroundColor(MivoColors.heroText)
+                        .tracking(-0.6)
+                    Text(appVM.user?.email ?? "Mivo account")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.heroText.opacity(0.74))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                }
+
+                Spacer()
+
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(MivoColors.heroText)
+                    .frame(width: 42, height: 42)
+                    .background(MivoColors.background.opacity(0.14))
+                    .clipShape(Circle())
+            }
+
+            HStack(spacing: 10) {
+                profileStat(value: "\(appVM.sessions.count)", label: "Sessions")
+                profileStat(value: totalTimeLabel, label: "Tracked")
+                profileStat(value: "\(appVM.truthChecks.count)", label: "Checks")
+            }
+        }
+        .padding(20)
+        .background(MivoColors.heroBg)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: MivoColors.textPrimary.opacity(0.11), radius: 18, y: 8)
+    }
+
+    private func profileStat(value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundColor(MivoColors.heroText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(MivoColors.heroText.opacity(0.64))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(MivoColors.background.opacity(0.14))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var interventionAppsSection: some View {
+        settingsCard {
+            VStack(spacing: 0) {
+                HStack(alignment: .top, spacing: 12) {
+                    settingsIcon("shield.lefthalf.filled", color: MivoColors.accent)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Selected app intervention")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(MivoColors.textPrimary)
+                        Text(interventionSelectionSummaryText)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(MivoColors.textSecondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $impulseProtectionEnabled)
+                        .tint(MivoColors.accent)
+                        .labelsHidden()
+                        .onChange(of: impulseProtectionEnabled) { enabled in
+                            setImpulseProtection(enabled)
+                        }
+                }
+                .padding(16)
+
+                rowSeparator()
+
+                Button {
+                    #if canImport(FamilyControls)
+                    if #available(iOS 16.0, *) {
+                        showImpulsePicker = true
+                    }
+                    #endif
+                } label: {
+                    HStack(spacing: 12) {
+                        settingsIcon("app.badge.checkmark", color: MivoColors.blue)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Change selected apps")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(MivoColors.textPrimary)
+                            Text("Pick which apps get the 5-second Mivo pause.")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(MivoColors.textMuted)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(MivoColors.textMuted)
+                    }
+                    .padding(16)
+                }
+                .buttonStyle(SettingsRowButtonStyle())
+            }
+        }
+    }
+
+    private func currentInterventionSelectionSummary() -> String {
+        #if canImport(FamilyControls)
+        if #available(iOS 16.0, *) {
+            let selection = FamilyControlsManager.shared.loadFamilyActivitySelection()
+            let count = selection.applicationTokens.count + selection.categoryTokens.count + selection.webDomainTokens.count
+            if count == 0 {
+                return "No apps selected yet. Choose apps here or on the Interventions page."
+            }
+            let itemLabel = count == 1 ? "selection" : "selections"
+            return impulseProtectionEnabled ? "\(count) \(itemLabel) protected with a pause." : "\(count) \(itemLabel) saved, currently off."
+        }
+        #endif
+        return "App selection requires Screen Time support on iOS."
+    }
+
+    private func setImpulseProtection(_ enabled: Bool) {
+        if #available(iOS 16.0, *) {
+            if enabled && !FamilyControlsManager.shared.hasImpulseSelection() {
+                impulseProtectionEnabled = false
+                #if canImport(FamilyControls)
+                showImpulsePicker = true
+                #endif
+                return
+            }
+            FamilyControlsManager.shared.setImpulseProtectionEnabled(enabled)
+            impulseProtectionEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
+            refreshSettingsSnapshot()
+        } else {
+            impulseProtectionEnabled = false
+            refreshSettingsSnapshot()
+        }
+    }
+
+    private func refreshProtectedAppRecommendation() {
+        aiProtectedAppLoading = true
+        Task {
+            let recommendation = await AIService.recommendProtectedApps(
+                profile: appVM.onboardingProfile,
+                selectedApps: appVM.onboardingProfile.preferredApps,
+                recentSessionSummary: AIDataStore.recentSummary(limit: 4)
+            )
+            await MainActor.run {
+                aiProtectedAppRecommendation = recommendation
+                aiProtectedAppLoading = false
+            }
+        }
+    }
+
+    private func settingsIcon(_ icon: String, color: Color) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 15, weight: .bold))
+            .foregroundColor(color)
+            .frame(width: 34, height: 34)
+            .background(color.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+    }
 
     private var totalTimeLabel: String {
         // Sessions store their runtime in `actualDuration` (minutes/seconds depending on model)
@@ -800,8 +1246,8 @@ struct SettingsView: View {
             content()
         }
         .background(MivoColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MivoColors.border, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(MivoColors.border.opacity(0.72), lineWidth: 1))
     }
 
     private func statCell(value: String, label: String) -> some View {
@@ -824,18 +1270,20 @@ struct SettingsView: View {
 
     private func settingsRow(icon: String, label: String, destructive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(MivoColors.textSecondary)
-                    .frame(width: 24)
+            HStack(spacing: 12) {
+                settingsIcon(icon, color: destructive ? Color.red : MivoColors.textSecondary)
                 Text(label)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(MivoColors.textPrimary)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(destructive ? Color.red : MivoColors.textPrimary)
                 Spacer()
                 if destructive {
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundColor(.red)
                         .frame(width: 20)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(MivoColors.textMuted)
                 }
             }
             .padding(16)
@@ -858,6 +1306,7 @@ struct SettingsView: View {
                 case .success:
                     monitoringMessage = "Daily monitoring started successfully! The app will track your device usage in the background."
                     showMonitoringAlert = true
+                    refreshSettingsSnapshot()
                     // Refresh the report
                     appVM.refreshScreenTimeData()
                 case .failure(let error):
@@ -994,5 +1443,15 @@ extension Int {
         let minutes = (self % 3600) / 60
         let seconds = self % 60
         return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+    }
+}
+
+private struct SettingsRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(Rectangle())
+            .background(configuration.isPressed ? MivoColors.textPrimary.opacity(0.04) : Color.clear)
+            .scaleEffect(configuration.isPressed ? 0.992 : 1)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }

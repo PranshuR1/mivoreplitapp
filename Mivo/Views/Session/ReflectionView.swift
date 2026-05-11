@@ -6,6 +6,12 @@ private let reflectionOptions: [(label: ReflectionChoice, desc: String)] = [
     (.no, "I just kept scrolling"),
 ]
 
+private let outcomeOptions: [(label: SessionOutcomeScore, desc: String)] = [
+    (.worthIt, "This felt useful"),
+    (.mixed, "Some value, some drift"),
+    (.notWorthIt, "Mostly automatic scrolling"),
+]
+
 struct ReflectionView: View {
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.dismiss) var dismiss
@@ -16,9 +22,14 @@ struct ReflectionView: View {
     let startTime: String
     let endTime: String
     let extendedOnce: Bool
+    let urgeReason: UrgeReason?
+    let urgeNote: String?
+    let emergencyUnlockUsed: Bool
+    let emergencyUnlockReason: String?
     var onSaved: (() -> Void)? = nil
 
     @State private var reflection: ReflectionChoice? = nil
+    @State private var outcomeScore: SessionOutcomeScore? = nil
     @State private var note = ""
     @State private var saving = false
 
@@ -43,6 +54,12 @@ struct ReflectionView: View {
                             summaryRow("Over by", value: formatDuration(overBy), valueColor: MivoColors.timerOrange)
                         }
                         summaryRow("Reason", value: intention.rawValue)
+                        if let urgeReason {
+                            summaryRow("Opened because", value: urgeReason.rawValue)
+                        }
+                        if emergencyUnlockUsed {
+                            summaryRow("Emergency unlock", value: "Used", valueColor: MivoColors.timerOrange)
+                        }
                         if extendedOnce {
                             HStack(spacing: 4) {
                                 Image(systemName: "plus")
@@ -91,6 +108,38 @@ struct ReflectionView: View {
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 14)
                                         .strokeBorder(reflection == opt.label ? MivoColors.accent : MivoColors.border, lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.bottom, 24)
+
+                    Text("Was this worth it?")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(MivoColors.textPrimary)
+                        .padding(.bottom, 14)
+
+                    VStack(spacing: 10) {
+                        ForEach(outcomeOptions, id: \.label.rawValue) { opt in
+                            Button {
+                                outcomeScore = opt.label
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(opt.label.rawValue)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(outcomeScore == opt.label ? MivoColors.accent : MivoColors.textPrimary)
+                                    Text(opt.desc)
+                                        .font(.system(size: 13))
+                                        .foregroundColor(MivoColors.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(16)
+                                .background(outcomeScore == opt.label ? MivoColors.accentMuted : MivoColors.card)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .strokeBorder(outcomeScore == opt.label ? MivoColors.accent : MivoColors.border, lineWidth: 1)
                                 )
                             }
                             .buttonStyle(.plain)
@@ -185,11 +234,30 @@ struct ReflectionView: View {
             intention: intention,
             extendedOnce: extendedOnce,
             reflection: withReflection ? reflection : nil,
-            reflectionNote: withReflection ? note.trimmingCharacters(in: .whitespaces) : ""
+            reflectionNote: withReflection ? note.trimmingCharacters(in: .whitespaces) : "",
+            urgeReason: urgeReason,
+            urgeNote: urgeNote,
+            outcomeScore: withReflection ? outcomeScore : nil,
+            emergencyUnlockUsed: emergencyUnlockUsed,
+            emergencyUnlockReason: emergencyUnlockReason
         )
         appVM.addSession(session)
+        appVM.appendAISummary(sessionAISummary(session))
+        appVM.finishMivoSession()
         // Pop back to the tab root via the onSaved callback
         dismiss()
         onSaved?()
+    }
+
+    private func sessionAISummary(_ session: Session) -> String {
+        var parts: [String] = [
+            "Session: \(session.actualDuration)m actual / \(session.plannedDuration)m planned",
+            "Intention: \(session.intention.rawValue)"
+        ]
+        if let urge = session.urgeReason { parts.append("Urge: \(urge.rawValue)") }
+        if let outcome = session.outcomeScore { parts.append("Outcome: \(outcome.rawValue)") }
+        if session.emergencyUnlockUsed == true { parts.append("EmergencyUnlock: true") }
+        if session.extendedOnce { parts.append("Extended: true") }
+        return parts.joined(separator: " | ")
     }
 }

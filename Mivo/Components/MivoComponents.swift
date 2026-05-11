@@ -83,6 +83,37 @@ struct MivoCard<Content: View>: View {
     }
 }
 
+// MARK: - MivoLoadingOverlay
+
+struct MivoLoadingOverlay: View {
+    let message: String
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.14)
+                .ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                ProgressView()
+                    .tint(MivoColors.accent)
+                    .scaleEffect(1.08)
+                Text(message)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 18)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(MivoColors.white.opacity(0.5), lineWidth: 1)
+            )
+            .shadow(color: MivoColors.primary.opacity(0.18), radius: 18, y: 8)
+        }
+    }
+}
+
 // MARK: - MivoTextField
 
 struct MivoTextField: View {
