@@ -19,6 +19,8 @@ import DeviceActivity
 import ManagedSettings
 #endif
 
+import ActivityKit
+
 @available(iOS 15.0, *)
 @MainActor
 final class FamilyControlsManager: ObservableObject {
@@ -288,11 +290,10 @@ final class FamilyControlsManager: ObservableObject {
     // MARK: - Live Activity management
 
     /// Starts a Live Activity showing a countdown timer on the lock screen / Dynamic Island.
-    /// Requires iOS 16.2+, NSSupportsLiveActivities = YES, and the MivoWidgets extension target.
+    /// Requires NSSupportsLiveActivities = YES and the MivoWidgets extension target to be
+    /// wired up in Xcode (see Mivo/Constants/MivoLiveActivityAttributes.swift).
     func startSessionLiveActivity(sessionEndsAt: Date, planMinutes: Int, intentionLabel: String) {
-        #if canImport(ActivityKit)
-        guard #available(iOS 16.2, *) else { return }
-        // End any running activity first (e.g. from a previous session).
+        // End any stale activity from a previous session first.
         endSessionLiveActivity()
         let attrs = MivoSessionLiveAttributes(
             sessionStartedAt: Date(),
@@ -309,19 +310,15 @@ final class FamilyControlsManager: ObservableObject {
         } catch {
             logger.warning("LiveActivity: failed to start — \(error.localizedDescription)")
         }
-        #endif
     }
 
     /// Ends all running Mivo session Live Activities.
     func endSessionLiveActivity() {
-        #if canImport(ActivityKit)
-        guard #available(iOS 16.2, *) else { return }
         Task {
             for activity in Activity<MivoSessionLiveAttributes>.activities {
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
         }
-        #endif
     }
 
     private func nextActiveSessionLeaseDuration(for durationSeconds: Int) -> TimeInterval {

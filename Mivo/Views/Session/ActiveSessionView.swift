@@ -339,14 +339,12 @@ struct ActiveSessionView: View {
             appVM.markMivoSessionActiveFor(seconds: totalPlanned)
             saveRunningSessionSnapshot()
             // Start Live Activity so the timer is visible on the lock screen / Dynamic Island.
-            if #available(iOS 16.2, *) {
-                let sessionEnd = Date().addingTimeInterval(TimeInterval(totalPlanned))
-                FamilyControlsManager.shared.startSessionLiveActivity(
-                    sessionEndsAt: sessionEnd,
-                    planMinutes: plannedMinutes,
-                    intentionLabel: intention.rawValue
-                )
-            }
+            let sessionEnd = Date().addingTimeInterval(TimeInterval(totalPlanned))
+            FamilyControlsManager.shared.startSessionLiveActivity(
+                sessionEndsAt: sessionEnd,
+                planMinutes: plannedMinutes,
+                intentionLabel: intention.rawValue
+            )
         }
         updateElapsed()
         sessionTimer?.invalidate()

@@ -1,8 +1,6 @@
 import WidgetKit
 import SwiftUI
-#if canImport(ActivityKit)
 import ActivityKit
-#endif
 
 private let appGroup = "group.com.mivo.mivoapp"
 private let widgetSummaryKey = "mivo_widget_shared_summary"
@@ -178,9 +176,8 @@ private struct MivoWidgetView: View {
     }
 }
 
-// MARK: - Live Activity views (iOS 16.2+)
+// MARK: - Live Activity views
 
-@available(iOS 16.2, *)
 private struct MivoSessionLiveActivityView: View {
     let context: ActivityViewContext<MivoSessionLiveAttributes>
     private var endsAt: Date { context.state.sessionEndsAt }
@@ -253,7 +250,6 @@ private struct MivoSessionLiveActivityView: View {
 }
 
 // Compact leading: timer countdown text
-@available(iOS 16.2, *)
 private struct CompactLeadingView: View {
     let context: ActivityViewContext<MivoSessionLiveAttributes>
     var body: some View {
@@ -264,7 +260,6 @@ private struct CompactLeadingView: View {
 }
 
 // Compact trailing: remaining time
-@available(iOS 16.2, *)
 private struct CompactTrailingView: View {
     let context: ActivityViewContext<MivoSessionLiveAttributes>
     var body: some View {
@@ -281,9 +276,7 @@ private struct CompactTrailingView: View {
 struct MivoWidgetsBundle: WidgetBundle {
     var body: some Widget {
         MivoStatusWidget()
-        if #available(iOS 16.2, *) {
-            MivoSessionLiveActivityWidget()
-        }
+        MivoSessionLiveActivityWidget()
     }
 }
 
@@ -300,7 +293,6 @@ struct MivoStatusWidget: Widget {
     }
 }
 
-@available(iOS 16.2, *)
 struct MivoSessionLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MivoSessionLiveAttributes.self) { context in
