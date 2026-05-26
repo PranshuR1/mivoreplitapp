@@ -30,11 +30,13 @@ struct ActiveSessionView: View {
     @State private var emergencyUnlockReason = ""
     @State private var emergencyUnlockUsed = false
     @State private var emergencyUnlockSavedReason: String? = nil
+    @State private var sessionID = UUID().uuidString
 
     var totalPlanned: Int { plannedMinutes * 60 + extraSeconds }
-    var remaining: Int { totalPlanned - elapsed }
-    var progress: Double { min(Double(elapsed) / Double(max(totalPlanned, 1)), 1.0) }
-    var isOvertime: Bool { elapsed > totalPlanned }
+    var displayElapsed: Int { sessionEndedGateActive ? min(elapsed, totalPlanned) : elapsed }
+    var remaining: Int { max(0, totalPlanned - elapsed) }
+    var progress: Double { min(Double(displayElapsed) / Double(max(totalPlanned, 1)), 1.0) }
+    var isOvertime: Bool { !sessionEndedGateActive && elapsed > totalPlanned }
     var timerColor: Color {
         if isOvertime { return MivoColors.timerRed }
         return interpolateColor(progress: progress)
@@ -99,7 +101,7 @@ struct ActiveSessionView: View {
                     .scaleEffect(scale)
                     .animation(.easeInOut(duration: 0.15), value: scale)
 
-                    Text("\(formatSeconds(elapsed)) elapsed")
+                    Text("\(formatSeconds(displayElapsed)) elapsed")
                         .font(.system(size: 14))
                         .foregroundColor(MivoColors.textMuted)
 
@@ -157,19 +159,22 @@ struct ActiveSessionView: View {
         .onAppear { startTimer() }
         .onDisappear {
             sessionTimer?.invalidate()
-            if !showReflection {
+            appVM.pendingResumedActiveSession = nil
+            if !showReflection, !sessionDone {
                 saveRunningSessionSnapshot()
             }
             if showReflection || sessionDone {
                 cancelSessionNotifications()
             }
         }
-        .onChange(of: scenePhase) { phase in
+        .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 updateElapsed()
             } else if phase == .background || phase == .inactive {
                 updateElapsed()
-                saveRunningSessionSnapshot()
+                if !sessionDone {
+                    saveRunningSessionSnapshot()
+                }
             }
         }
         .alert("End session?", isPresented: $showQuitAlert) {
@@ -343,13 +348,24 @@ struct ActiveSessionView: View {
 
     func saveRunningSessionSnapshot() {
         guard didStart, !showReflection else { return }
+        let formatter = ISO8601DateFormatter()
+        let expiresAtDate = startTime.addingTimeInterval(TimeInterval(totalPlanned))
+        let isExpiredChoice = sessionEndedGateActive
+        let cappedElapsed = max(0, min(elapsed, totalPlanned))
+
         appVM.saveRunningSession(
             RunningMivoSession(
-                id: UUID().uuidString,
+                id: sessionID,
                 intention: intention,
                 plannedDuration: plannedMinutes,
                 plannedSeconds: totalPlanned,
-                startTime: ISO8601DateFormatter().string(from: startTime),
+                approvedSeconds: totalPlanned,
+                startTime: formatter.string(from: startTime),
+                expiresAt: formatter.string(from: expiresAtDate),
+                expiredAt: isExpiredChoice ? formatter.string(from: expiresAtDate) : nil,
+                expirationSource: isExpiredChoice ? MivoSessionExpirationSource.sessionEnd.rawValue : nil,
+                state: isExpiredChoice ? .expiredAwaitingChoice : .active,
+                accumulatedElapsedSeconds: cappedElapsed,
                 urgeReason: urgeReason,
                 urgeNote: urgeNote,
                 extendedOnce: extensionUsed,
@@ -403,6 +419,7 @@ struct ActiveSessionView: View {
 
     func completeTimeLimit() {
         guard !feedbackPresentedForTimeLimit else { return }
+        elapsed = min(max(elapsed, 0), totalPlanned)
         feedbackPresentedForTimeLimit = true
         sessionDone = true
         sessionTimer?.invalidate()
@@ -465,6 +482,7 @@ struct ActiveSessionView: View {
 
     func finishForReflection() {
         updateElapsed()
+        elapsed = min(max(elapsed, 0), totalPlanned)
         sessionDone = true
         sessionEndedGateActive = false
         cancelSessionNotifications()
@@ -496,10 +514,13 @@ struct ActiveSessionView: View {
         }
 
         let doneContent = UNMutableNotificationContent()
-        doneContent.title = "Intervention ended"
-        doneContent.body = "Mivo locked the app again. Open Mivo to add approved time or save the session."
+        doneContent.title = "Session ended — re-lock your apps"
+        doneContent.body = "Tap to lock apps again and save your session."
         doneContent.sound = .default
-        doneContent.userInfo = ["mivoRoute": "sessionEnded"]
+        // openIntervention flag is read by MivoAppDelegate.didReceive — applies
+        // shields immediately and navigates to the intervention tab.
+        doneContent.userInfo = ["mivoRoute": "sessionEnded", "openIntervention": true]
+        doneContent.categoryIdentifier = "MIVO_SESSION_ENDED"
         if #available(iOS 15.0, *) {
             doneContent.interruptionLevel = .timeSensitive
         }

@@ -29,10 +29,16 @@ struct SettingsView: View {
     @State private var cachedScreenTimeAuthorization = FamilyControlsManager.shared.cachedAuthorizationStatus()
     @State private var accountabilityEnabled = false
     @State private var accountabilityShareText = ""
+    @State private var firstScrollStartHour = 14
+    @State private var secondScrollStartHour = 20
     @State private var adminUsers: [AdminUser] = []
     @State private var adminLoading = false
     @State private var adminMessage: String? = nil
     @State private var adminDeleteCandidate: AdminUser? = nil
+    @State private var blockerSelfTestRunning = false
+    @State private var blockerSelfTestMessage: String? = nil
+    @State private var showBlockerSelfTestAlert = false
+    @State private var showBlockerDiagnosticsSheet = false
     #if DEBUG
     @State private var extensionLogs: [String] = []
     #endif
@@ -48,7 +54,7 @@ struct SettingsView: View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 22) {
                     settingsHeader
 
                     settingsSection("Account") {
@@ -70,6 +76,8 @@ struct SettingsView: View {
                     settingsSection("Accountability & Rules") {
                         accountabilityRow
                         rowSeparator()
+                        scrollScheduleRows
+                        rowSeparator()
                         appRulesRows
                     }
 
@@ -77,6 +85,8 @@ struct SettingsView: View {
                         screenTimeAccessRow
                         rowSeparator()
                         monitoringRow
+                        rowSeparator()
+                        blockerSelfTestRow
                     }
 
                     settingsSection("Reports") {
@@ -134,7 +144,7 @@ struct SettingsView: View {
         }
         #if canImport(FamilyControls)
         .familyActivityPicker(isPresented: $showImpulsePicker, selection: $impulseSelection)
-        .onChange(of: impulseSelection) { newValue in
+        .onChange(of: impulseSelection) { _, newValue in
             if #available(iOS 16.0, *) {
                 FamilyControlsManager.shared.saveFamilyActivitySelection(newValue)
                 if FamilyControlsManager.shared.hasImpulseSelection() {
@@ -192,6 +202,51 @@ struct SettingsView: View {
         }, message: {
             Text(monitoringMessage ?? "")
         })
+        // Blocker self-test alert
+        .alert("Blocker Self-Test", isPresented: $showBlockerSelfTestAlert, actions: {
+            Button("OK", role: .cancel) {}
+        }, message: {
+            Text(blockerSelfTestMessage ?? "")
+        })
+        // Blocker diagnostics sheet
+        .sheet(isPresented: $showBlockerDiagnosticsSheet) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(FamilyControlsManager.shared.getBlockerSelfTestDiagnostics())
+                            .font(.system(size: 14, design: .monospaced))
+                            .foregroundColor(MivoColors.textPrimary)
+                            .padding()
+                        
+                        Text("How to Test:")
+                            .font(.system(size: 16, weight: .bold))
+                            .padding(.horizontal)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("1. Tap 'Test' button in Settings")
+                            Text("2. Leave Mivo app (home screen)")
+                            Text("3. Stop/kill Xcode if running")
+                            Text("4. Wait 15+ seconds")
+                            Text("5. Reopen Mivo and check this screen")
+                        }
+                        .font(.system(size: 14))
+                        .foregroundColor(MivoColors.textSecondary)
+                        .padding(.horizontal)
+                        
+                        Spacer()
+                    }
+                }
+                .navigationTitle("Blocker Diagnostics")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            showBlockerDiagnosticsSheet = false
+                        }
+                    }
+                }
+            }
+        }
         // Screen Time guide sheet
         .sheet(isPresented: $showScreenTimeGuide) {
             VStack(spacing: 16) {
@@ -279,17 +334,17 @@ struct SettingsView: View {
     // MARK: - Helpers
 
     private var settingsHeader: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             Text("Settings")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundColor(MivoColors.textPrimary)
-                .tracking(-0.6)
-            Text("Manage your account, protection, and Screen Time connection.")
+                .tracking(-0.5)
+            Text("Account, protection, and Screen Time settings.")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(MivoColors.textSecondary)
         }
-        .padding(.top, 2)
-        .padding(.bottom, 2)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
     }
 
     private var accountSummaryRow: some View {
@@ -454,7 +509,7 @@ struct SettingsView: View {
             Toggle("", isOn: $impulseProtectionEnabled)
                 .tint(MivoColors.accent)
                 .labelsHidden()
-                .onChange(of: impulseProtectionEnabled) { enabled in
+                .onChange(of: impulseProtectionEnabled) { _, enabled in
                     setImpulseProtection(enabled)
                 }
         }
@@ -554,6 +609,42 @@ struct SettingsView: View {
         }
         .padding(15)
     }
+    
+    private var blockerSelfTestRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                let hasRecent = FamilyControlsManager.shared.hasRecentBlockerSelfTestPass()
+                settingsIcon("shield.checkered", color: hasRecent ? MivoColors.green : MivoColors.orange)
+                rowText(
+                    title: "Blocker self-test",
+                    subtitle: hasRecent ? "Verified - blocker is working" : "Not verified recently"
+                )
+                Spacer()
+                Button(blockerSelfTestRunning ? "Running..." : "Test") {
+                    runBlockerSelfTest()
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(blockerSelfTestRunning ? MivoColors.textSecondary : MivoColors.accent)
+                .disabled(blockerSelfTestRunning)
+                
+                Button {
+                    showBlockerDiagnosticsSheet = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16))
+                        .foregroundColor(MivoColors.accent)
+                }
+            }
+            
+            if let log = lastActionLog, log.contains("Blocker") {
+                Text(log)
+                    .font(.system(size: 11))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .padding(.leading, 36)
+            }
+        }
+        .padding(15)
+    }
 
     private var accountabilityRow: some View {
         VStack(spacing: 0) {
@@ -564,7 +655,7 @@ struct SettingsView: View {
                 Toggle("", isOn: $accountabilityEnabled)
                     .tint(MivoColors.accent)
                     .labelsHidden()
-                    .onChange(of: accountabilityEnabled) { enabled in
+                    .onChange(of: accountabilityEnabled) { _, enabled in
                         appVM.updateAccountabilityEnabled(enabled)
                         accountabilityShareText = appVM.accountabilityShareText()
                     }
@@ -595,6 +686,77 @@ struct SettingsView: View {
                 .padding(15)
             }
         }
+    }
+
+    private var scrollScheduleRows: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                settingsIcon("clock.badge.checkmark", color: MivoColors.accent)
+                rowText(title: "Scroll sessions", subtitle: appVM.todayScrollScheduleStatusText)
+                Spacer()
+            }
+            .padding(15)
+
+            rowSeparator()
+            scrollScheduleStepper(title: "Session 1", hour: $firstScrollStartHour)
+            rowSeparator()
+            scrollScheduleStepper(title: "Session 2", hour: $secondScrollStartHour)
+
+            Button {
+                saveScrollSchedule()
+            } label: {
+                Label(appVM.isTodayScrollScheduleLocked ? "Locked until tomorrow" : "Lock today’s scroll times", systemImage: appVM.isTodayScrollScheduleLocked ? "lock.fill" : "checkmark.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.accent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(15)
+            }
+            .buttonStyle(.plain)
+            .disabled(appVM.isTodayScrollScheduleLocked)
+            .opacity(appVM.isTodayScrollScheduleLocked ? 0.58 : 1)
+        }
+    }
+
+    private func scrollScheduleStepper(title: String, hour: Binding<Int>) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Text("\(settingsHourLabel(hour.wrappedValue))-\(settingsHourLabel((hour.wrappedValue + 1) % 24))")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(MivoColors.textMuted)
+            }
+            Spacer()
+            Button { adjustScrollHour(hour, by: -1) } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+                    .frame(width: 32, height: 32)
+                    .background(MivoColors.background)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(appVM.isTodayScrollScheduleLocked)
+            .opacity(appVM.isTodayScrollScheduleLocked ? 0.45 : 1)
+            Text(settingsHourLabel(hour.wrappedValue))
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(MivoColors.textPrimary)
+                .frame(width: 62)
+            Button { adjustScrollHour(hour, by: 1) } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+                    .frame(width: 32, height: 32)
+                    .background(MivoColors.background)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(appVM.isTodayScrollScheduleLocked)
+            .opacity(appVM.isTodayScrollScheduleLocked ? 0.45 : 1)
+        }
+        .padding(15)
+        .opacity(appVM.isTodayScrollScheduleLocked ? 0.72 : 1)
     }
 
     private var appRulesRows: some View {
@@ -724,11 +886,12 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title.uppercased())
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 11, weight: .heavy))
                 .foregroundColor(MivoColors.textMuted)
-                .padding(.horizontal, 4)
+                .tracking(0.8)
+                .padding(.horizontal, 6)
             settingsCard {
                 VStack(spacing: 0) {
                     content()
@@ -847,11 +1010,64 @@ struct SettingsView: View {
         return MivoColors.accent
     }
 
+    private func syncScrollScheduleState() {
+        let windows = appVM.dailyScrollSchedule()?.windows ?? appVM.onboardingProfile.preferredScrollWindows ?? []
+        guard windows.count >= 2 else { return }
+        firstScrollStartHour = windows[0].startHour
+        secondScrollStartHour = windows[1].startHour
+    }
+
+    private func adjustScrollHour(_ hour: Binding<Int>, by delta: Int) {
+        guard !appVM.isTodayScrollScheduleLocked else { return }
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            hour.wrappedValue = ((hour.wrappedValue + delta) % 24 + 24) % 24
+        }
+        HapticsService.selection()
+    }
+
+    private func saveScrollSchedule() {
+        guard !appVM.isTodayScrollScheduleLocked else {
+            lastActionLog = "Today’s scroll schedule is already locked. Choose again tomorrow morning."
+            HapticsService.warning()
+            return
+        }
+        let windows = [
+            ScreenScrollWindow(
+                id: "user-session-1",
+                title: "Your session 1",
+                startHour: firstScrollStartHour,
+                endHour: min(24, firstScrollStartHour + 1),
+                minutes: 15,
+                reason: "You chose this time. Mivo monitors it for 3 days before recommending changes."
+            ),
+            ScreenScrollWindow(
+                id: "user-session-2",
+                title: "Your session 2",
+                startHour: secondScrollStartHour,
+                endHour: min(24, secondScrollStartHour + 1),
+                minutes: 15,
+                reason: "You chose this time. Mivo monitors it for 3 days before recommending changes."
+            )
+        ]
+        appVM.saveDailyScrollScheduleForToday(windows)
+        lastActionLog = "Today’s scroll sessions are locked until tomorrow."
+        HapticsService.success()
+    }
+
+    private func settingsHourLabel(_ hour: Int) -> String {
+        let normalized = ((hour % 24) + 24) % 24
+        if normalized == 0 { return "12a" }
+        if normalized < 12 { return "\(normalized)a" }
+        if normalized == 12 { return "12p" }
+        return "\(normalized - 12)p"
+    }
+
     private func refreshSettingsSnapshot() {
         impulseProtectionEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
         cachedScreenTimeAuthorization = FamilyControlsManager.shared.cachedAuthorizationStatus()
         accountabilityEnabled = appVM.settings.accountabilityEnabled == true
         accountabilityShareText = appVM.accountabilityShareText()
+        syncScrollScheduleState()
         if #available(iOS 16.0, *) {
             #if canImport(FamilyControls)
             impulseSelection = FamilyControlsManager.shared.loadFamilyActivitySelection()
@@ -905,7 +1121,6 @@ struct SettingsView: View {
                         .font(.system(size: 22, weight: .bold, design: .rounded))
                         .foregroundColor(MivoColors.heroText)
                 }
-
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Settings")
                         .font(.system(size: 30, weight: .bold, design: .rounded))
@@ -919,7 +1134,7 @@ struct SettingsView: View {
                 }
 
                 Spacer()
-
+                
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(MivoColors.heroText)
@@ -978,7 +1193,7 @@ struct SettingsView: View {
                     Toggle("", isOn: $impulseProtectionEnabled)
                         .tint(MivoColors.accent)
                         .labelsHidden()
-                        .onChange(of: impulseProtectionEnabled) { enabled in
+                        .onChange(of: impulseProtectionEnabled) { _, enabled in
                             setImpulseProtection(enabled)
                         }
                 }
@@ -1247,7 +1462,8 @@ struct SettingsView: View {
         }
         .background(MivoColors.card)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(MivoColors.border.opacity(0.72), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(MivoColors.border.opacity(0.6), lineWidth: 1))
+        .shadow(color: MivoColors.primary.opacity(0.06), radius: 10, y: 4)
     }
 
     private func statCell(value: String, label: String) -> some View {
@@ -1314,6 +1530,41 @@ struct SettingsView: View {
                     showMonitoringAlert = true
                 }
             }
+        }
+    }
+    
+    private func runBlockerSelfTest() {
+        // First check authorization
+        guard FamilyControlsManager.shared.cachedAuthorizationStatus() == true else {
+            blockerSelfTestMessage = "Please authorize Screen Time access first."
+            showBlockerSelfTestAlert = true
+            return
+        }
+        
+        blockerSelfTestRunning = true
+        lastActionLog = "Blocker self-test started - leave app, wait 15s, reopen"
+        
+        let success = FamilyControlsManager.shared.runBlockerSelfTest()
+        
+        if success {
+            // Schedule a check after 20 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [self] in
+                blockerSelfTestRunning = false
+                
+                if FamilyControlsManager.shared.hasRecentBlockerSelfTestPass() {
+                    lastActionLog = "✅ Blocker self-test PASSED"
+                    blockerSelfTestMessage = "Blocker is working correctly! The Device Activity extension called back successfully."
+                } else {
+                    lastActionLog = "⚠️ Blocker self-test did NOT callback"
+                    blockerSelfTestMessage = "Self-test did not receive callback from extension. Check:\n1. Extension is built and signed\n2. Device was restarted after install\n3. Xcode is stopped during test"
+                }
+                showBlockerSelfTestAlert = true
+            }
+        } else {
+            blockerSelfTestRunning = false
+            lastActionLog = "❌ Blocker self-test failed to schedule"
+            blockerSelfTestMessage = "Failed to schedule self-test. Device Activity may not be configured properly."
+            showBlockerSelfTestAlert = true
         }
     }
 

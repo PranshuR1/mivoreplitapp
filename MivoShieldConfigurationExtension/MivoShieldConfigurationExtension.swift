@@ -10,242 +10,257 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     private let sessionEndsAtKey = "mivo.sessionEndsAt"
     private let pendingInterventionSetupKey = "mivo.pendingInterventionSetup"
     private let pendingInterventionSetupAtKey = "mivo.pendingInterventionSetupAt"
+    private let sessionExpiredAtKey = "mivo.sessionExpiredAt"
+    private let sessionExpiredSourceKey = "mivo.sessionExpiredSource"
+    private let shieldPauseDurationKey = "mivo.shieldPauseDuration"
     private let pendingSetupFreshnessWindow: TimeInterval = 10 * 60
 
+    // Brand colours (match Mivo's palette)
+    private let cream        = UIColor(red: 0.96, green: 0.95, blue: 0.91, alpha: 1.0)
+    private let textPrimary  = UIColor(red: 0.10, green: 0.11, blue: 0.10, alpha: 1.0)
+    private let textMuted    = UIColor(red: 0.31, green: 0.30, blue: 0.27, alpha: 1.0)
+    private let btnLight     = UIColor(red: 0.88, green: 0.87, blue: 0.84, alpha: 1.0)
+    private let btnBrown     = UIColor(red: 0.55, green: 0.31, blue: 0.16, alpha: 1.0) // #8C4F28
+
     override func configuration(shielding application: Application) -> ShieldConfiguration {
-        makePauseConfiguration()
+        makeConfiguration()
     }
-
     override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
-        makePauseConfiguration()
+        makeConfiguration()
     }
-
     override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
-        makePauseConfiguration()
+        makeConfiguration()
     }
-
     override func configuration(shielding webDomain: WebDomain, in category: ActivityCategory) -> ShieldConfiguration {
-        makePauseConfiguration()
+        makeConfiguration()
     }
 
-    private func makePauseConfiguration() -> ShieldConfiguration {
-        let isCountingDown = countdownRemaining() > 0
-        let hasActiveSession = isSessionActive()
-        let needsMivoSetup = pendingInterventionSetup()
+    private func makeConfiguration() -> ShieldConfiguration {
+        let isCountingDown    = countdownRemaining() > 0
+        let hasActiveSession  = isSessionActive()
+        let needsMivoSetup    = pendingInterventionSetup() && !hasActiveSession
+        let sessionExpired    = sessionExpiredAfterTimer()
 
+        // ── 1. Counting down (highest priority — shown during 5-second hold) ──
+        if isCountingDown {
+            let n = countdownRemaining()
+            return ShieldConfiguration(
+                backgroundBlurStyle: .systemUltraThinMaterialLight,
+                backgroundColor: cream,
+                icon: timerIcon(state: .countdown),
+                title: label(hasActiveSession ? "Hold for \(n)s…" : "Pause — \(n)s", color: textPrimary),
+                subtitle: label(
+                    hasActiveSession
+                        ? "Keep holding. Mivo will reopen this app after the pause."
+                        : "Don't open yet — this moment passes.",
+                    color: textMuted
+                ),
+                primaryButtonLabel: label("Keep holding", color: textMuted),
+                primaryButtonBackgroundColor: btnLight,
+                secondaryButtonLabel: nil
+            )
+        }
+
+        // ── 2. Session expired ──
+        if sessionExpired {
+            return ShieldConfiguration(
+                backgroundBlurStyle: .systemUltraThinMaterialLight,
+                backgroundColor: cream,
+                icon: timerIcon(state: .locked),
+                title: label("App is restricted", color: textPrimary),
+                subtitle: label(
+                    "Your Mivo timer ended. Tap the notification above, or press Open Mivo below, to add time or save the session.",
+                    color: textMuted
+                ),
+                primaryButtonLabel: label("Open Mivo", color: .white),
+                primaryButtonBackgroundColor: btnBrown,
+                secondaryButtonLabel: nil
+            )
+        }
+
+        // ── 3. Active session check-in ──
+        if hasActiveSession {
+            return ShieldConfiguration(
+                backgroundBlurStyle: .systemUltraThinMaterialLight,
+                backgroundColor: cream,
+                icon: timerIcon(state: .timer),
+                title: label("Pause to check in", color: textPrimary),
+                subtitle: label(
+                    "Your reminder interval is up. Tap Continue session for the 5-second pause, then Mivo will reopen this app.",
+                    color: textMuted
+                ),
+                primaryButtonLabel: label("Not now", color: textMuted),
+                primaryButtonBackgroundColor: btnLight,
+                secondaryButtonLabel: label("Continue session", color: .white)
+            )
+        }
+
+        // ── 4. Post-countdown "Open Mivo" screen ──
+        if needsMivoSetup {
+            return ShieldConfiguration(
+                backgroundBlurStyle: .systemUltraThinMaterialLight,
+                backgroundColor: cream,
+                icon: timerIcon(state: .locked),
+                title: label("Open Mivo", color: textPrimary),
+                subtitle: label(
+                    "Tap the notification above to open Mivo. If you do not see it, press Open Mivo below and tap the notification that appears.",
+                    color: textMuted
+                ),
+                primaryButtonLabel: label("Open Mivo", color: .white),
+                primaryButtonBackgroundColor: btnBrown,
+                secondaryButtonLabel: nil
+            )
+        }
+
+        // ── 5. Default — "Pause before opening" with Start button ──
+        let pauseSecs = pauseDurationSeconds()
         return ShieldConfiguration(
             backgroundBlurStyle: .systemUltraThinMaterialLight,
-            backgroundColor: UIColor(red: 0.96, green: 0.95, blue: 0.91, alpha: 1.0),
-            icon: timerIcon(isCountingDown: isCountingDown, isLocked: needsMivoSetup || !hasActiveSession),
-            title: ShieldConfiguration.Label(
-                text: shieldTitle(hasActiveSession: hasActiveSession, isCountingDown: isCountingDown, needsMivoSetup: needsMivoSetup),
-                color: UIColor(red: 0.10, green: 0.11, blue: 0.10, alpha: 1.0)
+            backgroundColor: cream,
+            icon: timerIcon(state: .timer),
+            title: label("Pause before opening", color: textPrimary),
+            subtitle: label(
+                "Start the \(pauseSecs)-second pause to check your intention before this app opens.",
+                color: textMuted
             ),
-            subtitle: ShieldConfiguration.Label(
-                text: shieldSubtitle(hasActiveSession: hasActiveSession, isCountingDown: isCountingDown, needsMivoSetup: needsMivoSetup),
-                color: UIColor(red: 0.31, green: 0.30, blue: 0.27, alpha: 1.0)
-            ),
-            primaryButtonLabel: ShieldConfiguration.Label(
-                text: needsMivoSetup
-                    ? "Open Mivo"
-                    : (hasActiveSession
-                        ? (isCountingDown ? "Opening soon..." : "Start 5-second pause")
-                        : "Start 5-second hold"),
-                color: .white
-            ),
-            primaryButtonBackgroundColor: UIColor(red: 0.12, green: 0.16, blue: 0.15, alpha: 1.0),
-            secondaryButtonLabel: ShieldConfiguration.Label(
-                text: "Not now",
-                color: UIColor(red: 0.31, green: 0.30, blue: 0.27, alpha: 1.0)
-            )
+            primaryButtonLabel: label("Start", color: .white),
+            primaryButtonBackgroundColor: btnBrown,
+            secondaryButtonLabel: label("Not now", color: textMuted)
         )
     }
 
-    private func shieldTitle(hasActiveSession: Bool, isCountingDown: Bool, needsMivoSetup: Bool) -> String {
-        if needsMivoSetup {
-            return "Open Mivo to start session"
-        }
-        if hasActiveSession {
-            return isCountingDown ? "5-second pause running" : "Take a 5-second pause"
-        }
-        return isCountingDown ? "Hold for 5 seconds" : "Pause before opening"
+    // MARK: - Helpers
+
+    private func label(_ text: String, color: UIColor) -> ShieldConfiguration.Label {
+        ShieldConfiguration.Label(text: text, color: color)
     }
 
-    private func shieldSubtitle(hasActiveSession: Bool, isCountingDown: Bool, needsMivoSetup: Bool) -> String {
-        if needsMivoSetup {
-            return "The pause is complete. This app stays locked until you open Mivo, choose why you are opening it, and start a timed session."
-        }
-        if hasActiveSession {
-            return isCountingDown
-                ? "Breathe. The selected app will open when this reaches zero."
-                : "Mivo is giving you a short moment to choose with intention. Press continue, breathe, then the app will open."
-        }
-        return isCountingDown
-            ? "Keep holding. After this, Mivo will ask you to set the intervention before this app can open."
-            : "Start the 5-second hold. Then open Mivo to choose your intention and time limit for this app."
-    }
+    private enum IconState { case timer, countdown, locked }
 
-    private func countdownRemaining() -> Int {
-        guard let defaults = UserDefaults(suiteName: appGroup) else { return 0 }
-        let explicitRemaining = defaults.integer(forKey: countdownRemainingKey)
-        if explicitRemaining > 0 {
-            return explicitRemaining
-        }
-
-        let endTime = defaults.double(forKey: countdownUntilKey)
-        guard endTime > 0 else { return 0 }
-        return max(0, Int(ceil(endTime - Date().timeIntervalSince1970)))
-    }
-
-    private func isSessionActive() -> Bool {
-        guard let defaults = UserDefaults(suiteName: appGroup),
-              defaults.bool(forKey: sessionActiveKey) else {
-            return false
-        }
-
-        let endsAt = defaults.double(forKey: sessionEndsAtKey)
-        if endsAt > 0 && endsAt < Date().timeIntervalSince1970 {
-            defaults.set(false, forKey: sessionActiveKey)
-            defaults.removeObject(forKey: sessionEndsAtKey)
-            defaults.set(true, forKey: pendingInterventionSetupKey)
-            defaults.set(Date().timeIntervalSince1970, forKey: pendingInterventionSetupAtKey)
-            defaults.removeObject(forKey: countdownUntilKey)
-            defaults.removeObject(forKey: countdownRemainingKey)
-            defaults.synchronize()
-            return false
-        }
-
-        return true
-    }
-
-    private func pendingInterventionSetup() -> Bool {
-        guard let defaults = UserDefaults(suiteName: appGroup),
-              defaults.bool(forKey: pendingInterventionSetupKey) else {
-            return false
-        }
-        
-        let createdAt = defaults.double(forKey: pendingInterventionSetupAtKey)
-        guard createdAt > 0 else {
-            clearStalePendingInterventionSetup(defaults)
-            return false
-        }
-        
-        if Date().timeIntervalSince1970 - createdAt > pendingSetupFreshnessWindow {
-            clearStalePendingInterventionSetup(defaults)
-            return false
-        }
-        
-        return true
-    }
-    
-    private func clearStalePendingInterventionSetup(_ defaults: UserDefaults) {
-        defaults.set(false, forKey: pendingInterventionSetupKey)
-        defaults.removeObject(forKey: pendingInterventionSetupAtKey)
-        defaults.removeObject(forKey: countdownUntilKey)
-        defaults.removeObject(forKey: countdownRemainingKey)
-        defaults.synchronize()
-    }
-
-    private func timerIcon(isCountingDown: Bool, isLocked: Bool) -> UIImage {
+    private func timerIcon(state: IconState) -> UIImage {
         let size = CGSize(width: 96, height: 96)
         let renderer = UIGraphicsImageRenderer(size: size)
-
         return renderer.image { _ in
             let bounds = CGRect(origin: .zero, size: size)
             let circleRect = bounds.insetBy(dx: 7, dy: 7)
             let foreground = UIColor(red: 0.12, green: 0.16, blue: 0.15, alpha: 1.0)
-            let ring = UIColor(red: 0.77, green: 0.72, blue: 0.62, alpha: 1.0)
-            let fill = UIColor(red: 0.98, green: 0.97, blue: 0.93, alpha: 1.0)
-
-            fill.setFill()
-            UIBezierPath(ovalIn: circleRect).fill()
+            let ring       = UIColor(red: 0.77, green: 0.72, blue: 0.62, alpha: 1.0)
+            let fill       = UIColor(red: 0.98, green: 0.97, blue: 0.93, alpha: 1.0)
+            fill.setFill(); UIBezierPath(ovalIn: circleRect).fill()
             ring.setStroke()
-            let ringPath = UIBezierPath(ovalIn: circleRect)
-            ringPath.lineWidth = 6
-            ringPath.stroke()
-
-            if isLocked {
-                drawLock(in: bounds, color: foreground)
-            } else if isCountingDown {
-                drawHourglass(in: bounds, color: foreground)
-            } else {
-                foreground.setFill()
-                let paragraph = NSMutableParagraphStyle()
-                paragraph.alignment = .center
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.monospacedDigitSystemFont(ofSize: 42, weight: .semibold),
-                    .foregroundColor: foreground,
-                    .paragraphStyle: paragraph
+            let rp = UIBezierPath(ovalIn: circleRect); rp.lineWidth = 6; rp.stroke()
+            switch state {
+            case .locked:    drawLock(in: bounds, color: foreground)
+            case .countdown: drawHourglass(in: bounds, color: foreground)
+            case .timer:
+                let n = pauseDurationSeconds()
+                let fontSize: CGFloat = n >= 10 ? 34 : 42
+                let yOffset: CGFloat = n >= 10 ? 26 : 22
+                let para = NSMutableParagraphStyle(); para.alignment = .center
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .semibold),
+                    .foregroundColor: foreground, .paragraphStyle: para
                 ]
-                ("5" as NSString).draw(in: CGRect(x: 0, y: 22, width: size.width, height: 52), withAttributes: attributes)
+                ("\(n)" as NSString).draw(in: CGRect(x: 0, y: yOffset, width: size.width, height: 52), withAttributes: attrs)
             }
         }
     }
 
+    // MARK: - State readers
+
+    private func countdownRemaining() -> Int {
+        guard let d = UserDefaults(suiteName: appGroup) else { return 0 }
+        let explicit = d.integer(forKey: countdownRemainingKey)
+        if explicit > 0 { return explicit }
+        let end = d.double(forKey: countdownUntilKey)
+        guard end > 0 else { return 0 }
+        return max(0, Int(ceil(end - Date().timeIntervalSince1970)))
+    }
+
+    private func pauseDurationSeconds() -> Int {
+        guard let d = UserDefaults(suiteName: appGroup) else { return 5 }
+        let stored = d.integer(forKey: shieldPauseDurationKey)
+        guard stored > 0 else { return 5 }
+        return min(max(stored, 3), 30)
+    }
+
+    private func isSessionActive() -> Bool {
+        guard let d = UserDefaults(suiteName: appGroup), d.bool(forKey: sessionActiveKey) else { return false }
+        let endsAt = d.double(forKey: sessionEndsAtKey)
+        if endsAt > 0 && endsAt < Date().timeIntervalSince1970 {
+            let now = Date().timeIntervalSince1970
+            d.set(false, forKey: sessionActiveKey)
+            d.removeObject(forKey: sessionEndsAtKey)
+            d.set(true, forKey: pendingInterventionSetupKey)
+            d.set(now, forKey: pendingInterventionSetupAtKey)
+            d.set(now, forKey: sessionExpiredAtKey)
+            d.set("session-end", forKey: sessionExpiredSourceKey)
+            d.removeObject(forKey: countdownUntilKey)
+            d.removeObject(forKey: countdownRemainingKey)
+            d.synchronize()
+            return false
+        }
+        return true
+    }
+
+    private func sessionExpiredAfterTimer() -> Bool {
+        guard let d = UserDefaults(suiteName: appGroup) else { return false }
+        if d.double(forKey: sessionExpiredAtKey) > 0 {
+            let src = d.string(forKey: sessionExpiredSourceKey) ?? ""
+            return ["session-end","usage-limit","app-recovery","app-foreground-recovery",
+                    "mivo-app","shield-action-state-check","shield-configuration-state-check"].contains(src)
+        }
+        let endsAt = d.double(forKey: sessionEndsAtKey)
+        return endsAt > 0 && endsAt < Date().timeIntervalSince1970
+    }
+
+    private func pendingInterventionSetup() -> Bool {
+        guard let d = UserDefaults(suiteName: appGroup), d.bool(forKey: pendingInterventionSetupKey) else { return false }
+        let createdAt = d.double(forKey: pendingInterventionSetupAtKey)
+        guard createdAt > 0 else { clearStalePending(d); return false }
+        if Date().timeIntervalSince1970 - createdAt > pendingSetupFreshnessWindow { clearStalePending(d); return false }
+        return true
+    }
+
+    private func clearStalePending(_ d: UserDefaults) {
+        d.set(false, forKey: pendingInterventionSetupKey)
+        d.removeObject(forKey: pendingInterventionSetupAtKey)
+        d.removeObject(forKey: countdownUntilKey)
+        d.removeObject(forKey: countdownRemainingKey)
+        d.synchronize()
+    }
+
+    // MARK: - Icon drawing
+
     private func drawLock(in bounds: CGRect, color: UIColor) {
         color.setStroke()
-        let shackle = UIBezierPath()
-        shackle.lineWidth = 5
-        shackle.lineCapStyle = .round
-        shackle.addArc(withCenter: CGPoint(x: bounds.midX, y: 43), radius: 17, startAngle: .pi, endAngle: 0, clockwise: true)
+        let shackle = UIBezierPath(); shackle.lineWidth = 5; shackle.lineCapStyle = .round
+        shackle.addArc(withCenter: CGPoint(x: bounds.midX, y: 43), radius: 17,
+                       startAngle: .pi, endAngle: 0, clockwise: true)
         shackle.stroke()
-
         color.setFill()
-        let body = UIBezierPath(roundedRect: CGRect(x: 27, y: 43, width: 42, height: 32), cornerRadius: 8)
-        body.fill()
-
+        UIBezierPath(roundedRect: CGRect(x: 27, y: 43, width: 42, height: 32), cornerRadius: 8).fill()
         UIColor.white.withAlphaComponent(0.88).setFill()
         UIBezierPath(ovalIn: CGRect(x: bounds.midX - 4, y: 54, width: 8, height: 8)).fill()
         UIBezierPath(roundedRect: CGRect(x: bounds.midX - 2, y: 60, width: 4, height: 9), cornerRadius: 2).fill()
     }
 
     private func drawHourglass(in bounds: CGRect, color: UIColor) {
-        let centerX = bounds.midX
-        let topY: CGFloat = 24
-        let bottomY: CGFloat = 72
-        let leftX: CGFloat = 31
-        let rightX: CGFloat = 65
-        let neckY = bounds.midY
-
+        let cx = bounds.midX, topY: CGFloat = 24, botY: CGFloat = 72
+        let lx: CGFloat = 31, rx: CGFloat = 65, ny = bounds.midY
         color.setStroke()
-        let framePath = UIBezierPath()
-        framePath.lineWidth = 5
-        framePath.lineCapStyle = .round
-        framePath.lineJoinStyle = .round
-        framePath.move(to: CGPoint(x: leftX, y: topY))
-        framePath.addLine(to: CGPoint(x: rightX, y: topY))
-        framePath.move(to: CGPoint(x: leftX, y: bottomY))
-        framePath.addLine(to: CGPoint(x: rightX, y: bottomY))
-        framePath.move(to: CGPoint(x: leftX + 4, y: topY + 5))
-        framePath.addLine(to: CGPoint(x: centerX, y: neckY))
-        framePath.addLine(to: CGPoint(x: rightX - 4, y: bottomY - 5))
-        framePath.move(to: CGPoint(x: rightX - 4, y: topY + 5))
-        framePath.addLine(to: CGPoint(x: centerX, y: neckY))
-        framePath.addLine(to: CGPoint(x: leftX + 4, y: bottomY - 5))
-        framePath.stroke()
-
+        let fp = UIBezierPath(); fp.lineWidth = 5; fp.lineCapStyle = .round; fp.lineJoinStyle = .round
+        fp.move(to: CGPoint(x: lx, y: topY)); fp.addLine(to: CGPoint(x: rx, y: topY))
+        fp.move(to: CGPoint(x: lx, y: botY)); fp.addLine(to: CGPoint(x: rx, y: botY))
+        fp.move(to: CGPoint(x: lx+4, y: topY+5)); fp.addLine(to: CGPoint(x: cx, y: ny)); fp.addLine(to: CGPoint(x: rx-4, y: botY-5))
+        fp.move(to: CGPoint(x: rx-4, y: topY+5)); fp.addLine(to: CGPoint(x: cx, y: ny)); fp.addLine(to: CGPoint(x: lx+4, y: botY-5))
+        fp.stroke()
         color.withAlphaComponent(0.18).setFill()
-        let topSand = UIBezierPath()
-        topSand.move(to: CGPoint(x: leftX + 9, y: topY + 9))
-        topSand.addLine(to: CGPoint(x: rightX - 9, y: topY + 9))
-        topSand.addLine(to: CGPoint(x: centerX, y: neckY - 4))
-        topSand.close()
-        topSand.fill()
-
+        let ts = UIBezierPath(); ts.move(to: CGPoint(x: lx+9, y: topY+9)); ts.addLine(to: CGPoint(x: rx-9, y: topY+9)); ts.addLine(to: CGPoint(x: cx, y: ny-4)); ts.close(); ts.fill()
         color.withAlphaComponent(0.35).setFill()
-        let bottomSand = UIBezierPath()
-        bottomSand.move(to: CGPoint(x: centerX, y: neckY + 4))
-        bottomSand.addLine(to: CGPoint(x: rightX - 10, y: bottomY - 9))
-        bottomSand.addLine(to: CGPoint(x: leftX + 10, y: bottomY - 9))
-        bottomSand.close()
-        bottomSand.fill()
-
+        let bs = UIBezierPath(); bs.move(to: CGPoint(x: cx, y: ny+4)); bs.addLine(to: CGPoint(x: rx-10, y: botY-9)); bs.addLine(to: CGPoint(x: lx+10, y: botY-9)); bs.close(); bs.fill()
         color.setStroke()
-        let streamPath = UIBezierPath()
-        streamPath.lineWidth = 3
-        streamPath.lineCapStyle = .round
-        streamPath.move(to: CGPoint(x: centerX, y: neckY - 2))
-        streamPath.addLine(to: CGPoint(x: centerX, y: neckY + 11))
-        streamPath.stroke()
+        let sp = UIBezierPath(); sp.lineWidth = 3; sp.lineCapStyle = .round
+        sp.move(to: CGPoint(x: cx, y: ny-2)); sp.addLine(to: CGPoint(x: cx, y: ny+11)); sp.stroke()
     }
 }
