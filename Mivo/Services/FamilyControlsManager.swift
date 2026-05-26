@@ -203,6 +203,12 @@ final class FamilyControlsManager: ObservableObject {
         scheduleBGSessionRelock(after: TimeInterval(durationSeconds))
         scheduleSessionEndNotification(after: TimeInterval(durationSeconds))
 
+        // Live Activity: shows a live countdown on the lock screen and Dynamic Island.
+        // Requires NSSupportsLiveActivities = YES in Info.plist and the MivoWidgets
+        // extension target set up in Xcode (see Mivo/Constants/MivoLiveActivityAttributes.swift).
+        let sessionEnd = Date().addingTimeInterval(TimeInterval(durationSeconds))
+        startSessionLiveActivity(sessionEndsAt: sessionEnd, planMinutes: durationSeconds / 60, intentionLabel: "Session active")
+
         return .success(())
     }
 
@@ -247,6 +253,7 @@ final class FamilyControlsManager: ObservableObject {
         if #available(iOS 16.0, *) {
             applyImpulseProtectionIfNeeded()
         }
+        endSessionLiveActivity()
     }
 
     func finishMivoSessionState() {
@@ -275,6 +282,46 @@ final class FamilyControlsManager: ObservableObject {
         if #available(iOS 16.0, *) {
             applyImpulseProtectionIfNeeded()
         }
+        endSessionLiveActivity()
+    }
+
+    // MARK: - Live Activity management
+
+    /// Starts a Live Activity showing a countdown timer on the lock screen / Dynamic Island.
+    /// Requires iOS 16.2+, NSSupportsLiveActivities = YES, and the MivoWidgets extension target.
+    func startSessionLiveActivity(sessionEndsAt: Date, planMinutes: Int, intentionLabel: String) {
+        #if canImport(ActivityKit)
+        guard #available(iOS 16.2, *) else { return }
+        // End any running activity first (e.g. from a previous session).
+        endSessionLiveActivity()
+        let attrs = MivoSessionLiveAttributes(
+            sessionStartedAt: Date(),
+            intentionLabel: intentionLabel
+        )
+        let state = MivoSessionLiveAttributes.ContentState(
+            sessionEndsAt: sessionEndsAt,
+            planMinutes: planMinutes
+        )
+        do {
+            let content = ActivityContent(state: state, staleDate: sessionEndsAt.addingTimeInterval(60))
+            _ = try Activity.request(attributes: attrs, content: content)
+            logger.info("LiveActivity: started — ends at \(sessionEndsAt)")
+        } catch {
+            logger.warning("LiveActivity: failed to start — \(error.localizedDescription)")
+        }
+        #endif
+    }
+
+    /// Ends all running Mivo session Live Activities.
+    func endSessionLiveActivity() {
+        #if canImport(ActivityKit)
+        guard #available(iOS 16.2, *) else { return }
+        Task {
+            for activity in Activity<MivoSessionLiveAttributes>.activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+        #endif
     }
 
     private func nextActiveSessionLeaseDuration(for durationSeconds: Int) -> TimeInterval {

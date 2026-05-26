@@ -41,22 +41,24 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         let needsMivoSetup    = pendingInterventionSetup() && !hasActiveSession
         let sessionExpired    = sessionExpiredAfterTimer()
 
-        // ── 1. Counting down (highest priority — shown during 5-second hold) ──
+        // ── 1. Counting down (highest priority — shown during pause) ──
+        // No buttons: the countdown finishes on its own, then the glimpse + re-lock
+        // happens automatically. The user just waits — there is nothing to tap.
         if isCountingDown {
             let n = countdownRemaining()
             return ShieldConfiguration(
                 backgroundBlurStyle: .systemUltraThinMaterialLight,
                 backgroundColor: cream,
                 icon: timerIcon(state: .countdown),
-                title: label(hasActiveSession ? "Hold for \(n)s…" : "Pause — \(n)s", color: textPrimary),
+                title: label(hasActiveSession ? "Pausing…  \(n)s" : "Pausing…  \(n)s", color: textPrimary),
                 subtitle: label(
                     hasActiveSession
-                        ? "Keep holding. Mivo will reopen this app after the pause."
-                        : "Don't open yet — this moment passes.",
+                        ? "Hang on. The app opens when the pause ends."
+                        : "Wait for the pause to finish. This gives your mind a moment.",
                     color: textMuted
                 ),
-                primaryButtonLabel: label("Keep holding", color: textMuted),
-                primaryButtonBackgroundColor: btnLight,
+                primaryButtonLabel: nil,
+                primaryButtonBackgroundColor: nil,
                 secondaryButtonLabel: nil
             )
         }

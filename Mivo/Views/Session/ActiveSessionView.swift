@@ -338,6 +338,15 @@ struct ActiveSessionView: View {
             scheduleSessionNotifications()
             appVM.markMivoSessionActiveFor(seconds: totalPlanned)
             saveRunningSessionSnapshot()
+            // Start Live Activity so the timer is visible on the lock screen / Dynamic Island.
+            if #available(iOS 16.2, *) {
+                let sessionEnd = Date().addingTimeInterval(TimeInterval(totalPlanned))
+                FamilyControlsManager.shared.startSessionLiveActivity(
+                    sessionEndsAt: sessionEnd,
+                    planMinutes: plannedMinutes,
+                    intentionLabel: intention.rawValue
+                )
+            }
         }
         updateElapsed()
         sessionTimer?.invalidate()
@@ -532,6 +541,12 @@ struct ActiveSessionView: View {
             trigger: doneTrigger
         )
         center.add(doneRequest)
+
+        // The active session view owns the primary session-end notification.
+        // Cancel the FamilyControlsManager backup primary so the user only sees ONE
+        // banner at T=0. The nudges at +30s and +90s (mivo.session.ended.nudge1/2)
+        // are intentionally kept as backup in case the user dismisses this one.
+        center.removePendingNotificationRequests(withIdentifiers: ["mivo.session.ended"])
     }
 
     func cancelSessionNotifications() {

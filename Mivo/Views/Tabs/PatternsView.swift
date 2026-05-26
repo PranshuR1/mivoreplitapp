@@ -31,6 +31,19 @@ private struct AIStatInsight {
     let tint: Color
 }
 
+// MARK: - Stat detail identifiers
+private enum StatDetailKind: String, Identifiable {
+    case todayScrolled
+    case longestScroll
+    case avgScroll
+    case emergency
+    case scrollBehavior
+    case windows
+    case triggers
+    case habits
+    var id: String { rawValue }
+}
+
 struct PatternsView: View {
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.scenePhase) private var scenePhase
@@ -39,6 +52,7 @@ struct PatternsView: View {
     @State private var selectedDay: Int
     @State private var showFocus = false
     @State private var refreshPulse = false
+    @State private var activeStatDetail: StatDetailKind? = nil
 
     init() {
         let now = Date()
@@ -99,7 +113,7 @@ struct PatternsView: View {
         .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
             refreshPatternsData()
         }
-        .onChange(of: scenePhase) { phase in
+        .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 refreshPatternsData()
             }
@@ -160,8 +174,9 @@ struct PatternsView: View {
             }
         }
         .padding(14)
-        .background(MivoColors.heroText)
+        .background(MivoColors.card)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(MivoColors.border.opacity(0.4), lineWidth: 1))
     }
 
     @ViewBuilder
@@ -178,23 +193,21 @@ struct PatternsView: View {
             }
 
             if #available(iOS 16.0, *) {
-                MivoLiveDeviceActivityReport()
-                    .frame(height: 230)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                MivoReadableScreenTimeSummaryCard(compact: false)
             } else {
                 Text("Real Screen Time reports require iOS 16 or later.")
                     .font(.system(size: 12))
                     .foregroundColor(MivoColors.textSecondary)
             }
 
-            Text("This panel is real Screen Time data from Apple’s DeviceActivityReport API. The main app cannot copy those private totals out of the report extension, so Mivo renders the Apple report directly.")
-                .font(.system(size: 12))
-                .foregroundColor(MivoColors.textSecondary)
-                .lineSpacing(3)
+            Text("Live data from Apple’s DeviceActivityReport API.")
+                .font(.system(size: 11))
+                .foregroundColor(MivoColors.textMuted)
         }
         .padding(14)
-        .background(MivoColors.heroText)
+        .background(MivoColors.card)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MivoColors.border.opacity(0.4), lineWidth: 1))
     }
 
     // MARK: - Calendar
@@ -222,24 +235,54 @@ struct PatternsView: View {
             }
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                statTile("Today scrolled", value: formatDuration(todayLoggedMinutes), icon: "clock.fill", tint: MivoColors.accent)
-                statTile("Longest scroll", value: longestScrollText, icon: "arrow.up.right", tint: MivoColors.blue)
-                statTile("Avg scroll", value: appVM.sessions.isEmpty ? "0m" : formatDuration(averageSessionMinutes), icon: "chart.bar.xaxis", tint: MivoColors.secondary)
-                statTile("Emergency", value: "\(emergencyUnlockCount)", icon: "exclamationmark.triangle.fill", tint: MivoColors.timerRed)
+                statTileButton(.todayScrolled, title: "Today scrolled", value: formatDuration(todayLoggedMinutes), icon: "clock.fill", tint: MivoColors.accent)
+                statTileButton(.longestScroll, title: "Longest scroll", value: longestScrollText, icon: "arrow.up.right", tint: MivoColors.blue)
+                statTileButton(.avgScroll, title: "Avg scroll", value: appVM.sessions.isEmpty ? "0m" : formatDuration(averageSessionMinutes), icon: "chart.bar.xaxis", tint: MivoColors.secondary)
+                statTileButton(.emergency, title: "Emergency", value: "\(emergencyUnlockCount)", icon: "exclamationmark.triangle.fill", tint: MivoColors.timerRed)
             }
 
-            scrollBehaviorCard
-            triggerMapCard
-            rhythmCard
-            behaviorMixCard
+            // Two-column behavior row (tappable cards)
+            HStack(alignment: .top, spacing: 10) {
+                behaviorCardButton(.scrollBehavior) { scrollBehaviorCard }
+                behaviorCardButton(.windows)        { rhythmCard }
+            }
+            HStack(alignment: .top, spacing: 10) {
+                behaviorCardButton(.triggers)       { triggerMapCard }
+                behaviorCardButton(.habits)         { behaviorMixCard }
+            }
             aiInsightCard
-            screenTimeSummaryStrip
         }
         .padding(18)
         .background(MivoColors.white.opacity(0.58))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
         .shadow(color: MivoColors.textPrimary.opacity(0.06), radius: 14, y: 7)
+        .sheet(item: $activeStatDetail) { kind in
+            StatDetailSheet(kind: kind, sessions: appVM.sessions, dayPartStats: dayPartStats)
+        }
+    }
+
+    // Tappable wrapper for a stat tile
+    private func statTileButton(_ kind: StatDetailKind, title: String, value: String, icon: String, tint: Color) -> some View {
+        Button { activeStatDetail = kind } label: {
+            statTile(title, value: value, icon: icon, tint: tint)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Tappable wrapper for a behavior card
+    @ViewBuilder
+    private func behaviorCardButton<Content: View>(_ kind: StatDetailKind, @ViewBuilder content: () -> Content) -> some View {
+        Button { activeStatDetail = kind } label: {
+            content()
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(MivoColors.textMuted)
+                .padding(8)
+        }
     }
 
     private func statTile(_ title: String, value: String, icon: String, tint: Color) -> some View {
@@ -269,68 +312,56 @@ struct PatternsView: View {
         }
         .padding(14)
         .frame(minHeight: 112, alignment: .topLeading)
-        .background(MivoColors.heroText.opacity(0.88))
+        .background(MivoColors.card)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var scrollBehaviorCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(icon: "hand.draw", title: "Scroll behavior", subtitle: scrollBehaviorSummary)
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(icon: "hand.draw", title: "Scroll", subtitle: scrollBehaviorSummary)
 
-            VStack(spacing: 8) {
-                insightMetricRow("Most times scrolled", value: mostFrequentScrollWindow)
-                insightMetricRow("Most time spent", value: highestDurationScrollWindow)
-                insightMetricRow("Longest single scroll", value: longestScrollDetail)
-                insightMetricRow("Average over limit", value: averageOverrunText)
-                insightMetricRow("Top cached app", value: topCachedAppText)
+            VStack(spacing: 6) {
+                compactMetricRow("Most frequent", value: mostFrequentScrollWindow)
+                compactMetricRow("Most time", value: highestDurationScrollWindow)
+                compactMetricRow("Longest", value: longestScrollDetail)
             }
         }
-        .padding(14)
-        .background(MivoColors.heroText.opacity(0.82))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var rhythmCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(icon: "waveform.path", title: "Scroll windows", subtitle: strongestScrollWindow)
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(icon: "waveform.path", title: "Windows", subtitle: strongestScrollWindow)
 
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 ForEach(dayPartStats, id: \.name) { item in
                     rhythmRow(item)
                 }
             }
         }
-        .padding(14)
-        .background(MivoColors.heroText.opacity(0.82))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var triggerMapCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(icon: "map.fill", title: "Trigger Map", subtitle: triggerMapSummary)
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(icon: "map.fill", title: "Triggers", subtitle: triggerMapSummary)
 
-            VStack(spacing: 8) {
-                insightMetricRow("Strongest urge", value: topUrgeText)
-                insightMetricRow("Hardest time", value: highestDurationScrollWindow)
-                insightMetricRow("Most regretted", value: mostRegrettedTriggerText)
-                insightMetricRow("Emergency unlocks", value: "\(emergencyUnlockCount)")
-                insightMetricRow("Not worth it", value: notWorthItRateText)
-            }
-
-            if let trigger = triggerInsightText {
-                Text(trigger)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(MivoColors.textSecondary)
-                    .lineSpacing(3)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(MivoColors.white.opacity(0.46))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(spacing: 6) {
+                compactMetricRow("Top urge", value: topUrgeText)
+                compactMetricRow("Most regretted", value: mostRegrettedTriggerText)
+                compactMetricRow("Emergency", value: "\(emergencyUnlockCount)")
             }
         }
-        .padding(14)
-        .background(MivoColors.heroText.opacity(0.82))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func rhythmRow(_ item: DayPartStat) -> some View {
@@ -359,21 +390,19 @@ struct PatternsView: View {
     }
 
     private var behaviorMixCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(icon: "brain.head.profile", title: "What Mivo knows", subtitle: behaviorSummary)
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(icon: "brain.head.profile", title: "Habits", subtitle: behaviorSummary)
 
-            VStack(spacing: 8) {
-                insightMetricRow("Most common reason", value: mostCommonIntention)
-                insightMetricRow("Most common urge", value: topUrgeText)
-                insightMetricRow("Longest trigger", value: longestIntention)
-                insightMetricRow("Extended sessions", value: "\(extendedRate)%")
-                insightMetricRow("Felt intentional", value: reflectionWinRateText)
-                insightMetricRow("Baseline estimate", value: baselineEstimateText)
+            VStack(spacing: 6) {
+                compactMetricRow("Top reason", value: mostCommonIntention)
+                compactMetricRow("Extended", value: "\(extendedRate)%")
+                compactMetricRow("Intentional", value: reflectionWinRateText)
             }
         }
-        .padding(14)
-        .background(MivoColors.heroText.opacity(0.82))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var aiInsightCard: some View {
@@ -381,7 +410,7 @@ struct PatternsView: View {
             sectionHeader(icon: "sparkles", title: "AI Insight", subtitle: aiInsightSubtitle)
 
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(aiStatInsights.enumerated()), id: \.offset) { _, insight in
+                ForEach(Array(aiStatInsights.prefix(2).enumerated()), id: \.offset) { _, insight in
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: insight.icon)
                             .font(.system(size: 12, weight: .bold))
@@ -411,13 +440,13 @@ struct PatternsView: View {
         .padding(14)
         .background(
             LinearGradient(
-                colors: [MivoColors.heroText.opacity(0.9), MivoColors.white.opacity(0.54)],
+                colors: [MivoColors.card, MivoColors.surface.opacity(0.8)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
         )
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MivoColors.white.opacity(0.5), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MivoColors.border.opacity(0.35), lineWidth: 1))
     }
 
     private var screenTimeSummaryStrip: some View {
@@ -439,7 +468,7 @@ struct PatternsView: View {
             }
         }
         .padding(14)
-        .background(MivoColors.heroText.opacity(0.82))
+        .background(MivoColors.card)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
@@ -482,6 +511,21 @@ struct PatternsView: View {
                 .minimumScaleFactor(0.75)
         }
         .padding(.vertical, 4)
+    }
+
+    private func compactMetricRow(_ label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(MivoColors.textMuted)
+                .textCase(.uppercase)
+            Text(value)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(MivoColors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     var calendarCard: some View {
@@ -1146,6 +1190,496 @@ struct PatternsView: View {
         if viewMonth == 11 { viewMonth = 0; viewYear += 1 }
         else { viewMonth += 1 }
         selectedDay = 1
+    }
+}
+
+// MARK: - Stat Detail Sheet
+
+private struct StatDetailSheet: View {
+    let kind: StatDetailKind
+    let sessions: [Session]
+    let dayPartStats: [DayPartStat]
+
+    @Environment(\.dismiss) private var dismiss
+
+    private var title: String {
+        switch kind {
+        case .todayScrolled:  return "Today's Scrolling"
+        case .longestScroll:  return "Longest Scrolls"
+        case .avgScroll:      return "Session Length"
+        case .emergency:      return "Emergency Unlocks"
+        case .scrollBehavior: return "Scroll Behavior"
+        case .windows:        return "Time Windows"
+        case .triggers:       return "Trigger Map"
+        case .habits:         return "Habit Profile"
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MivoColors.background.ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        content
+                    }
+                    .padding(20)
+                    .padding(.bottom, 40)
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(MivoColors.accent)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch kind {
+        case .todayScrolled:  todayDetail
+        case .longestScroll:  longestDetail
+        case .avgScroll:      avgDetail
+        case .emergency:      emergencyDetail
+        case .scrollBehavior: scrollBehaviorDetail
+        case .windows:        windowsDetail
+        case .triggers:       triggersDetail
+        case .habits:         habitsDetail
+        }
+    }
+
+    // ── Today scrolled ──────────────────────────────────────────────────────
+    private var todayDetail: some View {
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        let todayKey = fmt.string(from: Date())
+        let todaySessions = sessions.filter { $0.date == todayKey }
+        let total = todaySessions.reduce(0) { $0 + $1.actualDuration }
+
+        return Group {
+            summaryRow("Sessions today", value: "\(todaySessions.count)")
+            summaryRow("Total time", value: formatDuration(total))
+            summaryRow("Avg per session", value: todaySessions.isEmpty ? "—" : formatDuration(total / max(1, todaySessions.count)))
+
+            detailSectionHeader("Today's sessions")
+            if todaySessions.isEmpty {
+                emptyState("No sessions logged today yet.")
+            } else {
+                ForEach(todaySessions.sorted { $0.startTime > $1.startTime }) { session in
+                    sessionRow(session)
+                }
+            }
+
+            detailSectionHeader("Recent days comparison")
+            recentDaysComparisonRows()
+        }
+    }
+
+    // ── Longest scroll ───────────────────────────────────────────────────────
+    private var longestDetail: some View {
+        let sorted = sessions.sorted { $0.actualDuration > $1.actualDuration }
+        let top = Array(sorted.prefix(10))
+
+        return Group {
+            summaryRow("All-time longest", value: top.first.map { formatDuration($0.actualDuration) } ?? "—")
+            summaryRow("Total sessions", value: "\(sessions.count)")
+
+            detailSectionHeader("Top 10 longest sessions")
+            if top.isEmpty {
+                emptyState("Complete a session to see it here.")
+            } else {
+                ForEach(Array(top.enumerated()), id: \.offset) { i, session in
+                    HStack(spacing: 12) {
+                        Text("\(i + 1)")
+                            .font(.system(size: 13, weight: .heavy, design: .rounded))
+                            .foregroundColor(i == 0 ? MivoColors.accent : MivoColors.textMuted)
+                            .frame(width: 22)
+                        sessionRow(session)
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Average scroll ───────────────────────────────────────────────────────
+    private var avgDetail: some View {
+        let avg = sessions.isEmpty ? 0 : sessions.reduce(0) { $0 + $1.actualDuration } / sessions.count
+        let buckets: [(label: String, range: ClosedRange<Int>)] = [
+            ("< 5 min", 0...4), ("5–15 min", 5...15), ("15–30 min", 16...30),
+            ("30–60 min", 31...60), ("> 60 min", 61...Int.max)
+        ]
+        let counts = buckets.map { b in sessions.filter { b.range.contains($0.actualDuration) }.count }
+        let maxCount = max(counts.max() ?? 0, 1)
+
+        return Group {
+            summaryRow("Average duration", value: formatDuration(avg))
+            summaryRow("Median duration", value: medianDuration())
+            summaryRow("Total sessions", value: "\(sessions.count)")
+
+            detailSectionHeader("Session length distribution")
+            VStack(spacing: 10) {
+                ForEach(Array(buckets.enumerated()), id: \.offset) { i, bucket in
+                    HStack(spacing: 10) {
+                        Text(bucket.label)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(MivoColors.textPrimary)
+                            .frame(width: 80, alignment: .leading)
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 4).fill(MivoColors.border.opacity(0.28))
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(MivoColors.accent.opacity(0.7))
+                                    .frame(width: max(4, geo.size.width * CGFloat(counts[i]) / CGFloat(maxCount)))
+                            }
+                        }
+                        .frame(height: 10)
+                        Text("\(counts[i])")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(MivoColors.textSecondary)
+                            .frame(width: 28, alignment: .trailing)
+                    }
+                }
+            }
+            .padding(14)
+            .background(MivoColors.card)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            detailSectionHeader("Recent 10 sessions")
+            ForEach(sessions.suffix(10).reversed()) { s in sessionRow(s) }
+        }
+    }
+
+    // ── Emergency ────────────────────────────────────────────────────────────
+    private var emergencyDetail: some View {
+        let emergencySessions = sessions.filter { $0.emergencyUnlockUsed == true }
+        let byUrge = Dictionary(grouping: emergencySessions.compactMap(\.urgeReason), by: { $0 })
+        let topUrge = byUrge.max(by: { $0.value.count < $1.value.count })
+
+        return Group {
+            summaryRow("Total emergency unlocks", value: "\(emergencySessions.count)")
+            summaryRow("Rate", value: sessions.isEmpty ? "0%" : "\(Int(Double(emergencySessions.count) / Double(sessions.count) * 100))%")
+            summaryRow("Top trigger", value: topUrge?.key.rawValue ?? "Not logged")
+
+            detailSectionHeader("Emergency sessions")
+            if emergencySessions.isEmpty {
+                emptyState("No emergency unlocks yet. That's good!")
+            } else {
+                ForEach(emergencySessions.sorted { $0.startTime > $1.startTime }) { session in
+                    sessionRow(session)
+                }
+            }
+        }
+    }
+
+    // ── Scroll behavior card ─────────────────────────────────────────────────
+    private var scrollBehaviorDetail: some View {
+        let sorted = sessions.sorted { $0.actualDuration > $1.actualDuration }
+
+        return Group {
+            detailSectionHeader("Time-of-day breakdown")
+            windowsBarChart
+
+            detailSectionHeader("By intention")
+            intentionBreakdown
+
+            detailSectionHeader("Longest sessions")
+            ForEach(sorted.prefix(5)) { sessionRow($0) }
+        }
+    }
+
+    // ── Windows card ─────────────────────────────────────────────────────────
+    private var windowsDetail: some View {
+        Group {
+            detailSectionHeader("Sessions by time of day")
+            windowsBarChart
+
+            ForEach(dayPartStats, id: \.name) { stat in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(stat.name)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(MivoColors.textPrimary)
+                        Spacer()
+                        Text("\(stat.count) sessions · \(stat.minutes == 0 ? "—" : formatDuration(stat.minutes))")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(MivoColors.textSecondary)
+                    }
+                    Text(stat.minutes == 0 ? "No sessions in this window" : windowInsight(stat))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(MivoColors.textMuted)
+                }
+                .padding(14)
+                .background(MivoColors.card)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+    }
+
+    // ── Trigger map card ─────────────────────────────────────────────────────
+    private var triggersDetail: some View {
+        let urgeGroups = Dictionary(grouping: sessions.compactMap(\.urgeReason), by: { $0 })
+            .sorted { $0.value.count > $1.value.count }
+        let regrettedGroups = Dictionary(grouping: sessions.filter { $0.outcomeScore == .notWorthIt }.compactMap(\.urgeReason), by: { $0 })
+        let total = urgeGroups.reduce(0) { $0 + $1.value.count }
+
+        return Group {
+            summaryRow("Unique triggers logged", value: "\(urgeGroups.count)")
+            summaryRow("Total trigger logs", value: "\(total)")
+            summaryRow("Emergency rate", value: sessions.isEmpty ? "0%" : "\(Int(Double(sessions.filter { $0.emergencyUnlockUsed == true }.count) / Double(sessions.count) * 100))%")
+
+            detailSectionHeader("All triggers ranked")
+            if urgeGroups.isEmpty {
+                emptyState("Log your urge when starting a session to see this.")
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(urgeGroups, id: \.key) { urge, sessionList in
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(urge.rawValue)
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(MivoColors.textPrimary)
+                                if let regreted = regrettedGroups[urge] {
+                                    Text("\(regreted.count) of \(sessionList.count) regretted")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(MivoColors.timerRed)
+                                }
+                            }
+                            Spacer()
+                            Text("\(sessionList.count)×")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                .foregroundColor(MivoColors.accent)
+                        }
+                        .padding(12)
+                        .background(MivoColors.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Habits card ──────────────────────────────────────────────────────────
+    private var habitsDetail: some View {
+        let intentionGroups = Dictionary(grouping: sessions, by: { $0.intention })
+            .sorted { $0.value.count > $1.value.count }
+        let reflections = sessions.compactMap(\.reflection)
+        let wins = reflections.filter { $0 == .yes || $0 == .kindOf }.count
+        let winPct = reflections.isEmpty ? 0 : Int(Double(wins) / Double(reflections.count) * 100)
+
+        return Group {
+            summaryRow("Intentional rate", value: reflections.isEmpty ? "—" : "\(winPct)%")
+            summaryRow("Sessions with reflection", value: "\(reflections.count) / \(sessions.count)")
+            summaryRow("Extension rate", value: sessions.isEmpty ? "0%" : "\(Int(Double(sessions.filter { $0.extendedOnce }.count) / Double(sessions.count) * 100))%")
+
+            detailSectionHeader("Sessions by intention")
+            if intentionGroups.isEmpty {
+                emptyState("Complete sessions to see your intention profile.")
+            } else {
+                let total = sessions.count
+                VStack(spacing: 8) {
+                    ForEach(intentionGroups, id: \.key) { intention, sessionList in
+                        let pct = total > 0 ? Int(Double(sessionList.count) / Double(total) * 100) : 0
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(intention.rawValue)
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(MivoColors.textPrimary)
+                                Text("\(sessionList.count) sessions · avg \(formatDuration(sessionList.reduce(0) { $0 + $1.actualDuration } / max(1, sessionList.count)))")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(MivoColors.textMuted)
+                            }
+                            Spacer()
+                            Text("\(pct)%")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                .foregroundColor(MivoColors.accent)
+                        }
+                        .padding(12)
+                        .background(MivoColors.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Shared sub-views
+
+    private var windowsBarChart: some View {
+        VStack(spacing: 8) {
+            ForEach(dayPartStats, id: \.name) { stat in
+                HStack(spacing: 10) {
+                    Text(stat.name)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(MivoColors.textPrimary)
+                        .frame(width: 68, alignment: .leading)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4).fill(MivoColors.border.opacity(0.28))
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(stat.tint)
+                                .frame(width: max(4, geo.size.width * stat.share))
+                        }
+                    }
+                    .frame(height: 14)
+                    Text(stat.minutes == 0 ? "—" : formatDuration(stat.minutes))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(MivoColors.textSecondary)
+                        .frame(width: 46, alignment: .trailing)
+                }
+            }
+        }
+        .padding(14)
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var intentionBreakdown: some View {
+        let groups = Dictionary(grouping: sessions, by: { $0.intention })
+            .sorted { $0.value.count > $1.value.count }
+        return VStack(spacing: 6) {
+            ForEach(groups, id: \.key) { intention, list in
+                HStack {
+                    Text(intention.rawValue)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.textPrimary)
+                    Spacer()
+                    Text("\(list.count) sessions · \(formatDuration(list.reduce(0) { $0 + $1.actualDuration } / max(1, list.count))) avg")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(MivoColors.textSecondary)
+                }
+                .padding(10)
+                .background(MivoColors.card)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+
+    private func recentDaysComparisonRows() -> some View {
+        let cal = Calendar.current
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        let days: [(label: String, key: String)] = (0..<7).map { offset in
+            let date = cal.date(byAdding: .day, value: -offset, to: Date())!
+            let label = offset == 0 ? "Today" : offset == 1 ? "Yesterday" : {
+                let d = DateFormatter(); d.dateFormat = "EEE"
+                return d.string(from: date)
+            }()
+            return (label, fmt.string(from: date))
+        }
+        let sessionsByDay = Dictionary(grouping: sessions, by: { $0.date })
+        return VStack(spacing: 6) {
+            ForEach(days, id: \.key) { day in
+                let daySessions = sessionsByDay[day.key] ?? []
+                let total = daySessions.reduce(0) { $0 + $1.actualDuration }
+                HStack {
+                    Text(day.label)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.textPrimary)
+                        .frame(width: 72, alignment: .leading)
+                    Text(daySessions.isEmpty ? "No sessions" : "\(daySessions.count) session\(daySessions.count == 1 ? "" : "s") · \(formatDuration(total))")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                    Spacer()
+                }
+                .padding(10)
+                .background(MivoColors.card)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+
+    private func sessionRow(_ session: Session) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(sessionTimeLabel(session))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+                HStack(spacing: 6) {
+                    Text(session.intention.rawValue)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                    if let urge = session.urgeReason {
+                        Text("· \(urge.rawValue)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(MivoColors.textMuted)
+                    }
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(formatDuration(session.actualDuration))
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(MivoColors.textPrimary)
+                if session.emergencyUnlockUsed == true {
+                    Text("⚠ Emergency")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(MivoColors.timerRed)
+                }
+            }
+        }
+        .padding(12)
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func summaryRow(_ label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(MivoColors.textSecondary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(MivoColors.textPrimary)
+        }
+        .padding(14)
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func detailSectionHeader(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .heavy))
+            .foregroundColor(MivoColors.textMuted)
+            .tracking(0.8)
+            .padding(.top, 4)
+    }
+
+    private func emptyState(_ message: String) -> some View {
+        Text(message)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundColor(MivoColors.textMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(MivoColors.card)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: - Computed helpers
+
+    private func medianDuration() -> String {
+        guard !sessions.isEmpty else { return "—" }
+        let sorted = sessions.map(\.actualDuration).sorted()
+        let mid = sorted.count / 2
+        let median = sorted.count % 2 == 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+        return formatDuration(median)
+    }
+
+    private func windowInsight(_ stat: DayPartStat) -> String {
+        let pct = Int(stat.share * 100)
+        return "\(pct)% of your total logged session time"
+    }
+
+    private func sessionTimeLabel(_ session: Session) -> String {
+        let fmt = ISO8601DateFormatter()
+        if let date = fmt.date(from: session.startTime) {
+            let disp = DateFormatter(); disp.dateFormat = "MMM d, h:mm a"
+            return disp.string(from: date)
+        }
+        return session.date
     }
 }
 
