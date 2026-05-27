@@ -13,6 +13,10 @@ struct ActiveSessionView: View {
 
     @State private var elapsed = 0
     @State private var extraSeconds = 0
+    /// When non-nil, replaces `plannedMinutes*60 + extraSeconds` as the total time.
+    /// Set when the user adds more time so the new timer equals exactly the added
+    /// duration instead of stacking on the original.
+    @State private var totalPlannedOverride: Int? = nil
     @State private var extensionUsed = false
     @State private var startTime = Date()
     @State private var didStart = false
@@ -32,7 +36,7 @@ struct ActiveSessionView: View {
     @State private var emergencyUnlockSavedReason: String? = nil
     @State private var sessionID = UUID().uuidString
 
-    var totalPlanned: Int { plannedMinutes * 60 + extraSeconds }
+    var totalPlanned: Int { totalPlannedOverride ?? (plannedMinutes * 60 + extraSeconds) }
     var displayElapsed: Int { sessionEndedGateActive ? min(elapsed, totalPlanned) : elapsed }
     var remaining: Int { max(0, totalPlanned - elapsed) }
     var progress: Double { min(Double(displayElapsed) / Double(max(totalPlanned, 1)), 1.0) }
@@ -452,15 +456,11 @@ struct ActiveSessionView: View {
             return
         }
 
-        // When the user taps "Add more time" they expect the *new* timer to equal the
-        // added duration — not (original + added) with the original already burned
-        // down. We reset elapsed to 0, rebase startTime to now, and set extraSeconds
-        // so that totalPlanned = plannedMinutes*60 + extraSeconds = addedSeconds. This
-        // makes the visible countdown show exactly the added minutes.  extraSeconds
-        // may become negative if the original session was longer than the added time,
-        // but `totalPlanned` only consumes its sum so the math still works out.
+        // When the user taps "Add more time" the *new* timer should equal exactly the
+        // added duration — not (original + added). We override totalPlanned with the
+        // added seconds, reset elapsed to 0, and rebase startTime to now.
         let addedSeconds = decision.addedMinutes * 60
-        extraSeconds = addedSeconds - plannedMinutes * 60
+        totalPlannedOverride = addedSeconds
         elapsed = 0
         startTime = Date()
         extensionUsed = true
@@ -484,8 +484,7 @@ struct ActiveSessionView: View {
         emergencyUnlockSavedReason = reason
         // Emergency unlock grants exactly 5 minutes — reset the timer so the countdown
         // shows exactly 5:00 instead of (original + 5).
-        let addedSeconds = 5 * 60
-        extraSeconds = addedSeconds - plannedMinutes * 60
+        totalPlannedOverride = 5 * 60
         elapsed = 0
         startTime = Date()
         extensionUsed = true

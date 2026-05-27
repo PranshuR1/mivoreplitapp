@@ -695,7 +695,6 @@ struct MonthlyPlanForecastView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let daysToShow = 30
-    private let perDayDecrement = 10
     private let floorMinutes = 30
     private let observationDuration = 3
 
@@ -788,12 +787,11 @@ struct MonthlyPlanForecastView: View {
         if plan.collecting {
             let remaining = max(0, observationDuration - plan.daysCollected)
             if remaining > 0 {
-                return "You have \(remaining) observation day\(remaining == 1 ? "" : "s") left — no cap is enforced. After that, your personalized plan begins at the average of these 3 days and trims by \(perDayDecrement) min per day until it hits a \(floorMinutes)-min floor."
+                return "You have \(remaining) observation day\(remaining == 1 ? "" : "s") left — no cap is enforced. Plan day 1 starts at the average of these 3 days. Week 1 is lenient; the daily trim grows a bit each week after that."
             }
-            return "Personalized plan starts tomorrow at the average of your 3 observation days. It trims by \(perDayDecrement) min per day until it hits a \(floorMinutes)-min floor."
+            return "Personalized plan starts tomorrow at the average of your 3 observation days. Week 1 trims about 3 min/day, then week-over-week the daily trim grows by 1 min."
         }
-        let projectedFloorDay = max(plan.dayIndex, plan.dayIndex + (plan.targetMinutes - floorMinutes) / perDayDecrement)
-        return "Today's target is \(plan.targetMinutes) min. The plan keeps trimming \(perDayDecrement) min per day from your \(plan.baselineMinutes)-min observation average until it hits the \(floorMinutes)-min floor (around plan day \(projectedFloorDay))."
+        return "Today's target is \(plan.targetMinutes) min. Week 1 of the plan trims 3 min/day from your \(plan.baselineMinutes)-min observation average. Each week after that, the daily trim grows by 1 min, floored at \(floorMinutes) min."
     }
 
     private struct ForecastEntry {
@@ -843,7 +841,11 @@ struct MonthlyPlanForecastView: View {
                 continue
             }
             let planDay = startingDayIndex + (offset - remainingObservation)
-            let minutes = max(floorMinutes, pastAverage - (planDay - 1) * perDayDecrement)
+            let minutes = AIService.personalizedTargetMinutes(
+                dayIndex: planDay,
+                baseline: pastAverage,
+                floor: floorMinutes
+            )
             entries.append(ForecastEntry(
                 dayNumber: planDay,
                 date: date,

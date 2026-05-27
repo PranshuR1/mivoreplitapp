@@ -56,24 +56,29 @@ User profile:
 - Primary reason for using Mivo: \(intention)
 - Self-reported daily scroll estimate: \(scrollEst) min
 - Apps they use most: \(apps)
-- Days past observation period: \(dayIndex)
-- Observed baseline (avg daily screen time from sessions): \(baseline) min
+- Plan day (day 1 = first day after 3-day observation): \(dayIndex)
+- 3-day observation average (the user's actual daily screen time): \(baseline) min
 - Rule-based target today: \(localTarget) min
 
 Recent sessions (last 10):
 \(recentSessions.isEmpty ? "None yet." : recentSessions)
 
-Generate a PERSONALIZED screen time plan. Rules:
-- Week 1 (days 1–7): target should stay close to baseline — reduce by at most 10%. Floor: 90 min.
-- Week 2 (days 8–14): reduce by 10–20%. Floor: 60 min.
-- Week 3+ (days 15+): target ~60 min. Max reduction 40%.
-- Suggest exactly 2 scroll windows fitting the user's session patterns.
-- Be warm and personalized in summary/decisionReason (mention their main app or intention).
+Generate a PERSONALIZED screen time plan that follows this philosophy:
+- Day 1 of the plan should equal the observation average (\(baseline) min) — start where
+  the user actually is, never below.
+- Week 1 (plan days 1–7) is the lenient week: each day should be slightly harder
+  than the previous, with very small daily decrements (around 2–4 min/day).
+- Week 2+ (plan days 8+) tightens faster: the per-day decrement grows by about 1
+  minute per week. Make it "harder every week, slowly but surely."
+- Floor at 30 min — never recommend a target below that.
+- Suggest exactly 2 scroll windows that fit the user's session patterns.
+- Be warm and personalized in summary/decisionReason (mention their main app or
+  intention, and frame it as a gentle build-up, not a crash diet).
 
 Respond ONLY with valid JSON, no markdown, no commentary:
 {
-  "targetMinutes": <int>,
-  "strictnessPercent": <int 0-40>,
+  "targetMinutes": <int — for plan day \(dayIndex)>,
+  "strictnessPercent": <int 0-95 — how much below baseline>,
   "summary": "<1-2 sentences, personalized>",
   "decisionReason": "<1-2 sentences explaining the plan>",
   "windows": [
@@ -437,11 +442,14 @@ class AIService {
         //   • Days 1–3: 3-day observation period. No enforced cap — Mivo just
         //     records the user's actual usage so it can build a personalized
         //     starting target from real data.
-        //   • Day 4+: Personalized plan. Day 1 of the plan equals the average
-        //     of the 3 observation days; each subsequent day trims 10 minutes,
-        //     down to a 30-minute floor.
+        //   • Plan day 1 (overall day 4): target equals the observation average.
+        //   • Week 1 of plan (days 1–7): a "lenient week" — every day is a bit
+        //     harder by 3 min/day.
+        //   • Week 2+: the per-day decrement grows by 1 min per week (week 2 is
+        //     -4/day, week 3 is -5/day, …), so it gets harder week by week
+        //     "slowly but surely."
+        //   • Floor at 30 min.
         let daysNeeded = 3
-        let perDayDecrement = 10
         let floorMinutes = 30
         let dailyTotals = Dictionary(grouping: sessions, by: \.date)
             .mapValues { daySessions in
@@ -479,8 +487,8 @@ class AIService {
                 baselineMinutes: baseline,
                 targetMinutes: 0,
                 strictnessPercent: 0,
-                summary: "Day \(dayLabel) of \(daysNeeded) — observation mode. \(remaining) day\(remaining == 1 ? "" : "s") left before your personalized plan starts at the average of these 3 days.",
-                decisionReason: "Mivo observes freely for 3 days — no cap, no restrictions. Your personalized plan begins on day 4 at the average of these 3 days, then trims by \(perDayDecrement) min per day down to a \(floorMinutes)-min floor.",
+                summary: "Day \(dayLabel) of \(daysNeeded) — observation mode. \(remaining) day\(remaining == 1 ? "" : "s") left, then your week-1 lenient plan begins at the average of these 3 days.",
+                decisionReason: "Mivo observes freely for 3 days — no cap, no restrictions. Plan day 1 starts at the average of these 3 days. Week 1 is lenient with small daily trims; each week after that the daily trim grows a little, slowly but surely.",
                 windows: observationWindows
             )
         }
@@ -495,18 +503,21 @@ class AIService {
             return max(floorMinutes, recentTotals.reduce(0, +) / recentTotals.count)
         }()
 
-        // Plan day 1 = past-3-day average; subtract 10 min per subsequent day.
+        // dayIndex = 1 on the first plan day (overall day 4).
         let dayIndex = max(1, daysCollected - daysNeeded + 1)
-        let decremented = pastThreeDayAverage - (dayIndex - 1) * perDayDecrement
-        let target = max(floorMinutes, decremented)
+        let target = personalizedTargetMinutes(dayIndex: dayIndex, baseline: pastThreeDayAverage, floor: floorMinutes)
         let strictness = max(0, min(95, Int(((Double(pastThreeDayAverage) - Double(target)) / Double(max(pastThreeDayAverage, 1)) * 100).rounded())))
         let activeWindows = recommendedScrollWindows(from: sessions, targetMinutes: target)
 
+        let weekNum = (dayIndex - 1) / 7 + 1
+        let perDayDecrement = 3 + (weekNum - 1)  // 3 for week 1, 4 for week 2, …
         let summaryLine: String
         if dayIndex == 1 {
-            summaryLine = "Plan day 1 — starting at your 3-day observation average of \(pastThreeDayAverage) min. Mivo will trim this by \(perDayDecrement) min each day."
+            summaryLine = "Plan day 1 — week 1 starts at your 3-day average of \(pastThreeDayAverage) min. This week is lenient: each day trims about \(perDayDecrement) min."
+        } else if weekNum == 1 {
+            summaryLine = "Plan day \(dayIndex) — lenient week 1. Today's target is \(target) min, \(pastThreeDayAverage - target) min below your observation average."
         } else {
-            summaryLine = "Plan day \(dayIndex) — target is \(target) min/day, \(pastThreeDayAverage - target) min below your 3-day observation average and \(strictness)% lighter overall."
+            summaryLine = "Plan day \(dayIndex) — week \(weekNum). Today's target is \(target) min (-\(perDayDecrement) min/day this week, \(strictness)% below your observation average)."
         }
 
         return ScreenTimeReductionPlan(
@@ -519,9 +530,30 @@ class AIService {
             targetMinutes: target,
             strictnessPercent: strictness,
             summary: summaryLine,
-            decisionReason: "Mivo starts your personalized plan at the average of your 3 observation days, then trims by \(perDayDecrement) min each day down to a \(floorMinutes)-min floor. The two scroll windows split the daily target where your sessions cluster.",
+            decisionReason: "Plan day 1 = your observation average. Week 1 trims 3 min/day; each week after that the daily trim grows by 1 min, with a \(floorMinutes)-min floor. The two scroll windows split today's target where your sessions cluster.",
             windows: activeWindows
         )
+    }
+
+    /// Computes the personalized daily target for plan day `dayIndex`.
+    ///
+    /// - Day 1: equals `baseline` (the 3-day observation average).
+    /// - Week 1 (days 1–7): per-day decrement of 3 min.
+    /// - Week 2+: per-day decrement grows by 1 min per week (week 2 = -4/day,
+    ///   week 3 = -5/day, …).
+    /// - Floored at `floor`.
+    static func personalizedTargetMinutes(dayIndex: Int, baseline: Int, floor: Int) -> Int {
+        guard dayIndex > 1 else { return max(floor, baseline) }
+        var total = baseline
+        for day in 2...dayIndex {
+            // Decrement is determined by the week the *previous* day belongs to —
+            // i.e. day 2 still uses week-1 decrement; day 9 uses week-2 decrement.
+            let weekNumOfPriorDay = (day - 2) / 7 + 1
+            let dailyDecrement = 3 + (weekNumOfPriorDay - 1)
+            total -= dailyDecrement
+            if total <= floor { return floor }
+        }
+        return max(floor, total)
     }
 
     static func makeScreenTimeReductionPlanOnline(
