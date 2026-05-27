@@ -452,17 +452,17 @@ struct ActiveSessionView: View {
             return
         }
 
-        // Cap elapsed at the current totalPlanned before adding extra time.
-        // Without this, if the user waited (e.g. 30 s) after the timer expired before
-        // tapping "Add more time", `elapsed` would be totalPlanned + 30, making the new
-        // remaining = addedSeconds − 30 instead of the full addedSeconds the user expects.
-        let priorTotal = totalPlanned
-        extraSeconds += decision.addedMinutes * 60
-        if elapsed > priorTotal {
-            // Slide startTime forward so elapsed reads exactly priorTotal.
-            startTime = startTime.addingTimeInterval(TimeInterval(elapsed - priorTotal))
-            elapsed = priorTotal
-        }
+        // When the user taps "Add more time" they expect the *new* timer to equal the
+        // added duration — not (original + added) with the original already burned
+        // down. We reset elapsed to 0, rebase startTime to now, and set extraSeconds
+        // so that totalPlanned = plannedMinutes*60 + extraSeconds = addedSeconds. This
+        // makes the visible countdown show exactly the added minutes.  extraSeconds
+        // may become negative if the original session was longer than the added time,
+        // but `totalPlanned` only consumes its sum so the math still works out.
+        let addedSeconds = decision.addedMinutes * 60
+        extraSeconds = addedSeconds - plannedMinutes * 60
+        elapsed = 0
+        startTime = Date()
         extensionUsed = true
         didPulseAtLimit = false
         feedbackPresentedForTimeLimit = false
@@ -482,12 +482,12 @@ struct ActiveSessionView: View {
         guard reason.count >= 3 else { return }
         emergencyUnlockUsed = true
         emergencyUnlockSavedReason = reason
-        let priorTotalEmergency = totalPlanned
-        extraSeconds += 5 * 60
-        if elapsed > priorTotalEmergency {
-            startTime = startTime.addingTimeInterval(TimeInterval(elapsed - priorTotalEmergency))
-            elapsed = priorTotalEmergency
-        }
+        // Emergency unlock grants exactly 5 minutes — reset the timer so the countdown
+        // shows exactly 5:00 instead of (original + 5).
+        let addedSeconds = 5 * 60
+        extraSeconds = addedSeconds - plannedMinutes * 60
+        elapsed = 0
+        startTime = Date()
         extensionUsed = true
         didPulseAtLimit = false
         feedbackPresentedForTimeLimit = false

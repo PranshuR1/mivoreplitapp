@@ -79,12 +79,33 @@ private struct MivoTotalActivityReportScene: DeviceActivityReportScene {
     ) {
         guard let defaults = UserDefaults(suiteName: "group.com.mivo.mivoapp") else { return }
 
+        let totalSeconds = max(0, Int(totalDuration.rounded()))
+
+        // Don't overwrite a previously good value with empty data.  iOS sometimes
+        // hands the report extension an empty `DeviceActivityResults` (e.g. during
+        // a transient sandbox / privacy denial) which used to wipe the user-visible
+        // total to 0 — the source of the "sometimes it shows, mostly it doesn't"
+        // inconsistency.  If the new payload is empty and we already have a recent
+        // cached total, keep the existing cache.
+        if totalSeconds == 0 && appDurations.isEmpty {
+            if let cachedJSON = defaults.string(forKey: "mivo.lastDeviceActivityReport"),
+               let cachedData = cachedJSON.data(using: .utf8),
+               let cached = try? JSONSerialization.jsonObject(with: cachedData) as? [String: Any],
+               let cachedTotal = (cached["totalSeconds"] as? Int) ?? (cached["totalSeconds"] as? Double).map({ Int($0) }),
+               cachedTotal > 0 {
+                // Just bump the freshness timestamp so the UI knows we tried.
+                defaults.set(Date().timeIntervalSince1970, forKey: "mivo.lastReportTimestamp")
+                defaults.synchronize()
+                return
+            }
+        }
+
         let perAppSeconds = appDurations.reduce(into: [String: Int]()) { result, item in
             result[item.key] = max(0, Int(item.value.rounded()))
         }
         let payload: [String: Any] = [
             "generatedAt": ISO8601DateFormatter().string(from: generatedAt),
-            "totalSeconds": max(0, Int(totalDuration.rounded())),
+            "totalSeconds": totalSeconds,
             "perAppSeconds": perAppSeconds,
             "source": "mivo-device-activity-extension"
         ]

@@ -10,6 +10,7 @@ struct HomeView: View {
     @State private var reflectionText = ""
     @State private var reflectionSaved = false
     @State private var adaptivePlan: ScreenTimeReductionPlan? = nil
+    @State private var showMonthlyForecast = false
     #if canImport(FamilyControls)
     @State private var impulseSelection = FamilyActivitySelection()
     @State private var showImpulsePicker = false
@@ -265,7 +266,20 @@ struct HomeView: View {
     private var adaptivePlanCard: some View {
         let plan = adaptivePlan ?? appVM.adaptiveScreenTimePlan()
 
-        return VStack(alignment: .leading, spacing: 16) {
+        return Button {
+            HapticsService.selection()
+            showMonthlyForecast = true
+        } label: {
+            adaptivePlanCardBody(plan: plan)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showMonthlyForecast) {
+            MonthlyPlanForecastView(plan: plan)
+        }
+    }
+
+    private func adaptivePlanCardBody(plan: ScreenTimeReductionPlan) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: plan.collecting ? "clock.badge.checkmark" : "sparkles")
                     .font(.system(size: 18, weight: .bold))
@@ -275,15 +289,19 @@ struct HomeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(plan.collecting ? "3-day monitoring" : "Personalized meter")
+                    Text(plan.collecting ? "5-day lenient mode" : "Personalized meter")
                         .font(.system(size: 19, weight: .bold, design: .rounded))
                         .foregroundColor(MivoColors.textPrimary)
-                    Text(plan.collecting ? "Day \(min(plan.daysCollected + 1, plan.daysNeeded)) of \(plan.daysNeeded) - unlimited" : "Day \(plan.dayIndex) - \(plan.strictnessPercent)% stricter")
+                    Text(plan.collecting ? "Day \(min(plan.daysCollected + 1, plan.daysNeeded)) of \(plan.daysNeeded) - 2h/day cap" : "Day \(plan.dayIndex) - \(plan.strictnessPercent)% stricter")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(plan.collecting ? MivoColors.blue : MivoColors.accent)
                 }
 
                 Spacer()
+
+                Image(systemName: "calendar")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(MivoColors.textMuted)
             }
 
             Text(plan.summary)
@@ -293,7 +311,7 @@ struct HomeView: View {
 
             HStack(spacing: 10) {
                 planMetric(title: "Baseline", value: formatDuration(plan.baselineMinutes))
-                planMetric(title: plan.collecting ? "Scrolling" : "Target", value: plan.collecting ? "Unlimited" : formatDuration(plan.targetMinutes))
+                planMetric(title: plan.collecting ? "Cap" : "Target", value: plan.collecting ? "2h/day" : formatDuration(plan.targetMinutes))
                 planMetric(title: "Sessions", value: "\(plan.windows.count)")
             }
 
@@ -313,11 +331,20 @@ struct HomeView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(MivoColors.textMuted)
                 .lineSpacing(3)
+
+            HStack(spacing: 6) {
+                Image(systemName: "hand.tap.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text("Tap to preview the next 30 days")
+                    .font(.system(size: 12, weight: .bold))
+            }
+            .foregroundColor(MivoColors.accent)
         }
         .padding(18)
         .background(MivoColors.white.opacity(0.62))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
     private func planMetric(title: String, value: String) -> some View {
@@ -380,7 +407,7 @@ struct HomeView: View {
                 }
             }
 
-            Text("First 3 days: Mivo only monitors. No screen-time cap is enforced. After day 3, Mivo creates your personalized screen-time meter and gradually tightens it.")
+            Text("First 5 days: lenient mode with a 2-hour daily cap split across two 1-hour scroll sessions. After day 5, Mivo builds your personalized screen-time meter starting at your past-3-day average and trims 10 min/day.")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(MivoColors.textSecondary)
                 .lineSpacing(3)
@@ -650,11 +677,180 @@ struct HomeView: View {
     private func formatDuration(_ minutes: Int) -> String {
         let hours = minutes / 60
         let mins = minutes % 60
-        
+
         if hours > 0 {
             return "\(hours)h \(mins)m"
         } else {
             return "\(mins)m"
         }
+    }
+}
+
+// MARK: - Monthly Plan Forecast
+
+/// Shows the next 30 days of the personalized plan with each day's projected target.
+/// Reachable by tapping the personalized meter card on Home.
+struct MonthlyPlanForecastView: View {
+    let plan: ScreenTimeReductionPlan
+    @Environment(\.dismiss) private var dismiss
+
+    private let daysToShow = 30
+    private let perDayDecrement = 10
+    private let floorMinutes = 30
+    private let learningModeDailyMinutes = 120
+    private let learningModeDuration = 5
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    summaryCard
+                    timelineCard
+                }
+                .padding(20)
+            }
+            .background(MivoColors.background.ignoresSafeArea())
+            .navigationTitle("Next 30 days")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var summaryCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Where the plan is heading")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(MivoColors.textPrimary)
+            Text(summaryText)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(MivoColors.textSecondary)
+                .lineSpacing(3)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MivoColors.white.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private var timelineCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Daily target")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.textMuted)
+                    .textCase(.uppercase)
+                Spacer()
+                Text("Minutes/day")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.textMuted)
+                    .textCase(.uppercase)
+            }
+
+            VStack(spacing: 6) {
+                ForEach(forecast, id: \.dayNumber) { entry in
+                    forecastRow(entry)
+                }
+            }
+        }
+        .padding(16)
+        .background(MivoColors.white.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private func forecastRow(_ entry: ForecastEntry) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.dateLabel)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Text(entry.phaseLabel)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(entry.isLearningMode ? MivoColors.blue : MivoColors.accent)
+            }
+            Spacer()
+            Text(entry.formattedMinutes)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundColor(MivoColors.textPrimary)
+                .monospacedDigit()
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(entry.isToday ? MivoColors.accent.opacity(0.12) : MivoColors.surface.opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var summaryText: String {
+        if plan.collecting {
+            let remaining = max(0, learningModeDuration - plan.daysCollected)
+            if remaining > 0 {
+                return "You have \(remaining) lenient day\(remaining == 1 ? "" : "s") left at a 2-hour daily cap. After that, your plan starts at your past-3-day average and trims by 10 min per day until it hits a \(floorMinutes)-min floor."
+            }
+            return "Personalized plan starts tomorrow. It begins at your past-3-day average of \(plan.baselineMinutes) min and trims by 10 min per day until it hits a \(floorMinutes)-min floor."
+        }
+        let projectedFloorDay = max(plan.dayIndex, plan.dayIndex + (plan.targetMinutes - floorMinutes) / perDayDecrement)
+        return "Today's target is \(plan.targetMinutes) min. The plan keeps trimming 10 min per day from your \(plan.baselineMinutes)-min baseline until it hits the \(floorMinutes)-min floor (around plan day \(projectedFloorDay))."
+    }
+
+    private struct ForecastEntry {
+        let dayNumber: Int
+        let date: Date
+        let minutes: Int
+        let isLearningMode: Bool
+        let isToday: Bool
+
+        var dateLabel: String {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEE, MMM d"
+            return formatter.string(from: date)
+        }
+
+        var phaseLabel: String {
+            isLearningMode ? "Lenient mode" : "Plan day \(dayNumber)"
+        }
+
+        var formattedMinutes: String {
+            let hours = minutes / 60
+            let mins = minutes % 60
+            return hours > 0 ? "\(hours)h \(mins)m" : "\(mins)m"
+        }
+    }
+
+    private var forecast: [ForecastEntry] {
+        let calendar = Calendar.current
+        let today = Date()
+        let collectingDays = plan.collecting ? max(0, plan.daysNeeded - plan.daysCollected) : 0
+        let startingDayIndex = plan.collecting ? 1 : plan.dayIndex
+        let pastAverage = plan.baselineMinutes
+        var entries: [ForecastEntry] = []
+        for offset in 0..<daysToShow {
+            guard let date = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
+            let isToday = offset == 0
+            if offset < collectingDays {
+                entries.append(ForecastEntry(
+                    dayNumber: offset + 1,
+                    date: date,
+                    minutes: learningModeDailyMinutes,
+                    isLearningMode: true,
+                    isToday: isToday
+                ))
+                continue
+            }
+            let planDay = startingDayIndex + (offset - collectingDays)
+            let minutes = max(floorMinutes, pastAverage - (planDay - 1) * perDayDecrement)
+            entries.append(ForecastEntry(
+                dayNumber: planDay,
+                date: date,
+                minutes: minutes,
+                isLearningMode: false,
+                isToday: isToday
+            ))
+        }
+        return entries
     }
 }

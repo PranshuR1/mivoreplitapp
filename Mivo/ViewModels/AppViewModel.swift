@@ -1041,7 +1041,7 @@ class AppViewModel: ObservableObject {
                 allowed: true,
                 addedMinutes: 30,
                 title: "Learning mode unlocked",
-                message: "For the first 3 days, Mivo only monitors your scrolling. No adaptive screen-time cap is enforced yet."
+                message: "For the first 5 days, Mivo runs in lenient mode with a 2-hour daily cap split across two 1-hour scroll sessions. No personalized adaptive cap kicks in until day 6."
             )
         }
 
@@ -1103,10 +1103,10 @@ class AppViewModel: ObservableObject {
         }
         if plan.collecting {
             return (
-                maxMinutes: 240,
-                isLimited: false,
-                message: "First 3 days: unlimited learning mode. Mivo is only monitoring your scrolling, then it builds your personalized screen-time meter after day 3.",
-                windowTitle: "3-day monitor"
+                maxMinutes: 120,
+                isLimited: true,
+                message: "First 5 days: lenient mode with a 2-hour daily cap split across two 1-hour scroll sessions. Personalized adaptive caps start on day 6.",
+                windowTitle: "5-day lenient mode"
             )
         }
 
@@ -1191,9 +1191,9 @@ class AppViewModel: ObservableObject {
                 in: plan,
                 windows: todaySchedule.windows,
                 idSuffix: "today-\(todaySchedule.date)",
-                collectingSummary: "First 3 days are unlimited learning mode. Mivo monitors your scrolling now, then builds a personalized screen-time meter after day 3.",
-                activeSummary: "Today’s scroll windows are locked from the morning check. Mivo is getting stricter gradually from your real pattern.",
-                reason: plan.collecting ? "Your times are saved for monitoring, but Mivo will not limit scrolling during the first 3 days." : "These windows are the schedule you locked for today. You can choose again tomorrow morning."
+                collectingSummary: "First 5 days are lenient learning mode — 2-hour daily cap split across two 1-hour scroll sessions. After day 5, Mivo builds a personalized screen-time meter from your real past-3-day average.",
+                activeSummary: "Today’s scroll windows are locked from the morning check. Mivo trims your target by 10 min per day from your past-3-day average.",
+                reason: plan.collecting ? "Your times are saved for monitoring. For days 1–5 the cap is a generous 2 hours/day (1 hour per session)." : "These windows are the schedule you locked for today. You can choose again tomorrow morning."
             )
         }
         if plan.collecting {
@@ -1201,7 +1201,7 @@ class AppViewModel: ObservableObject {
                 in: plan,
                 windows: [],
                 idSuffix: "needs-daily-schedule",
-                collectingSummary: "First 3 days are unlimited learning mode. Choose times if you want Mivo to watch those periods, but no adaptive cap starts until day 4.",
+                collectingSummary: "First 5 days are lenient learning mode (2-hour cap across two 1-hour windows). Choose times if you want Mivo to watch those periods. Personalized adaptive caps start on day 6.",
                 activeSummary: nil,
                 reason: "Mivo will not enforce a default window before you lock today’s schedule."
             )
@@ -1314,48 +1314,10 @@ class AppViewModel: ObservableObject {
     }
 
     private func timeTruthSchedule() -> (hour: Int, minute: Int) {
-        let activeDates = Set(sessions.map(\.date))
-        guard activeDates.count >= 3 || truthChecks.count >= 3 else {
-            return (20, 0)
-        }
-
-        var buckets: [String: Int] = [
-            "morning": 0,
-            "afternoon": 0,
-            "evening": 0,
-            "night": 0
-        ]
-
-        let calendar = Calendar.current
-        let formatter = ISO8601DateFormatter()
-
-        for session in sessions {
-            guard let start = formatter.date(from: session.startTime) else { continue }
-            let hour = calendar.component(.hour, from: start)
-            let weight = max(session.actualDuration, 1)
-
-            if hour >= 21 || hour < 6 {
-                buckets["night", default: 0] += weight
-            } else if hour < 12 {
-                buckets["morning", default: 0] += weight
-            } else if hour < 17 {
-                buckets["afternoon", default: 0] += weight
-            } else {
-                buckets["evening", default: 0] += weight
-            }
-        }
-
-        let strongest = buckets.max(by: { $0.value < $1.value })?.key ?? "evening"
-        switch strongest {
-        case "morning":
-            return (8, 0)
-        case "afternoon":
-            return (15, 0)
-        case "night":
-            return (22, 0)
-        default:
-            return (20, 0)
-        }
+        // Daily Truth always fires at 9:00 PM local time — a consistent end-of-day
+        // moment so users build a steady reflection habit instead of guessing when
+        // the prompt will appear.
+        return (21, 0)
     }
 
     func requestScreenTimeAccessAndRefresh() async -> Bool {
@@ -1604,11 +1566,29 @@ class AppViewModel: ObservableObject {
     }
 
     // Load Screen Time data from the real Device Activity extension report.
+    //
+    // The Screen Time data is "sticky": once we have a non-zero total for today
+    // we hold on to it even if the next refresh returns an empty report.  iOS's
+    // DeviceActivityReportExtension occasionally hands back empty results when
+    // the report surface isn't fully ready, which used to cause the live total
+    // to flicker between a real value and 0.  Hiding good data behind a bad
+    // refresh is worse than showing slightly stale data, so we only adopt a new
+    // value when it has signal.
     func loadDeviceActivityReport() {
         if #available(iOS 16.0, *) {
             let collector = ScreenTimeDataCollector.shared
-            
+
             if let report = collector.latestReport {
+                let isEmpty = report.totalSeconds == 0 && report.perAppSeconds.isEmpty
+                if isEmpty,
+                   let existing = deviceActivityMinutesToday, existing > 0,
+                   let existingGenerated = deviceActivityReportGeneratedAt,
+                   Calendar.current.isDate(existingGenerated, inSameDayAs: Date()) {
+                    // Keep the previously shown total; don't flicker to 0.
+                    updateWidgetSharedSummary()
+                    return
+                }
+
                 deviceActivityMinutesToday = report.totalMinutes
                 deviceActivityPerAppSeconds = report.perAppSeconds
                 deviceActivityReportGeneratedAt = report.generatedAt

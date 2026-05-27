@@ -80,20 +80,23 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
             )
         }
 
-        // ── 3. Active session check-in ──
+        // ── 3. Active session check-in (mid-scroll pause) ──
+        // Single primary "Pause & continue" button starts a 5-second countdown that
+        // automatically unlocks the app. No "Not now" option — the goal is a brief
+        // mid-scroll moment of notice, not a wall.
         if hasActiveSession {
             return ShieldConfiguration(
                 backgroundBlurStyle: .systemUltraThinMaterialLight,
                 backgroundColor: cream,
                 icon: timerIcon(state: .timer),
-                title: label("Pause to check in", color: textPrimary),
+                title: label("Take a breath", color: textPrimary),
                 subtitle: label(
-                    "Your reminder interval is up. Tap Continue session for the 5-second pause, then Mivo will reopen this app.",
+                    "Quick 5-second pause, then back to scrolling. Tap to begin — Mivo unlocks the app on its own.",
                     color: textMuted
                 ),
-                primaryButtonLabel: label("Not now", color: textMuted),
-                primaryButtonBackgroundColor: btnLight,
-                secondaryButtonLabel: label("Continue session", color: .white)
+                primaryButtonLabel: label("Pause & continue", color: .white),
+                primaryButtonBackgroundColor: btnBrown,
+                secondaryButtonLabel: nil
             )
         }
 

@@ -89,9 +89,11 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
                 completionHandler(.defer)
 
             } else if isSessionActive() {
-                // Active session: primary ("Not now") just dismisses
-                logger.info("ShieldAction primary: active session → .close")
-                completionHandler(.close)
+                // Active session check-in: primary now starts the 5-sec mid-scroll
+                // pause and then unlocks the lease automatically — no second button.
+                logger.info("ShieldAction primary: active session → mid-scroll 5s pause + unlock")
+                beginCountdownForActiveSession(completionHandler: completionHandler)
+                // DO NOT call completionHandler here — the countdown does it.
 
             } else {
                 // Default "Start" — begin user-configured pause, then glimpse + re-lock.
@@ -104,17 +106,10 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
             }
 
         case .secondaryButtonPressed:
-            if isSessionActive() && !isCountingDownActive() {
-                // "Continue session" — countdown then unlock lease
-                logger.info("ShieldAction secondary: active session → countdown + unlock")
-                beginCountdownForActiveSession(completionHandler: completionHandler)
-                // DO NOT call completionHandler here. Keeping the action alive is what
-                // lets the shield refresh once per second and then unlock after the pause.
-            } else {
-                // "Not now" — dismiss without action
-                logger.info("ShieldAction secondary: not now → .close")
-                completionHandler(.close)
-            }
+            // The active-session check-in shield no longer offers a "Not now" option.
+            // Treat any secondary press as a dismissal.
+            logger.info("ShieldAction secondary: dismiss → .close")
+            completionHandler(.close)
 
         @unknown default:
             completionHandler(.close)
@@ -146,7 +141,8 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     }
 
     /// New-intervention countdown (used by "Start" primary button, no active session).
-    /// Flow: N-second hold → brief glimpse of app → re-lock with "Open Mivo" shield.
+    /// Flow: N-second hold → exactly 2-second glimpse of app → re-lock with "Open Mivo"
+    /// shield that persists until the user taps it.
     ///
     /// `completionHandler` is called only AFTER the full sequence (glimpse + re-lock).
     /// This keeps the extension process alive so every `asyncAfter` tick fires reliably.
@@ -178,14 +174,31 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
             defaults?.removeObject(forKey: self.pendingInterventionSetupAtKey)
             defaults?.synchronize()
 
-            // 2. Glimpse — clear ManagedSettings so the app becomes visible for 2 s.
+            // 2. Glimpse — clear ManagedSettings so the app becomes visible for exactly 2 s.
             self.clearAllShields()
 
-            // 3. Re-lock after 2 s, THEN set pendingInterventionSetup so the shield
-            //    reappears in the "Open Mivo" state.  Correct order: glimpse → Open Mivo.
+            // 3. After 2 s, set the "Open Mivo" pending flag and re-lock with backup
+            //    retries so the shield reliably persists until the user taps "Open Mivo".
+            //    Without retries, a single failed apply() would leave the user with full
+            //    access to the blocked app — which manifests as "the app just opens" once
+            //    the pause ends.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 self.requestInterventionSetup()
                 self.apply(selection: self.loadSelection())
+            }
+
+            // Belt-and-suspenders re-lock retries: 2.0 / 2.4 / 3.0 / 4.0 / 6.0 seconds
+            // after the countdown ends.  Each pass re-marks pendingInterventionSetup and
+            // re-applies the shield in case the prior call was suppressed.
+            let retryOffsets: [TimeInterval] = [2.0, 2.4, 3.0, 4.0, 6.0]
+            for offset in retryOffsets {
+                DispatchQueue.main.asyncAfter(deadline: .now() + offset) {
+                    self.requestInterventionSetup()
+                    self.apply(selection: self.loadSelection())
+                }
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
                 completionHandler(.defer)
             }
         }
