@@ -141,12 +141,15 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     }
 
     /// New-intervention countdown (used by "Start" primary button, no active session).
-    /// Flow: N-second hold → exactly 2-second glimpse of app → re-lock with "Open Mivo"
-    /// shield that persists until the user taps it.
+    /// Flow: N-second hold → immediately transition to "Open Mivo" shield that
+    /// persists until the user taps it.  No app glimpse — going from pause to
+    /// "Open Mivo" directly avoids leaking even a moment of access to the
+    /// blocked app.
     ///
-    /// `completionHandler` is called only AFTER the full sequence (glimpse + re-lock).
-    /// This keeps the extension process alive so every `asyncAfter` tick fires reliably.
-    /// Calling the handler signals iOS the action is handled; `.defer` keeps shield visible.
+    /// `completionHandler` is called only AFTER the re-lock retries.  This keeps
+    /// the extension process alive so every `asyncAfter` tick fires reliably.
+    /// Calling the handler signals iOS the action is handled; `.defer` keeps the
+    /// shield visible.
     private func beginCountdownForNewIntervention(completionHandler: @escaping (ShieldActionResponse) -> Void) {
         let duration = countdownDuration
         let endTime = Date().addingTimeInterval(duration).timeIntervalSince1970
@@ -162,35 +165,22 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-            // 1. Clear countdown keys AND explicitly zero pendingInterventionSetup.
-            //    If a stale flag (from a prior session) is true, the shield config would
-            //    re-render to "Open Mivo" the instant countdown keys are removed (because
-            //    isCountingDown becomes false while needsMivoSetup is still true).
-            //    Zeroing it here prevents that flash so the glimpse happens cleanly first.
+            // Clear countdown keys, then flip directly to the "Open Mivo" state.
+            // No glimpse: we re-apply the shield in the same tick so the user
+            // never sees the blocked app between the pause and the Open Mivo screen.
             let defaults = UserDefaults(suiteName: self.appGroup)
             defaults?.removeObject(forKey: self.countdownUntilKey)
             defaults?.removeObject(forKey: self.countdownRemainingKey)
-            defaults?.set(false, forKey: self.pendingInterventionSetupKey)
-            defaults?.removeObject(forKey: self.pendingInterventionSetupAtKey)
             defaults?.synchronize()
 
-            // 2. Glimpse — clear ManagedSettings so the app becomes visible for exactly 2 s.
-            self.clearAllShields()
+            self.requestInterventionSetup()
+            self.apply(selection: self.loadSelection())
 
-            // 3. After 2 s, set the "Open Mivo" pending flag and re-lock with backup
-            //    retries so the shield reliably persists until the user taps "Open Mivo".
-            //    Without retries, a single failed apply() would leave the user with full
-            //    access to the blocked app — which manifests as "the app just opens" once
-            //    the pause ends.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                self.requestInterventionSetup()
-                self.apply(selection: self.loadSelection())
-            }
-
-            // Belt-and-suspenders re-lock retries: 2.0 / 2.4 / 3.0 / 4.0 / 6.0 seconds
-            // after the countdown ends.  Each pass re-marks pendingInterventionSetup and
-            // re-applies the shield in case the prior call was suppressed.
-            let retryOffsets: [TimeInterval] = [2.0, 2.4, 3.0, 4.0, 6.0]
+            // Belt-and-suspenders re-lock retries: 0.2 / 0.6 / 1.2 / 2.0 / 3.5
+            // seconds after the countdown ends.  Each pass re-marks
+            // pendingInterventionSetup and re-applies the shield in case the
+            // prior call was suppressed.
+            let retryOffsets: [TimeInterval] = [0.2, 0.6, 1.2, 2.0, 3.5]
             for offset in retryOffsets {
                 DispatchQueue.main.asyncAfter(deadline: .now() + offset) {
                     self.requestInterventionSetup()
@@ -198,7 +188,7 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
                 }
             }
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
                 completionHandler(.defer)
             }
         }
