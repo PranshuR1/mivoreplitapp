@@ -1,4 +1,6 @@
 import DeviceActivity
+import ExtensionKit
+import Foundation
 import ManagedSettings
 import SwiftUI
 
@@ -53,6 +55,12 @@ private struct MivoTotalActivityReportScene: DeviceActivityReportScene {
             }
         }
 
+        Self.publishCachedReport(
+            totalDuration: totalDuration,
+            appDurations: appDurations,
+            generatedAt: lastUpdated ?? Date()
+        )
+
         return MivoScreenTimeReportConfiguration(
             lastUpdated: lastUpdated,
             totalDuration: totalDuration,
@@ -62,6 +70,32 @@ private struct MivoTotalActivityReportScene: DeviceActivityReportScene {
                 .map { MivoActivityItem(name: $0.key, duration: $0.value) }
                 .sorted { $0.duration > $1.duration }
         )
+    }
+
+    private static func publishCachedReport(
+        totalDuration: TimeInterval,
+        appDurations: [String: TimeInterval],
+        generatedAt: Date
+    ) {
+        guard let defaults = UserDefaults(suiteName: "group.com.mivo.mivoapp") else { return }
+
+        let perAppSeconds = appDurations.reduce(into: [String: Int]()) { result, item in
+            result[item.key] = max(0, Int(item.value.rounded()))
+        }
+        let payload: [String: Any] = [
+            "generatedAt": ISO8601DateFormatter().string(from: generatedAt),
+            "totalSeconds": max(0, Int(totalDuration.rounded())),
+            "perAppSeconds": perAppSeconds,
+            "source": "mivo-device-activity-extension"
+        ]
+
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
+              let json = String(data: data, encoding: .utf8) else { return }
+
+        defaults.set(json, forKey: "mivo.lastDeviceActivityReport")
+        defaults.set(Date().timeIntervalSince1970, forKey: "mivo.lastReportTimestamp")
+        defaults.synchronize()
     }
 }
 
@@ -77,6 +111,18 @@ private struct MivoActivityItem: Identifiable, Equatable {
     var id: String { name }
     let name: String
     let duration: TimeInterval
+}
+
+private enum MivoReportPalette {
+    static let backgroundTop = Color(red: 0.98, green: 0.95, blue: 0.91)
+    static let backgroundBottom = Color(red: 0.94, green: 0.89, blue: 0.80)
+    static let card = Color(red: 1.0, green: 0.985, blue: 0.955)
+    static let primary = Color(red: 0.09, green: 0.06, blue: 0.035)
+    static let secondary = Color(red: 0.22, green: 0.14, blue: 0.075)
+    static let muted = Color(red: 0.36, green: 0.24, blue: 0.14)
+    static let border = Color(red: 0.70, green: 0.55, blue: 0.36).opacity(0.56)
+    static let accent = Color(red: 0.83, green: 0.53, blue: 0.16)
+    static let blue = Color(red: 0.29, green: 0.44, blue: 0.65)
 }
 
 private struct MivoScreenTimeReportView: View {
@@ -104,6 +150,12 @@ private struct MivoScreenTimeReportView: View {
             .padding(proxy.size.height < 220 ? 14 : 18)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(reportBackground)
+            .environment(\.colorScheme, .light)
+            .preferredColorScheme(.light)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(MivoReportPalette.border, lineWidth: 1)
+            )
         }
     }
 
@@ -112,13 +164,13 @@ private struct MivoScreenTimeReportView: View {
             Text(formattedDuration(configuration.totalDuration))
                 .font(.system(size: configuration.totalDuration >= 36_000 ? 38 : 46, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .foregroundColor(.primary)
+                .foregroundColor(MivoReportPalette.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
 
             Text("real iOS Screen Time today")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.secondary)
+                .foregroundColor(MivoReportPalette.secondary)
                 .lineLimit(1)
         }
     }
@@ -135,18 +187,19 @@ private struct MivoScreenTimeReportView: View {
             Text(title)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .foregroundColor(.primary)
+                .foregroundColor(MivoReportPalette.primary)
                 .lineLimit(1)
             Text(subtitle)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.secondary)
+                .foregroundColor(MivoReportPalette.muted)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 11)
         .padding(.vertical, 9)
-        .background(Color.white.opacity(0.64))
+        .background(MivoReportPalette.card)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(MivoReportPalette.border, lineWidth: 1))
     }
 
     private func activityBars(items: [MivoActivityItem]) -> some View {
@@ -157,21 +210,21 @@ private struct MivoScreenTimeReportView: View {
                     HStack(spacing: 8) {
                         Text(item.name)
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.primary)
+                            .foregroundColor(MivoReportPalette.primary)
                             .lineLimit(1)
                         Spacer()
                         Text(formattedDuration(item.duration))
                             .font(.system(size: 11, weight: .bold))
                             .monospacedDigit()
-                            .foregroundColor(.secondary)
+                            .foregroundColor(MivoReportPalette.secondary)
                     }
 
                     GeometryReader { barProxy in
                         ZStack(alignment: .leading) {
                             Capsule()
-                                .fill(Color.black.opacity(0.08))
+                                .fill(MivoReportPalette.border.opacity(0.72))
                             Capsule()
-                                .fill(Color(red: 0.20, green: 0.34, blue: 0.86).opacity(0.82))
+                                .fill(MivoReportPalette.blue)
                                 .frame(width: max(8, barProxy.size.width * (item.duration / largest)))
                         }
                     }
@@ -185,22 +238,23 @@ private struct MivoScreenTimeReportView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("No activity in Apple’s report for this interval.")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary)
+                .foregroundColor(MivoReportPalette.primary)
             Text(configuration.lastUpdated.map { "Updated \(shortTime($0))" } ?? "Open Screen Time in Settings once, then return here.")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundColor(MivoReportPalette.secondary)
                 .lineLimit(2)
         }
         .padding(12)
-        .background(Color.white.opacity(0.64))
+        .background(MivoReportPalette.card)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(MivoReportPalette.border, lineWidth: 1))
     }
 
     private var reportBackground: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.96, green: 0.97, blue: 0.94),
-                Color(red: 0.88, green: 0.92, blue: 0.98)
+                MivoReportPalette.backgroundTop,
+                MivoReportPalette.backgroundBottom
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing

@@ -1,5 +1,160 @@
 import Foundation
 
+// MARK: - OpenRouter Service
+enum OpenRouterService {
+    private static let apiKey = "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"
+    private static let endpoint = URL(string: "https://openrouter.ai/api/v1/chat/completions")!
+    // Two models: primary Claude Haiku, fallback Llama (free tier)
+    private static let models = ["anthropic/claude-3-haiku", "meta-llama/llama-3-8b-instruct:free"]
+
+    struct PlanPayload: Decodable {
+        let targetMinutes: Int?
+        let strictnessPercent: Int?
+        let summary: String?
+        let decisionReason: String?
+        let windows: [WindowPayload]?
+
+        struct WindowPayload: Decodable {
+            let title: String?
+            let startHour: Int?
+            let endHour: Int?
+            let minutes: Int?
+            let reason: String?
+        }
+    }
+
+    static func makePersonalizedPlan(
+        sessions: [Session],
+        profile: OnboardingProfile?,
+        localPlan: ScreenTimeReductionPlan
+    ) async -> ScreenTimeReductionPlan? {
+        let prompt = buildPrompt(sessions: sessions, profile: profile, localPlan: localPlan)
+        for model in models {
+            if let result = await callModel(model: model, prompt: prompt, localPlan: localPlan) {
+                return result
+            }
+        }
+        return nil
+    }
+
+    private static func buildPrompt(sessions: [Session], profile: OnboardingProfile?, localPlan: ScreenTimeReductionPlan) -> String {
+        let recentSessions = sessions.suffix(10).map {
+            "- \($0.date): \($0.actualDuration) min, intention: \($0.intention.rawValue)"
+        }.joined(separator: "\n")
+
+        let intention = profile?.primaryIntention?.rawValue ?? "general"
+        let scrollEst = profile?.scrollEstimateMinutes.map { "\($0)" } ?? "unknown"
+        let apps = profile?.preferredApps.prefix(6).joined(separator: ", ") ?? "none listed"
+        let dayIndex = localPlan.dayIndex
+        let baseline = localPlan.baselineMinutes
+        let localTarget = localPlan.targetMinutes
+
+        return """
+You are a compassionate screen-time coach inside Mivo, an iOS focus app.
+
+User profile:
+- Primary reason for using Mivo: \(intention)
+- Self-reported daily scroll estimate: \(scrollEst) min
+- Apps they use most: \(apps)
+- Days past observation period: \(dayIndex)
+- Observed baseline (avg daily screen time from sessions): \(baseline) min
+- Rule-based target today: \(localTarget) min
+
+Recent sessions (last 10):
+\(recentSessions.isEmpty ? "None yet." : recentSessions)
+
+Generate a PERSONALIZED screen time plan. Rules:
+- Week 1 (days 1–7): target should stay close to baseline — reduce by at most 10%. Floor: 90 min.
+- Week 2 (days 8–14): reduce by 10–20%. Floor: 60 min.
+- Week 3+ (days 15+): target ~60 min. Max reduction 40%.
+- Suggest exactly 2 scroll windows fitting the user's session patterns.
+- Be warm and personalized in summary/decisionReason (mention their main app or intention).
+
+Respond ONLY with valid JSON, no markdown, no commentary:
+{
+  "targetMinutes": <int>,
+  "strictnessPercent": <int 0-40>,
+  "summary": "<1-2 sentences, personalized>",
+  "decisionReason": "<1-2 sentences explaining the plan>",
+  "windows": [
+    {"title": "<label>", "startHour": <0-23>, "endHour": <1-24>, "minutes": <int>, "reason": "<why>"},
+    {"title": "<label>", "startHour": <0-23>, "endHour": <1-24>, "minutes": <int>, "reason": "<why>"}
+  ]
+}
+"""
+    }
+
+    private static func callModel(model: String, prompt: String, localPlan: ScreenTimeReductionPlan) async -> ScreenTimeReductionPlan? {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("https://mivo.app", forHTTPHeaderField: "HTTP-Referer")
+        request.timeoutInterval = 14
+
+        let body: [String: Any] = [
+            "model": model,
+            "messages": [["role": "user", "content": prompt]],
+            "max_tokens": 600,
+            "temperature": 0.4
+        ]
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+        request.httpBody = bodyData
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+
+        // Extract content from OpenRouter response envelope
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let content = message["content"] as? String else { return nil }
+
+        // Strip any accidental markdown fences
+        let cleaned = content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "^```json\\s*", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\\s*```$", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let payloadData = cleaned.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(PlanPayload.self, from: payloadData) else { return nil }
+
+        // Build windows from payload; fall back to local windows if AI omitted them
+        let aiWindows: [ScreenScrollWindow] = (payload.windows ?? []).enumerated().compactMap { idx, w in
+            guard let start = w.startHour, let end = w.endHour, let mins = w.minutes else { return nil }
+            return ScreenScrollWindow(
+                id: "ai-window-\(idx)-\(model.prefix(6))",
+                title: w.title ?? (idx == 0 ? "Scroll session 1" : "Scroll session 2"),
+                startHour: min(max(start, 0), 23),
+                endHour: min(24, max(end, start + 1)),
+                minutes: max(5, mins),
+                reason: w.reason ?? "Personalised by Mivo AI."
+            )
+        }
+        let windows = aiWindows.isEmpty ? localPlan.windows : aiWindows
+
+        let target = payload.targetMinutes ?? localPlan.targetMinutes
+        let strictness = payload.strictnessPercent ?? localPlan.strictnessPercent
+        let summary = payload.summary ?? localPlan.summary
+        let reason = payload.decisionReason ?? localPlan.decisionReason
+
+        return ScreenTimeReductionPlan(
+            id: "ai-\(localPlan.dayIndex)-\(target)",
+            collecting: false,
+            daysCollected: localPlan.daysCollected,
+            daysNeeded: localPlan.daysNeeded,
+            dayIndex: localPlan.dayIndex,
+            baselineMinutes: localPlan.baselineMinutes,
+            targetMinutes: target,
+            strictnessPercent: strictness,
+            summary: summary,
+            decisionReason: reason,
+            windows: windows
+        )
+    }
+}
+
 // MARK: - AI Service
 // Supports both online (OpenAI API) and offline (rule-based) recommendations
 
@@ -290,9 +445,19 @@ class AIService {
             dailyTotals.isEmpty ? fallbackEstimate : dailyTotals.values.reduce(0, +) / max(dailyTotals.count, 1),
             20
         )
-        let windows = recommendedScrollWindows(from: sessions, targetMinutes: baseline)
+        let userWindows = userPreferredScrollWindows(from: profile, targetMinutes: baseline)
+        let collectionWindows = userWindows.isEmpty ? recommendedScrollWindows(from: sessions, targetMinutes: baseline) : userWindows
 
         guard daysCollected >= daysNeeded else {
+            // During observation: allow generous 90-120 min windows so users aren't frustrated early
+            let observationTarget = max(90, baseline)
+            let lenientWindows = collectionWindows.map { w in
+                ScreenScrollWindow(
+                    id: w.id, title: w.title, startHour: w.startHour, endHour: w.endHour,
+                    minutes: max(w.minutes, min(60, observationTarget / 2)),
+                    reason: w.reason
+                )
+            }
             return ScreenTimeReductionPlan(
                 id: "collecting-\(daysCollected)",
                 collecting: true,
@@ -300,18 +465,30 @@ class AIService {
                 daysNeeded: daysNeeded,
                 dayIndex: 0,
                 baselineMinutes: baseline,
-                targetMinutes: baseline,
+                targetMinutes: observationTarget,
                 strictnessPercent: 0,
-                summary: "Mivo is still learning your normal scroll pattern. For the first few days, keep using your phone normally so the plan is based on your real habits.",
-                decisionReason: "Collecting mode keeps the limits open until Mivo has at least \(daysNeeded) days of session and truth-check history.",
-                windows: windows
+                summary: "Day \(daysCollected + 1) of 3 — no limits yet. Mivo is learning your real patterns before personalizing your schedule.",
+                decisionReason: "For days 1–3, Mivo observes freely — no caps, no restrictions. Your plan will be built from your actual habits, not guesses.",
+                windows: lenientWindows
             )
         }
 
+        // Gentle reduction: ~1.5% per day, floor at 60 min for the first 2 weeks, overall cap 40%
         let dayIndex = max(1, daysCollected - daysNeeded + 1)
-        let strictness = min(45, 8 + (dayIndex - 1) * 6)
-        let target = max(15, Int((Double(baseline) * (1.0 - Double(strictness) / 100.0)).rounded()))
+        let strictness = min(40, Int((Double(dayIndex) * 1.5).rounded()))
+        var target = max(15, Int((Double(baseline) * (1.0 - Double(strictness) / 100.0)).rounded()))
+        // Keep target above 60 for the first 14 days to avoid early frustration
+        if dayIndex <= 14 { target = max(60, target) }
         let activeWindows = recommendedScrollWindows(from: sessions, targetMinutes: target)
+
+        let weekNum = (dayIndex - 1) / 7 + 1
+        let summaryLine: String
+        switch weekNum {
+        case 1: summaryLine = "Week 1 — easing in. Your daily target is \(target) min, just slightly below your baseline."
+        case 2: summaryLine = "Week 2 — building the habit. Down to \(target) min/day, about \(strictness)% below your starting point."
+        case 3: summaryLine = "Week 3 — real progress. You're at \(target) min/day and still heading toward the 60-min goal."
+        default: summaryLine = "You've been at this for \(dayIndex) days. Target is \(target) min/day — \(strictness)% below where you started."
+        }
 
         return ScreenTimeReductionPlan(
             id: "active-\(dayIndex)-\(target)",
@@ -322,8 +499,8 @@ class AIService {
             baselineMinutes: baseline,
             targetMinutes: target,
             strictnessPercent: strictness,
-            summary: "Mivo made today stricter by \(strictness)% from your collected baseline. Keep scrolling inside two planned windows instead of scattered checks all day.",
-            decisionReason: "The plan uses your highest-scroll time buckets, average daily session minutes, and truth-check history. Each new day lowers the target a little until the plan reaches a steady challenge.",
+            summary: summaryLine,
+            decisionReason: "Mivo reduces your target by ~1.5% each day. For the first two weeks the floor is 60 min so it never feels like a cliff. The two scroll windows come from when your sessions cluster most.",
             windows: activeWindows
         )
     }
@@ -334,36 +511,37 @@ class AIService {
         todayScreenTimeMinutes: Int?,
         profile: OnboardingProfile?
     ) async -> ScreenTimeReductionPlan {
-        if !apiBaseURL.isEmpty, let url = URL(string: "\(apiBaseURL)/api/ai/screen-time-plan") {
-            do {
-                let body = ScreenTimeReductionPlanRequest(
-                    sessions: sessions,
-                    truthChecks: truthChecks,
-                    todayScreenTimeMinutes: todayScreenTimeMinutes,
-                    onboardingProfile: profile
-                )
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.timeoutInterval = 8
-                request.httpBody = try JSONEncoder().encode(body)
-
-                let (data, response) = try await URLSession.shared.data(for: request)
-                if let http = response as? HTTPURLResponse, http.statusCode == 200,
-                   let decoded = try? JSONDecoder().decode(ScreenTimeReductionPlan.self, from: data) {
-                    return decoded
-                }
-            } catch {
-                // fall back to local plan
-            }
-        }
-
-        return makeScreenTimeReductionPlan(
+        let local = makeScreenTimeReductionPlan(
             sessions: sessions,
             truthChecks: truthChecks,
             todayScreenTimeMinutes: todayScreenTimeMinutes,
             profile: profile
         )
+        guard !local.collecting else { return local }
+        if let ai = await OpenRouterService.makePersonalizedPlan(
+            sessions: sessions,
+            profile: profile,
+            localPlan: local
+        ) { return ai }
+        return local
+    }
+
+    private static func userPreferredScrollWindows(from profile: OnboardingProfile?, targetMinutes: Int) -> [ScreenScrollWindow] {
+        guard let windows = profile?.preferredScrollWindows, !windows.isEmpty else { return [] }
+        let firstMinutes = max(8, Int((Double(targetMinutes) * 0.55).rounded()))
+        let secondMinutes = max(7, targetMinutes - firstMinutes)
+
+        return windows.prefix(2).enumerated().map { index, window in
+            let minutes = index == 0 ? firstMinutes : secondMinutes
+            return ScreenScrollWindow(
+                id: "user-window-\(index + 1)-\(window.startHour)",
+                title: index == 0 ? "Your session 1" : "Your session 2",
+                startHour: min(max(window.startHour, 0), 23),
+                endHour: min(24, max(window.startHour + 1, window.endHour)),
+                minutes: minutes,
+                reason: "You chose this time. Mivo will monitor for 3 days before recommending changes."
+            )
+        }
     }
 
     private static func recommendedScrollWindows(from sessions: [Session], targetMinutes: Int) -> [ScreenScrollWindow] {

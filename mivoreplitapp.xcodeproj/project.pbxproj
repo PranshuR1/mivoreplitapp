@@ -17,22 +17,15 @@
 		11A1B2C3D4E5F60718293A55 /* OnboardingPolish.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A54 /* OnboardingPolish.swift */; };
 		20F6403A2FA005BC00F3DDD2 /* MivoDeviceActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F640392FA005BB00F3DDD2 /* MivoDeviceActivityMonitor.swift */; };
 		20F6403C2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F6403B2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift */; };
-		20F6403E2FA005FF00F3DDD2 /* MivoDeviceActivityExtension-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 20F6403D2FA005FF00F3DDD2 /* MivoDeviceActivityExtension-Info.plist */; };
 		20F640402FA0062700F3DDD2 /* SCREENTIME_SETUP_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 20F6403F2FA0062700F3DDD2 /* SCREENTIME_SETUP_GUIDE.md */; };
 		20F640422FA0065500F3DDD2 /* ScreenTimeUsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F640412FA0065500F3DDD2 /* ScreenTimeUsageView.swift */; };
 		20F640442FA0067700F3DDD2 /* IMPLEMENTATION_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = 20F640432FA0067700F3DDD2 /* IMPLEMENTATION_SUMMARY.md */; };
 		20F640482FA006AA00F3DDD2 /* SCREENTIME_CHECKLIST.md in Resources */ = {isa = PBXBuildFile; fileRef = 20F640472FA006AA00F3DDD2 /* SCREENTIME_CHECKLIST.md */; };
 		20F6404A2FA006DF00F3DDD2 /* ARCHITECTURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 20F640492FA006DF00F3DDD2 /* ARCHITECTURE.md */; };
 		20F6404C2FA0071600F3DDD2 /* README_SCREENTIME.md in Resources */ = {isa = PBXBuildFile; fileRef = 20F6404B2FA0071600F3DDD2 /* README_SCREENTIME.md */; };
-		2F1000012FA1000000000001 /* MivoScreenTimeReportExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F1000022FA1000000000001 /* MivoScreenTimeReportExtension.swift */; };
-		2F1000032FA1000000000001 /* MivoScreenTimeReportExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 2F1000042FA1000000000001 /* MivoScreenTimeReportExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		3F2000012FA2000000000001 /* MivoShieldConfigurationExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F2000022FA2000000000001 /* MivoShieldConfigurationExtension.swift */; };
-		3F2000032FA2000000000001 /* MivoShieldConfigurationExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 3F2000042FA2000000000001 /* MivoShieldConfigurationExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		3F2001012FA2000000000001 /* MivoShieldActionExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F2001022FA2000000000001 /* MivoShieldActionExtension.swift */; };
-		3F2001032FA2000000000001 /* MivoShieldActionExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 3F2001042FA2000000000001 /* MivoShieldActionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		4F3000012FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3000022FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift */; };
-		4F3000032FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 4F3000042FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2ABB1EAABB2C457C759A4ED9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 825473780CCF565309E59996 /* HomeView.swift */; };
+		2F1000012FA1000000000001 /* MivoScreenTimeReportExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F1000022FA1000000000001 /* MivoScreenTimeReportExtension.swift */; };
+		2F1000032FA1000000000001 /* MivoScreenTimeReportExtension.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 2F1000042FA1000000000001 /* MivoScreenTimeReportExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		31EA0E76E4C1A150D615DC6F /* WeeklyReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A927AC28F9838387580E5F7C /* WeeklyReportView.swift */; };
 		36E209E3016E99C04CA79F09 /* OnboardingCalibrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00AD3F6DBBFDA083CC9797 /* OnboardingCalibrationView.swift */; };
 		3A0008733F86C281C8D46ABA /* PatternsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924B7B2827ECD025106C3BC8 /* PatternsView.swift */; };
@@ -40,7 +33,13 @@
 		3E02A7708F6BD08E765E5128 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A63C4EAD8A83BB91C7DC04 /* Models.swift */; };
 		3E40F9E61D2A7209F6154DA8 /* InterventionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7227F4AB3D4438B50D9AD672 /* InterventionsView.swift */; };
 		3EA3BEDC05636F5EBA124415 /* FocusTimerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32F88595EE93F7622346254 /* FocusTimerView.swift */; };
+		3F2000012FA2000000000001 /* MivoShieldConfigurationExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F2000022FA2000000000001 /* MivoShieldConfigurationExtension.swift */; };
+		3F2000032FA2000000000001 /* MivoShieldConfigurationExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 3F2000042FA2000000000001 /* MivoShieldConfigurationExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		3F2001012FA2000000000001 /* MivoShieldActionExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F2001022FA2000000000001 /* MivoShieldActionExtension.swift */; };
+		3F2001032FA2000000000001 /* MivoShieldActionExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 3F2001042FA2000000000001 /* MivoShieldActionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		484E1553E2D16A1334C5B534 /* OnboardingWhyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A5B5AD5658BBDC54B49C03 /* OnboardingWhyView.swift */; };
+		4F3000012FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3000022FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift */; };
+		4F3000032FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 4F3000042FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5306BDEDDBAF577A5C71D040 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 643C4A985B67F5A8D604FE4F /* AppViewModel.swift */; };
 		5CA7645304E43E1E7ED6FBC7 /* MivoComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645D07F841D313203C4ECDFC /* MivoComponents.swift */; };
 		6C0340F1A79DDBDE74E67D9E /* OnboardingWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */; };
@@ -49,6 +48,8 @@
 		A79AFA1D32903E9CBBF9E905 /* InterventionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FFED9B21B799AA832E6CD87 /* InterventionView.swift */; };
 		AD94D9CF1B8E20453FB159CF /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE58C1D450B8A8660731280 /* RegisterView.swift */; };
 		C6C3DD0E863A2F8D790AA962 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1980145C72773894696A7D /* Colors.swift */; };
+		4D56534B4559533030303032 /* MivoScreenTimeKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D56534B4559533030303031 /* MivoScreenTimeKeys.swift */; };
+		4D4C69766541743030303032 /* MivoLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4C69766541743030303031 /* MivoLiveActivityAttributes.swift */; };
 		D7312060C644D124B483BC72 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 635CBBF06E2D93C93BEFA108 /* Assets.xcassets */; };
 		DBBAED45E4F10CBB5AA82D31 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58E201ADEE8016C4085FCEE3 /* LoginView.swift */; };
 		E8CE5CE448C77CB1FCA80F35 /* OnboardingAppsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBCED7FB0532BE876C8C5A7D /* OnboardingAppsView.swift */; };
@@ -96,7 +97,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				2F1000032FA1000000000001 /* MivoScreenTimeReportExtension.appex in Embed App Extensions */,
 				3F2000032FA2000000000001 /* MivoShieldConfigurationExtension.appex in Embed App Extensions */,
 				3F2001032FA2000000000001 /* MivoShieldActionExtension.appex in Embed App Extensions */,
 				4F3000032FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex in Embed App Extensions */,
@@ -104,15 +104,28 @@
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		2F1000172FA1000000000001 /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				2F1000032FA1000000000001 /* MivoScreenTimeReportExtension.appex in Embed ExtensionKit Extensions */,
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		13E4501CD3B1197981AC3649 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A4A /* SecureAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureAuthService.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A50 /* ForgotPasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgotPasswordView.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A52 /* HapticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsService.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A54 /* OnboardingPolish.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPolish.swift; sourceTree = "<group>"; };
+		13E4501CD3B1197981AC3649 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		203EE6C12F8672FF00CF2F60 /* Mivo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mivo.entitlements; sourceTree = "<group>"; };
+		2095BB2D2FBCE77000CFFA1A /* BLOCKER_FIX_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BLOCKER_FIX_SUMMARY.md; sourceTree = "<group>"; };
+		2095BB2E2FBCE78600CFFA1A /* BLOCKER_TEST_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BLOCKER_TEST_GUIDE.md; sourceTree = "<group>"; };
 		20F640392FA005BB00F3DDD2 /* MivoDeviceActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoDeviceActivityMonitor.swift; sourceTree = "<group>"; };
 		20F6403B2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenTimeDataCollector.swift; sourceTree = "<group>"; };
 		20F6403D2FA005FF00F3DDD2 /* MivoDeviceActivityExtension-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "MivoDeviceActivityExtension-Info.plist"; sourceTree = "<group>"; };
@@ -125,9 +138,13 @@
 		20F640492FA006DF00F3DDD2 /* ARCHITECTURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ARCHITECTURE.md; sourceTree = "<group>"; };
 		20F6404B2FA0071600F3DDD2 /* README_SCREENTIME.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README_SCREENTIME.md; sourceTree = "<group>"; };
 		2F1000022FA1000000000001 /* MivoScreenTimeReportExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoScreenTimeReportExtension.swift; sourceTree = "<group>"; };
-		2F1000042FA1000000000001 /* MivoScreenTimeReportExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MivoScreenTimeReportExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		2F1000042FA1000000000001 /* MivoScreenTimeReportExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = MivoScreenTimeReportExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		2F1000082FA1000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		2F1000092FA1000000000001 /* MivoScreenTimeReportExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MivoScreenTimeReportExtension.entitlements; sourceTree = "<group>"; };
+		34191824CA5D84892229698E /* StorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageService.swift; sourceTree = "<group>"; };
+		34191825CA5D84892229698F /* AIDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDataStore.swift; sourceTree = "<group>"; };
+		34191826CA5D848922296990 /* RemoteAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAuthService.swift; sourceTree = "<group>"; };
+		37143BCF1E6FA4015CC8CB5B /* Mivo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mivo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3F2000022FA2000000000001 /* MivoShieldConfigurationExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoShieldConfigurationExtension.swift; sourceTree = "<group>"; };
 		3F2000042FA2000000000001 /* MivoShieldConfigurationExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MivoShieldConfigurationExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3F2000082FA2000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -136,15 +153,11 @@
 		3F2001042FA2000000000001 /* MivoShieldActionExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MivoShieldActionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3F2001082FA2000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		3F2001092FA2000000000001 /* MivoShieldActionExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MivoShieldActionExtension.entitlements; sourceTree = "<group>"; };
+		4DE58C1D450B8A8660731280 /* RegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterView.swift; sourceTree = "<group>"; };
 		4F3000022FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoDeviceActivityMonitorExtension.swift; sourceTree = "<group>"; };
 		4F3000042FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MivoDeviceActivityMonitorExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		4F3000082FA3000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		4F3000092FA3000000000001 /* MivoDeviceActivityMonitorExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MivoDeviceActivityMonitorExtension.entitlements; sourceTree = "<group>"; };
-		34191824CA5D84892229698E /* StorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageService.swift; sourceTree = "<group>"; };
-		34191825CA5D84892229698F /* AIDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDataStore.swift; sourceTree = "<group>"; };
-		34191826CA5D848922296990 /* RemoteAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAuthService.swift; sourceTree = "<group>"; };
-		37143BCF1E6FA4015CC8CB5B /* Mivo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mivo.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		4DE58C1D450B8A8660731280 /* RegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterView.swift; sourceTree = "<group>"; };
 		55FEF55053D9F94D84531716 /* FocusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusView.swift; sourceTree = "<group>"; };
 		58E201ADEE8016C4085FCEE3 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		5FFED9B21B799AA832E6CD87 /* InterventionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterventionView.swift; sourceTree = "<group>"; };
@@ -162,6 +175,8 @@
 		A32F88595EE93F7622346254 /* FocusTimerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerView.swift; sourceTree = "<group>"; };
 		A927AC28F9838387580E5F7C /* WeeklyReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyReportView.swift; sourceTree = "<group>"; };
 		AA1980145C72773894696A7D /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+		4D56534B4559533030303031 /* MivoScreenTimeKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoScreenTimeKeys.swift; sourceTree = "<group>"; };
+		4D4C69766541743030303031 /* MivoLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoLiveActivityAttributes.swift; sourceTree = "<group>"; };
 		B1C7B8AED77B857F5C728E43 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		B6A5B5AD5658BBDC54B49C03 /* OnboardingWhyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWhyView.swift; sourceTree = "<group>"; };
 		B6F01D06356BA2A931BF8D65 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -172,14 +187,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		398BE0EC45AC19E6DD0962F3 /* Frameworks */ = {
+		2F10000A2FA1000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		2F10000A2FA1000000000001 /* Frameworks */ = {
+		398BE0EC45AC19E6DD0962F3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -231,7 +246,17 @@
 				3F20010B2FA2000000000001 /* MivoShieldActionExtension */,
 				4F30000B2FA3000000000001 /* MivoDeviceActivityMonitorExtension */,
 				048F4804EED2B58C3E9D6D8C /* Products */,
+				2095BB2D2FBCE77000CFFA1A /* BLOCKER_FIX_SUMMARY.md */,
+				2095BB2E2FBCE78600CFFA1A /* BLOCKER_TEST_GUIDE.md */,
 			);
+			sourceTree = "<group>";
+		};
+		1A968DCE56935E2C49EAB331 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				E5A63C4EAD8A83BB91C7DC04 /* Models.swift */,
+			);
+			path = Models;
 			sourceTree = "<group>";
 		};
 		2F10000B2FA1000000000001 /* MivoScreenTimeReportExtension */ = {
@@ -242,6 +267,14 @@
 				2F1000092FA1000000000001 /* MivoScreenTimeReportExtension.entitlements */,
 			);
 			path = MivoScreenTimeReportExtension;
+			sourceTree = "<group>";
+		};
+		36E0194512D0FF39478C220E /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				645D07F841D313203C4ECDFC /* MivoComponents.swift */,
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 		3F20000B2FA2000000000001 /* MivoShieldConfigurationExtension */ = {
@@ -264,6 +297,15 @@
 			path = MivoShieldActionExtension;
 			sourceTree = "<group>";
 		};
+		440BD239FF1AF2128A821007 /* Session */ = {
+			isa = PBXGroup;
+			children = (
+				A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */,
+				7D7141BD01F69FA19D68CD23 /* ReflectionView.swift */,
+			);
+			path = Session;
+			sourceTree = "<group>";
+		};
 		4F30000B2FA3000000000001 /* MivoDeviceActivityMonitorExtension */ = {
 			isa = PBXGroup;
 			children = (
@@ -272,31 +314,6 @@
 				4F3000092FA3000000000001 /* MivoDeviceActivityMonitorExtension.entitlements */,
 			);
 			path = MivoDeviceActivityMonitorExtension;
-			sourceTree = "<group>";
-		};
-		1A968DCE56935E2C49EAB331 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				E5A63C4EAD8A83BB91C7DC04 /* Models.swift */,
-			);
-			path = Models;
-			sourceTree = "<group>";
-		};
-		36E0194512D0FF39478C220E /* Components */ = {
-			isa = PBXGroup;
-			children = (
-				645D07F841D313203C4ECDFC /* MivoComponents.swift */,
-			);
-			path = Components;
-			sourceTree = "<group>";
-		};
-		440BD239FF1AF2128A821007 /* Session */ = {
-			isa = PBXGroup;
-			children = (
-				A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */,
-				7D7141BD01F69FA19D68CD23 /* ReflectionView.swift */,
-			);
-			path = Session;
 			sourceTree = "<group>";
 		};
 		4FD5475CAD15E7E7C0B6F2B1 /* Services */ = {
@@ -329,6 +346,8 @@
 			isa = PBXGroup;
 			children = (
 				AA1980145C72773894696A7D /* Colors.swift */,
+				4D56534B4559533030303031 /* MivoScreenTimeKeys.swift */,
+				4D4C69766541743030303031 /* MivoLiveActivityAttributes.swift */,
 			);
 			path = Constants;
 			sourceTree = "<group>";
@@ -417,28 +436,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		65C4AA6A8E422295B136D3FC /* Mivo */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 54CD7788651D3D73A39F62B3 /* Build configuration list for PBXNativeTarget "Mivo" */;
-			buildPhases = (
-				49F7A5B419344F1A23090987 /* Sources */,
-				B44F92287D83F473B5597CC4 /* Resources */,
-				398BE0EC45AC19E6DD0962F3 /* Frameworks */,
-				2F1000072FA1000000000001 /* Embed App Extensions */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				2F10000C2FA1000000000001 /* PBXTargetDependency */,
-				3F20000C2FA2000000000001 /* PBXTargetDependency */,
-				3F20010C2FA2000000000001 /* PBXTargetDependency */,
-				4F30000C2FA3000000000001 /* PBXTargetDependency */,
-			);
-			name = Mivo;
-			productName = Mivo;
-			productReference = 37143BCF1E6FA4015CC8CB5B /* Mivo.app */;
-			productType = "com.apple.product-type.application";
-		};
 		2F1000062FA1000000000001 /* MivoScreenTimeReportExtension */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 2F10000D2FA1000000000001 /* Build configuration list for PBXNativeTarget "MivoScreenTimeReportExtension" */;
@@ -454,7 +451,7 @@
 			name = MivoScreenTimeReportExtension;
 			productName = MivoScreenTimeReportExtension;
 			productReference = 2F1000042FA1000000000001 /* MivoScreenTimeReportExtension.appex */;
-			productType = "com.apple.product-type.app-extension";
+			productType = "com.apple.product-type.extensionkit-extension";
 		};
 		3F2000062FA2000000000001 /* MivoShieldConfigurationExtension */ = {
 			isa = PBXNativeTarget;
@@ -507,6 +504,29 @@
 			productReference = 4F3000042FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		65C4AA6A8E422295B136D3FC /* Mivo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 54CD7788651D3D73A39F62B3 /* Build configuration list for PBXNativeTarget "Mivo" */;
+			buildPhases = (
+				49F7A5B419344F1A23090987 /* Sources */,
+				B44F92287D83F473B5597CC4 /* Resources */,
+				398BE0EC45AC19E6DD0962F3 /* Frameworks */,
+				2F1000072FA1000000000001 /* Embed App Extensions */,
+				2F1000172FA1000000000001 /* Embed ExtensionKit Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2F10000C2FA1000000000001 /* PBXTargetDependency */,
+				3F20000C2FA2000000000001 /* PBXTargetDependency */,
+				3F20010C2FA2000000000001 /* PBXTargetDependency */,
+				4F30000C2FA3000000000001 /* PBXTargetDependency */,
+			);
+			name = Mivo;
+			productName = Mivo;
+			productReference = 37143BCF1E6FA4015CC8CB5B /* Mivo.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -557,19 +577,6 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		B44F92287D83F473B5597CC4 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				20F640482FA006AA00F3DDD2 /* SCREENTIME_CHECKLIST.md in Resources */,
-				20F640402FA0062700F3DDD2 /* SCREENTIME_SETUP_GUIDE.md in Resources */,
-				D7312060C644D124B483BC72 /* Assets.xcassets in Resources */,
-				20F640442FA0067700F3DDD2 /* IMPLEMENTATION_SUMMARY.md in Resources */,
-				20F6404C2FA0071600F3DDD2 /* README_SCREENTIME.md in Resources */,
-				20F6404A2FA006DF00F3DDD2 /* ARCHITECTURE.md in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		2F10000F2FA1000000000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -598,17 +605,55 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B44F92287D83F473B5597CC4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				20F640482FA006AA00F3DDD2 /* SCREENTIME_CHECKLIST.md in Resources */,
+				20F640402FA0062700F3DDD2 /* SCREENTIME_SETUP_GUIDE.md in Resources */,
+				D7312060C644D124B483BC72 /* Assets.xcassets in Resources */,
+				20F640442FA0067700F3DDD2 /* IMPLEMENTATION_SUMMARY.md in Resources */,
+				20F6404C2FA0071600F3DDD2 /* README_SCREENTIME.md in Resources */,
+				20F6404A2FA006DF00F3DDD2 /* ARCHITECTURE.md in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		2F10000E2FA1000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2F1000012FA1000000000001 /* MivoScreenTimeReportExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F20000E2FA2000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3F2000012FA2000000000001 /* MivoShieldConfigurationExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F20010E2FA2000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3F2001012FA2000000000001 /* MivoShieldActionExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		49F7A5B419344F1A23090987 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				20F6403A2FA005BC00F3DDD2 /* MivoDeviceActivityMonitor.swift in Sources */,
 				F36E8F0BEF32F3B1A9711946 /* MivoApp.swift in Sources */,
 				3E02A7708F6BD08E765E5128 /* Models.swift in Sources */,
 				C6C3DD0E863A2F8D790AA962 /* Colors.swift in Sources */,
+				4D56534B4559533030303032 /* MivoScreenTimeKeys.swift in Sources */,
+				4D4C69766541743030303032 /* MivoLiveActivityAttributes.swift in Sources */,
 				0E1F52C1F0D0AB37AD268A05 /* StorageService.swift in Sources */,
 				3BF38CFF771C4B42265F053C /* AIService.swift in Sources */,
 				0E1F52C2F0D0AB37AD268A06 /* AIDataStore.swift in Sources */,
@@ -639,30 +684,6 @@
 				31EA0E76E4C1A150D615DC6F /* WeeklyReportView.swift in Sources */,
 				FC1A2B3C4D5E6F7A8B9C0 /* FamilyControlsManager.swift in Sources */,
 				20F640422FA0065500F3DDD2 /* ScreenTimeUsageView.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		2F10000E2FA1000000000001 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				2F1000012FA1000000000001 /* MivoScreenTimeReportExtension.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		3F20000E2FA2000000000001 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				3F2000012FA2000000000001 /* MivoShieldConfigurationExtension.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		3F20010E2FA2000000000001 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				3F2001012FA2000000000001 /* MivoShieldActionExtension.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -726,33 +747,6 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
-		};
-		89DD08DE054C7C66B68DCB11 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Mivo/Mivo.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 45UT26F58Q;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Mivo/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
 		};
 		2F1000102FA1000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -986,6 +980,33 @@
 			};
 			name = Release;
 		};
+		89DD08DE054C7C66B68DCB11 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Mivo/Mivo.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 45UT26F58Q;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Mivo/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		D8257AF867AF152B35ADE7C2 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1086,15 +1107,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		54CD7788651D3D73A39F62B3 /* Build configuration list for PBXNativeTarget "Mivo" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				89DD08DE054C7C66B68DCB11 /* Debug */,
-				11090D863AD413E64078C686 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		2F10000D2FA1000000000001 /* Build configuration list for PBXNativeTarget "MivoScreenTimeReportExtension" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -1127,6 +1139,15 @@
 			buildConfigurations = (
 				4F3000102FA3000000000001 /* Debug */,
 				4F3000112FA3000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		54CD7788651D3D73A39F62B3 /* Build configuration list for PBXNativeTarget "Mivo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				89DD08DE054C7C66B68DCB11 /* Debug */,
+				11090D863AD413E64078C686 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

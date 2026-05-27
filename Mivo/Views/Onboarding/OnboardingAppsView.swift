@@ -22,7 +22,7 @@ struct OnboardingAppsView: View {
     @State private var showNotificationChoice = false
     @State private var protectedAppsEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
     @State private var setupMessage: String? = nil
-    @State private var goToAge = false
+    @State private var goToCheckIn = false
     @State private var aiRecommendation: ProtectedAppRecommendation?
     @State private var aiRecommendationLoading = false
     #if canImport(FamilyControls)
@@ -38,8 +38,8 @@ struct OnboardingAppsView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 6,
-                            total: 6,
+                            step: 4,
+                            total: 9,
                             eyebrow: "Apps",
                             title: "Where should Mivo pay attention?",
                             subtitle: "Choose the places that tend to pull you in. This stays private and helps your first insights feel relevant."
@@ -118,8 +118,8 @@ struct OnboardingAppsView: View {
             }
         }
         .navigationBarBackButtonHidden()
-        .navigationDestination(isPresented: $goToAge) {
-            AgeOnboardingView_Internal()
+        .navigationDestination(isPresented: $goToCheckIn) {
+            CheckInOnboardingView_Internal()
         }
         .confirmationDialog("Notifications", isPresented: $showNotificationChoice, titleVisibility: .visible) {
             Button("Allow notifications") {
@@ -134,7 +134,7 @@ struct OnboardingAppsView: View {
         }
         #if canImport(FamilyControls)
         .familyActivityPicker(isPresented: $showImpulsePicker, selection: $impulseSelection)
-        .onChange(of: impulseSelection) { newValue in
+        .onChange(of: impulseSelection) { _, newValue in
             if #available(iOS 16.0, *) {
                 FamilyControlsManager.shared.saveFamilyActivitySelection(newValue)
                 if FamilyControlsManager.shared.hasImpulseSelection() {
@@ -159,7 +159,7 @@ struct OnboardingAppsView: View {
             refreshSetupState()
             refreshAIRecommendation()
         }
-        .onChange(of: selected) { _ in
+        .onChange(of: selected) { _, _ in
             refreshAIRecommendation()
         }
     }
@@ -416,7 +416,7 @@ struct OnboardingAppsView: View {
         profile.preferredApps = Array(selected)
         appVM.saveOnboardingProfile(profile)
         HapticsService.impact(style: .light)
-        goToAge = true
+        goToCheckIn = true
         loading = false
     }
 
@@ -556,6 +556,157 @@ struct FlowLayout: Layout {
 
 // MARK: - Internal onboarding age/result views (embedded to ensure they're in-scope)
 
+
+private struct CheckInOnboardingView_Internal: View {
+    @EnvironmentObject var appVM: AppViewModel
+    @Environment(\.dismiss) var dismiss
+    @State private var selectedMinutes = 3
+    @State private var appear = false
+
+    private let options = [2, 3, 5]
+
+    var body: some View {
+        ZStack {
+            OnboardingBackdrop()
+
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        OnboardingStepHeader(
+                            step: 5,
+                            total: 9,
+                            eyebrow: "Check-ins",
+                            title: "How often should Mivo pause?",
+                            subtitle: "For longer sessions, Mivo will briefly pause the protected app so you can check whether you still want to keep scrolling."
+                        )
+                        .onboardingEntrance(appear)
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "hourglass")
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundColor(MivoColors.accent)
+                                    .frame(width: 42, height: 42)
+                                    .background(MivoColors.accent.opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text("5-second check-in")
+                                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                                        .foregroundColor(MivoColors.textPrimary)
+                                    Text("Sessions under 5 minutes stay uninterrupted. Longer sessions get a quiet 5-second pause at your chosen rhythm.")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(MivoColors.textSecondary)
+                                        .lineSpacing(4)
+                                }
+                            }
+
+                            VStack(spacing: 10) {
+                                ForEach(options, id: \.self) { minutes in
+                                    Button {
+                                        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+                                            selectedMinutes = minutes
+                                        }
+                                        HapticsService.selection()
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Image(systemName: selectedMinutes == minutes ? "checkmark.circle.fill" : "circle")
+                                                .font(.system(size: 20, weight: .semibold))
+                                                .foregroundColor(selectedMinutes == minutes ? MivoColors.accent : MivoColors.textMuted)
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                Text("Every \(minutes) minutes")
+                                                    .font(.system(size: 16, weight: .bold))
+                                                    .foregroundColor(MivoColors.textPrimary)
+                                                Text(minutes == 3 ? "Recommended balance" : intervalSubtitle(for: minutes))
+                                                    .font(.system(size: 12, weight: .medium))
+                                                    .foregroundColor(MivoColors.textSecondary)
+                                            }
+                                            Spacer()
+                                            Text("5s")
+                                                .font(.system(size: 13, weight: .bold).monospacedDigit())
+                                                .foregroundColor(MivoColors.textPrimary)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 7)
+                                                .background(MivoColors.white.opacity(0.62))
+                                                .clipShape(Capsule())
+                                        }
+                                        .padding(15)
+                                        .background(selectedMinutes == minutes ? MivoColors.accent.opacity(0.12) : MivoColors.white.opacity(0.62))
+                                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                                .strokeBorder(selectedMinutes == minutes ? MivoColors.accent.opacity(0.42) : MivoColors.white.opacity(0.58), lineWidth: 1)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        .padding(18)
+                        .background(MivoColors.white.opacity(0.64))
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+                        .onboardingEntrance(appear, delay: 0.08)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 120)
+                }
+
+                OnboardingBottomBar {
+                    NavigationLink {
+                        AgeOnboardingView_Internal()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text("Use this reminder")
+                                .font(.system(size: 16, weight: .semibold))
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundColor(MivoColors.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 17)
+                        .background(MivoColors.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
+                    }
+                    .simultaneousGesture(TapGesture().onEnded(savePreference))
+                }
+            }
+            .onAppear {
+                selectedMinutes = appVM.settings.checkInIntervalMinutes ?? appVM.onboardingProfile.checkInIntervalMinutes ?? 3
+                FamilyControlsManager.shared.setCheckInIntervalMinutes(selectedMinutes)
+                appear = true
+            }
+        }
+        .navigationBarBackButtonHidden()
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { dismiss() } label: {
+                    Image(systemName: "arrow.left")
+                        .foregroundColor(MivoColors.textSecondary)
+                }
+            }
+        }
+    }
+
+    private func intervalSubtitle(for minutes: Int) -> String {
+        minutes < 3 ? "More frequent check-ins" : "More room between pauses"
+    }
+
+    private func savePreference() {
+        var updatedSettings = appVM.settings
+        updatedSettings.checkInIntervalMinutes = selectedMinutes
+        appVM.settings = updatedSettings
+        appVM.persistCurrentSettings()
+
+        var profile = appVM.onboardingProfile
+        profile.checkInIntervalMinutes = selectedMinutes
+        appVM.saveOnboardingProfile(profile)
+        HapticsService.impact(style: .light)
+    }
+}
+
 private struct AgeOnboardingView_Internal: View {
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.dismiss) var dismiss
@@ -576,8 +727,8 @@ private struct AgeOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 4,
-                            total: 5,
+                            step: 6,
+                            total: 9,
                             eyebrow: "Personalize",
                             title: "How should we frame your time?",
                             subtitle: "Your age helps Mivo turn daily scrolling into a life-sized view. It stays on device."
@@ -814,8 +965,8 @@ private struct LifeBreakdownView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 22) {
                         OnboardingStepHeader(
-                            step: 5,
-                            total: 5,
+                            step: 7,
+                            total: 9,
                             eyebrow: "Perspective",
                             title: "Your time, made visible",
                             subtitle: "Each square is roughly one year ahead. We’ll color the picture so your phone time has context."
@@ -1051,8 +1202,8 @@ private struct ResultOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
                         OnboardingStepHeader(
-                            step: 5,
-                            total: 6,
+                            step: 8,
+                            total: 9,
                             eyebrow: "Recovery",
                             title: "We can recover this time",
                             subtitle: "Small pauses compound. Mivo turns tiny choices into visible time we can bring back."
@@ -1284,8 +1435,8 @@ private struct WidgetOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 6,
-                            total: 6,
+                            step: 9,
+                            total: 9,
                             eyebrow: "Widget",
                             title: "Keep Mivo visible",
                             subtitle: "Add the Mivo widget so your scroll time and next window stay visible before you drift."

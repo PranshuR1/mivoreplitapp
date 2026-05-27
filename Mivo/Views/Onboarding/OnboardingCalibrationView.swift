@@ -30,7 +30,7 @@ struct OnboardingCalibrationView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
                             step: 2,
-                            total: 3,
+                            total: 9,
                             eyebrow: "Baseline",
                             title: "How much time disappears?",
                             subtitle: "A rough estimate is enough. This gives Mivo a starting line for your first report."
@@ -69,7 +69,7 @@ struct OnboardingCalibrationView: View {
 
                 OnboardingBottomBar {
                     NavigationLink {
-                        OnboardingAppsView()
+                        OnboardingScrollWindowsView()
                     } label: {
                         HStack(spacing: 10) {
                             Text("Continue")
@@ -148,5 +148,212 @@ struct OnboardingCalibrationView: View {
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(MivoColors.white.opacity(0.6), lineWidth: 1))
         .shadow(color: Color.black.opacity(0.04), radius: 14, y: 7)
+    }
+}
+
+private struct OnboardingScrollWindowsView: View {
+    @EnvironmentObject var appVM: AppViewModel
+    @Environment(\.dismiss) var dismiss
+    @State private var firstStartHour = 14
+    @State private var secondStartHour = 20
+    @State private var appear = false
+
+    var body: some View {
+        ZStack {
+            OnboardingBackdrop()
+
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        OnboardingStepHeader(
+                            step: 3,
+                            total: 9,
+                            eyebrow: "Schedule",
+                            title: "When do you want to scroll?",
+                            subtitle: "You choose the first two daily scroll sessions. Mivo will follow these for 3 days, then recommend better times from your real pattern."
+                        )
+                        .onboardingEntrance(appear)
+
+                        VStack(spacing: 14) {
+                            scrollWindowPicker(
+                                title: "Scroll session 1",
+                                subtitle: "Pick the first time you want scrolling to be allowed.",
+                                hour: $firstStartHour,
+                                icon: "sun.max.fill"
+                            )
+                            .onboardingEntrance(appear, delay: 0.08)
+
+                            scrollWindowPicker(
+                                title: "Scroll session 2",
+                                subtitle: "Pick the second time. You can change it later in Settings.",
+                                hour: $secondStartHour,
+                                icon: "moon.fill"
+                            )
+                            .onboardingEntrance(appear, delay: 0.14)
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("First 3 days", systemImage: "calendar.badge.clock")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(MivoColors.accent)
+                            Text("Mivo will not choose your times yet. It watches what happens around your selected sessions, then recommends two times after enough data is collected.")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(MivoColors.textSecondary)
+                                .lineSpacing(4)
+                        }
+                        .padding(16)
+                        .background(MivoColors.white.opacity(0.62))
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+                        .onboardingEntrance(appear, delay: 0.2)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 120)
+                }
+
+                OnboardingBottomBar {
+                    NavigationLink {
+                        OnboardingAppsView()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text("Use these times")
+                                .font(.system(size: 16, weight: .semibold))
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundColor(MivoColors.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 17)
+                        .background(MivoColors.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
+                    }
+                    .simultaneousGesture(TapGesture().onEnded {
+                        saveWindows()
+                        HapticsService.impact(style: .light)
+                    })
+                }
+            }
+        }
+        .navigationBarBackButtonHidden()
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { dismiss() } label: {
+                    Image(systemName: "arrow.left")
+                        .foregroundColor(MivoColors.textSecondary)
+                }
+            }
+        }
+        .onAppear {
+            let windows = appVM.onboardingProfile.preferredScrollWindows ?? []
+            if windows.count >= 2 {
+                firstStartHour = windows[0].startHour
+                secondStartHour = windows[1].startHour
+            }
+            appear = true
+        }
+    }
+
+    private func scrollWindowPicker(title: String, subtitle: String, hour: Binding<Int>, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(MivoColors.white)
+                    .frame(width: 42, height: 42)
+                    .background(MivoColors.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(MivoColors.textPrimary)
+                    Text(subtitle)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                }
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                Button { adjust(hour, by: -1) } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.textPrimary)
+                        .frame(width: 42, height: 42)
+                        .background(MivoColors.white.opacity(0.7))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+
+                VStack(spacing: 3) {
+                    Text(hourLabel(hour.wrappedValue))
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .foregroundColor(MivoColors.textPrimary)
+                        .contentTransition(.numericText())
+                    Text("1-hour window")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(MivoColors.textMuted)
+                }
+                .frame(maxWidth: .infinity)
+
+                Button { adjust(hour, by: 1) } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.textPrimary)
+                        .frame(width: 42, height: 42)
+                        .background(MivoColors.white.opacity(0.7))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(MivoColors.white.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private func adjust(_ hour: Binding<Int>, by delta: Int) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            hour.wrappedValue = ((hour.wrappedValue + delta) % 24 + 24) % 24
+        }
+        HapticsService.selection()
+    }
+
+    private func saveWindows() {
+        var profile = OnboardingProfile()
+        profile.preferredScrollWindows = makeWindows(first: firstStartHour, second: secondStartHour)
+        appVM.saveOnboardingProfile(profile)
+    }
+
+    private func makeWindows(first: Int, second: Int) -> [ScreenScrollWindow] {
+        [
+            ScreenScrollWindow(
+                id: "user-session-1",
+                title: "Your session 1",
+                startHour: first,
+                endHour: min(24, first + 1),
+                minutes: 15,
+                reason: "You chose this time. Mivo will monitor it for 3 days."
+            ),
+            ScreenScrollWindow(
+                id: "user-session-2",
+                title: "Your session 2",
+                startHour: second,
+                endHour: min(24, second + 1),
+                minutes: 15,
+                reason: "You chose this time. Mivo will monitor it for 3 days."
+            )
+        ]
+    }
+
+    private func hourLabel(_ hour: Int) -> String {
+        let normalized = ((hour % 24) + 24) % 24
+        if normalized == 0 { return "12 AM" }
+        if normalized < 12 { return "\(normalized) AM" }
+        if normalized == 12 { return "12 PM" }
+        return "\(normalized - 12) PM"
     }
 }

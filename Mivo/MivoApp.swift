@@ -54,6 +54,17 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
+
+        // ── Check-in notification: re-apply shields so the blocked app shows the
+        //    "Active session check-in" shield when the user navigates to it. ──
+        if (userInfo["mivoRoute"] as? String) == "checkIn" {
+            Task { @MainActor in
+                FamilyControlsManager.shared.applyCheckInShieldIfSessionActive()
+            }
+            completionHandler()
+            return
+        }
+
         if userInfo["openIntervention"] as? Bool == true {
             // Mark the deep-link flag — MainTabView picks this up on .active and
             // navigates to the Interventions tab.
@@ -63,10 +74,8 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
 
             // Apply shields ASAP. `applyImpulseProtectionIfNeeded` self-corrects
             // sessionActive/sessionEndsAt when the session has expired.
-            if #available(iOS 16.0, *) {
-                Task { @MainActor in
-                    FamilyControlsManager.shared.applyImpulseProtectionIfNeeded()
-                }
+            Task { @MainActor in
+                FamilyControlsManager.shared.applyImpulseProtectionIfNeeded()
             }
         }
         completionHandler()

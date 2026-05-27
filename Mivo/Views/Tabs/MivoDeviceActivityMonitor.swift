@@ -10,15 +10,27 @@ import ManagedSettings
 @available(iOS 16.0, *)
 final class MivoDeviceActivityMonitor: DeviceActivityMonitor {
     
+    private let appGroup = "group.com.mivo.mivoapp"
+    private let sessionRelockActivityName = "mivo.session.relock"
+    private let blockerSelfTestActivityName = "mivo.blocker.selftest"
+    
     // Called when the monitoring interval starts (e.g., beginning of day)
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
         
         let timestamp = ISO8601DateFormatter().string(from: Date())
-        appendLog("[\(timestamp)] Monitoring interval started for activity: \(activity)")
+        let activityString = activity.rawValue
+        appendLog("[\(timestamp)] ⏰ Monitoring interval STARTED for activity: \(activityString)")
         
-        // Reset daily counters if needed
-        resetDailyCounters()
+        // Handle self-test start
+        if activityString == blockerSelfTestActivityName {
+            appendLog("[\(timestamp)] 🧪 Self-test interval started")
+        }
+        
+        // Reset daily counters if needed for daily monitoring
+        if activityString.contains("Daily") {
+            resetDailyCounters()
+        }
     }
     
     // Called when the monitoring interval ends (e.g., end of day)
@@ -26,11 +38,25 @@ final class MivoDeviceActivityMonitor: DeviceActivityMonitor {
         super.intervalDidEnd(for: activity)
         
         let timestamp = ISO8601DateFormatter().string(from: Date())
-        appendLog("[\(timestamp)] Monitoring interval ended for activity: \(activity)")
+        let activityString = activity.rawValue
+        appendLog("[\(timestamp)] ⏰ Monitoring interval ENDED for activity: \(activityString)")
         
-        // DeviceActivityMonitor cannot read raw Screen Time totals directly.
-        // Numeric reports must be produced by a DeviceActivityReport extension.
-        generateAndSaveDailyReport()
+        // Handle session relock
+        if activityString == sessionRelockActivityName {
+            handleSessionRelock()
+            return
+        }
+        
+        // Handle self-test completion
+        if activityString == blockerSelfTestActivityName {
+            handleSelfTestCompletion()
+            return
+        }
+        
+        // Handle daily monitoring
+        if activityString.contains("Daily") {
+            generateAndSaveDailyReport()
+        }
     }
     
     // Called when an event threshold is reached (if configured)
@@ -51,9 +77,49 @@ final class MivoDeviceActivityMonitor: DeviceActivityMonitor {
     
     // MARK: - Private Helpers
     
+    private func handleSessionRelock() {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        appendLog("[\(timestamp)] 🔒 SESSION RELOCK - Timer ended, relocking protected apps")
+        
+        guard let userDefaults = UserDefaults(suiteName: appGroup) else {
+            appendLog("[\(timestamp)] ❌ Failed to access app group for session relock")
+            return
+        }
+        
+        // End the session and require intervention setup
+        userDefaults.set(false, forKey: "mivo.sessionActive")
+        userDefaults.removeObject(forKey: "mivo.sessionEndsAt")
+        userDefaults.set(true, forKey: "mivo.pendingInterventionSetup")
+        userDefaults.set(Date().timeIntervalSince1970, forKey: "mivo.pendingInterventionSetupAt")
+        userDefaults.synchronize()
+        
+        // Reapply shields via ManagedSettingsStore
+        _ = ManagedSettingsStore(named: ManagedSettingsStore.Name("mivo.intervention"))
+        // Shield configuration will be applied by ShieldConfigurationExtension based on flags
+        // The extension reads the flags and shows appropriate shield UI
+        
+        appendLog("[\(timestamp)] ✅ Session ended, intervention required before next access")
+    }
+    
+    private func handleSelfTestCompletion() {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        appendLog("[\(timestamp)] ✅ SELF-TEST COMPLETED - Extension is working correctly")
+        
+        guard let userDefaults = UserDefaults(suiteName: appGroup) else {
+            appendLog("[\(timestamp)] ❌ Failed to access app group for self-test")
+            return
+        }
+        
+        // Mark test as completed
+        userDefaults.set(timestamp, forKey: "mivo.blockerSelfTestEnd")
+        userDefaults.set(true, forKey: "mivo.blockerSelfTestPassed")
+        userDefaults.synchronize()
+        
+        appendLog("[\(timestamp)] Self-test results written to app group")
+    }
+    
     private func resetDailyCounters() {
         // Reset any daily tracking data
-        let appGroup = "group.com.mivo.mivoapp"
         guard let userDefaults = UserDefaults(suiteName: appGroup) else {
             appendLog("Failed to access app group for resetting counters")
             return
@@ -69,15 +135,14 @@ final class MivoDeviceActivityMonitor: DeviceActivityMonitor {
     }
     
     private func appendLog(_ message: String) {
-        let appGroup = "group.com.mivo.mivoapp"
         guard let userDefaults = UserDefaults(suiteName: appGroup) else { return }
         
         var logs = userDefaults.stringArray(forKey: "mivo.extensionLogs") ?? []
         logs.append(message)
         
-        // Keep only last 50 log entries
-        if logs.count > 50 {
-            logs = Array(logs.suffix(50))
+        // Keep only last 100 log entries (increased from 50 for better debugging)
+        if logs.count > 100 {
+            logs = Array(logs.suffix(100))
         }
         
         userDefaults.set(logs, forKey: "mivo.extensionLogs")

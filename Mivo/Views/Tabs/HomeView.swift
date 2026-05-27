@@ -51,18 +51,18 @@ struct HomeView: View {
             appVM.refreshScreenTimeData()
             Task { await refreshAdaptivePlan() }
         }
-        .onChange(of: appVM.sessions.count) { _ in
+        .onChange(of: appVM.sessions.count) { _, _ in
             Task { await refreshAdaptivePlan() }
         }
-        .onChange(of: appVM.truthChecks.count) { _ in
+        .onChange(of: appVM.truthChecks.count) { _, _ in
             Task { await refreshAdaptivePlan() }
         }
-        .onChange(of: appVM.deviceActivityMinutesToday) { _ in
+        .onChange(of: appVM.deviceActivityMinutesToday) { _, _ in
             Task { await refreshAdaptivePlan() }
         }
         #if canImport(FamilyControls)
         .familyActivityPicker(isPresented: $showImpulsePicker, selection: $impulseSelection)
-        .onChange(of: impulseSelection) { newValue in
+        .onChange(of: impulseSelection) { _, newValue in
             if #available(iOS 16.0, *) {
                 FamilyControlsManager.shared.saveFamilyActivitySelection(newValue)
                 if FamilyControlsManager.shared.hasImpulseSelection() {
@@ -120,82 +120,82 @@ struct HomeView: View {
     }
 
     private var heroCard: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .fill(MivoColors.heroBg)
-                .frame(minHeight: 246)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label(hasScreenTimeAccess ? "Live Screen Time" : "Awaiting access", systemImage: "waveform.path.ecg")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MivoColors.heroText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(MivoColors.heroBg)
+                    .clipShape(Capsule())
 
-            VStack(alignment: .leading, spacing: 22) {
-                HStack {
-                    Label(hasScreenTimeAccess ? "Live Screen Time" : "Awaiting access", systemImage: "waveform.path.ecg")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(MivoColors.heroText.opacity(0.72))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(MivoColors.heroText.opacity(0.12))
-                        .clipShape(Capsule())
+                Spacer()
 
-                    Spacer()
-
-                    Text(statusLabel)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(MivoColors.heroText.opacity(0.75))
-                }
-
-                if hasScreenTimeAccess, #available(iOS 16.0, *) {
-                    MivoScreenTimeUsageLiveReport()
-                        .frame(height: 156)
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                .strokeBorder(MivoColors.heroText.opacity(0.12), lineWidth: 1)
-                        )
-                } else {
-                    connectScreenTimeBlock
-                }
-
-                HStack(spacing: 10) {
-                    miniHeroPill(icon: "lock.open.fill", title: "\(appVM.todaysSessions.count)", subtitle: appVM.todaysSessions.count == 1 ? "unlock" : "unlocks")
-                    miniHeroPill(icon: trendIcon, title: trendText, subtitle: "week")
-                }
+                Text(statusLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MivoColors.textMuted)
             }
-            .padding(22)
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .padding(.bottom, 14)
+
+            if hasScreenTimeAccess, #available(iOS 16.0, *) {
+                MivoReadableScreenTimeSummaryCard(compact: true)
+                    .padding(.horizontal, 14)
+            } else {
+                connectScreenTimeBlock
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 4)
+            }
+
+            HStack(spacing: 10) {
+                miniHeroPill(icon: "lock.open.fill", title: "\(appVM.todaysSessions.count)", subtitle: appVM.todaysSessions.count == 1 ? "unlock" : "unlocks")
+                miniHeroPill(icon: trendIcon, title: trendText, subtitle: "week")
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+            .padding(.bottom, 18)
         }
-        .shadow(color: Color.black.opacity(0.12), radius: 20, y: 10)
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(MivoColors.border.opacity(0.5), lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.07), radius: 16, y: 6)
     }
 
     private var connectScreenTimeBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Connect Screen Time")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundColor(MivoColors.heroText)
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundColor(MivoColors.textPrimary)
                 .lineLimit(2)
                 .minimumScaleFactor(0.82)
             Text("Mivo will show Apple’s real Screen Time report here. No placeholder totals.")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(MivoColors.heroText.opacity(0.68))
+                .foregroundColor(MivoColors.textSecondary)
                 .lineSpacing(3)
         }
+        .padding(.vertical, 24)
     }
 
     private func miniHeroPill(icon: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 9) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(MivoColors.heroText)
+                .foregroundColor(MivoColors.accent)
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(MivoColors.heroText)
+                    .foregroundColor(MivoColors.textPrimary)
                 Text(subtitle)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(MivoColors.heroText.opacity(0.56))
+                    .foregroundColor(MivoColors.textSecondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(MivoColors.heroText.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .background(MivoColors.surface.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var metricsRow: some View {
@@ -252,7 +252,7 @@ struct HomeView: View {
             Toggle("", isOn: $protectionEnabled)
                 .tint(MivoColors.accent)
                 .labelsHidden()
-                .onChange(of: protectionEnabled) { newValue in
+                .onChange(of: protectionEnabled) { _, newValue in
                     setImpulseProtection(newValue)
                 }
         }
@@ -267,7 +267,7 @@ struct HomeView: View {
 
         return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: plan.collecting ? "waveform.path.ecg" : "sparkles")
+                Image(systemName: plan.collecting ? "clock.badge.checkmark" : "sparkles")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(MivoColors.heroText)
                     .frame(width: 42, height: 42)
@@ -275,10 +275,10 @@ struct HomeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(plan.collecting ? "Learning mode" : "AI screen plan")
+                    Text(plan.collecting ? "3-day monitoring" : "Personalized meter")
                         .font(.system(size: 19, weight: .bold, design: .rounded))
                         .foregroundColor(MivoColors.textPrimary)
-                    Text(plan.collecting ? "Day \(plan.daysCollected) of \(plan.daysNeeded)" : "Day \(plan.dayIndex) - \(plan.strictnessPercent)% stricter")
+                    Text(plan.collecting ? "Day \(min(plan.daysCollected + 1, plan.daysNeeded)) of \(plan.daysNeeded) - unlimited" : "Day \(plan.dayIndex) - \(plan.strictnessPercent)% stricter")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(plan.collecting ? MivoColors.blue : MivoColors.accent)
                 }
@@ -293,17 +293,19 @@ struct HomeView: View {
 
             HStack(spacing: 10) {
                 planMetric(title: "Baseline", value: formatDuration(plan.baselineMinutes))
-                planMetric(title: plan.collecting ? "Allowed" : "Target", value: plan.collecting ? "Open" : formatDuration(plan.targetMinutes))
-                planMetric(title: "Windows", value: "\(plan.windows.count)")
+                planMetric(title: plan.collecting ? "Scrolling" : "Target", value: plan.collecting ? "Unlimited" : formatDuration(plan.targetMinutes))
+                planMetric(title: "Sessions", value: "\(plan.windows.count)")
             }
 
-            if !plan.collecting {
+            if !plan.windows.isEmpty {
                 VStack(spacing: 10) {
                     ForEach(plan.windows) { window in
                         scrollWindowRow(window)
                     }
                 }
-            } else {
+            }
+
+            if plan.collecting {
                 learningProgress(plan)
             }
 
@@ -378,7 +380,7 @@ struct HomeView: View {
                 }
             }
 
-            Text("No reduction target yet. Mivo is letting your normal pattern show first, then it will create two daily scrolling sessions.")
+            Text("First 3 days: Mivo only monitors. No screen-time cap is enforced. After day 3, Mivo creates your personalized screen-time meter and gradually tightens it.")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(MivoColors.textSecondary)
                 .lineSpacing(3)

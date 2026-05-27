@@ -82,12 +82,105 @@ struct RunningMivoSession: Codable, Identifiable {
     let intention: Intention
     let plannedDuration: Int
     let plannedSeconds: Int
+    let approvedSeconds: Int
     let startTime: String
+    let expiresAt: String
+    let expiredAt: String?
+    let expirationSource: String?
+    let state: MivoSessionState
+    let accumulatedElapsedSeconds: Int
     let urgeReason: UrgeReason?
     let urgeNote: String?
     let extendedOnce: Bool
     let emergencyUnlockUsed: Bool?
     let emergencyUnlockReason: String?
+
+    init(
+        id: String,
+        intention: Intention,
+        plannedDuration: Int,
+        plannedSeconds: Int,
+        approvedSeconds: Int? = nil,
+        startTime: String,
+        expiresAt: String? = nil,
+        expiredAt: String? = nil,
+        expirationSource: String? = nil,
+        state: MivoSessionState = .active,
+        accumulatedElapsedSeconds: Int = 0,
+        urgeReason: UrgeReason?,
+        urgeNote: String?,
+        extendedOnce: Bool,
+        emergencyUnlockUsed: Bool?,
+        emergencyUnlockReason: String?
+    ) {
+        self.id = id
+        self.intention = intention
+        self.plannedDuration = plannedDuration
+        self.plannedSeconds = plannedSeconds
+        self.approvedSeconds = approvedSeconds ?? plannedSeconds
+        self.startTime = startTime
+        if let expiresAt {
+            self.expiresAt = expiresAt
+        } else if let startDate = ISO8601DateFormatter().date(from: startTime) {
+            self.expiresAt = ISO8601DateFormatter().string(from: startDate.addingTimeInterval(TimeInterval(approvedSeconds ?? plannedSeconds)))
+        } else {
+            self.expiresAt = startTime
+        }
+        self.expiredAt = expiredAt
+        self.expirationSource = expirationSource
+        self.state = state
+        self.accumulatedElapsedSeconds = accumulatedElapsedSeconds
+        self.urgeReason = urgeReason
+        self.urgeNote = urgeNote
+        self.extendedOnce = extendedOnce
+        self.emergencyUnlockUsed = emergencyUnlockUsed
+        self.emergencyUnlockReason = emergencyUnlockReason
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case intention
+        case plannedDuration
+        case plannedSeconds
+        case approvedSeconds
+        case startTime
+        case expiresAt
+        case expiredAt
+        case expirationSource
+        case state
+        case accumulatedElapsedSeconds
+        case urgeReason
+        case urgeNote
+        case extendedOnce
+        case emergencyUnlockUsed
+        case emergencyUnlockReason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        intention = try container.decode(Intention.self, forKey: .intention)
+        plannedDuration = try container.decode(Int.self, forKey: .plannedDuration)
+        plannedSeconds = try container.decode(Int.self, forKey: .plannedSeconds)
+        approvedSeconds = try container.decodeIfPresent(Int.self, forKey: .approvedSeconds) ?? plannedSeconds
+        startTime = try container.decode(String.self, forKey: .startTime)
+        if let storedExpiresAt = try container.decodeIfPresent(String.self, forKey: .expiresAt) {
+            expiresAt = storedExpiresAt
+        } else if let startDate = ISO8601DateFormatter().date(from: startTime) {
+            expiresAt = ISO8601DateFormatter().string(from: startDate.addingTimeInterval(TimeInterval(approvedSeconds)))
+        } else {
+            expiresAt = startTime
+        }
+        expiredAt = try container.decodeIfPresent(String.self, forKey: .expiredAt)
+        expirationSource = try container.decodeIfPresent(String.self, forKey: .expirationSource)
+        state = try container.decodeIfPresent(MivoSessionState.self, forKey: .state) ?? .active
+        accumulatedElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .accumulatedElapsedSeconds) ?? 0
+        urgeReason = try container.decodeIfPresent(UrgeReason.self, forKey: .urgeReason)
+        urgeNote = try container.decodeIfPresent(String.self, forKey: .urgeNote)
+        extendedOnce = try container.decode(Bool.self, forKey: .extendedOnce)
+        emergencyUnlockUsed = try container.decodeIfPresent(Bool.self, forKey: .emergencyUnlockUsed)
+        emergencyUnlockReason = try container.decodeIfPresent(String.self, forKey: .emergencyUnlockReason)
+    }
 }
 
 struct SessionExtensionDecision: Identifiable, Equatable {
@@ -109,6 +202,22 @@ struct TimeTruthPrompt: Identifiable, Equatable {
     let id: String
     let date: String
     let actualMinutes: Int
+    let scheduledHour: Int
+    let scheduledMinute: Int
+}
+
+struct DailyScrollSchedule: Codable, Identifiable, Equatable {
+    let id: String
+    let date: String
+    let windows: [ScreenScrollWindow]
+    let createdAt: String
+}
+
+struct DailyScrollSchedulePrompt: Identifiable, Equatable {
+    let id: String
+    let date: String
+    let recommendedWindows: [ScreenScrollWindow]
+    let isRecommendationReady: Bool
     let scheduledHour: Int
     let scheduledMinute: Int
 }
@@ -163,25 +272,30 @@ struct AppSettings: Codable {
     var tutorialComplete: Bool? = nil
     var notificationsChoiceMade: Bool? = nil
     var accountabilityEnabled: Bool? = nil
+    var checkInIntervalMinutes: Int? = nil
 }
 
 struct OnboardingProfile: Codable {
     var primaryIntention: Intention?
     var scrollEstimateMinutes: Int?
     var preferredApps: [String]
+    var preferredScrollWindows: [ScreenScrollWindow]?
     // allow multiple intentions to be stored from onboarding
     var intentions: [Intention]
     // optional demographic details
     var age: Int?
     var ageRange: String?
+    var checkInIntervalMinutes: Int?
 
-    init(primaryIntention: Intention? = nil, scrollEstimateMinutes: Int? = nil, preferredApps: [String] = []) {
+    init(primaryIntention: Intention? = nil, scrollEstimateMinutes: Int? = nil, preferredApps: [String] = [], preferredScrollWindows: [ScreenScrollWindow]? = nil) {
         self.primaryIntention = primaryIntention
         self.scrollEstimateMinutes = scrollEstimateMinutes
         self.preferredApps = preferredApps
+        self.preferredScrollWindows = preferredScrollWindows
         self.intentions = []
         self.age = nil
         self.ageRange = nil
+        self.checkInIntervalMinutes = nil
     }
 }
 
@@ -224,7 +338,7 @@ struct FocusRecommendation: Codable {
     let dailySchedule: String
 }
 
-struct ScreenScrollWindow: Codable, Identifiable {
+struct ScreenScrollWindow: Codable, Identifiable, Equatable {
     let id: String
     let title: String
     let startHour: Int

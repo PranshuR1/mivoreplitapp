@@ -12,6 +12,8 @@ enum StorageKey: String {
     case pendingSessionFeedback = "mivo_pending_session_feedback"
     case runningSession = "mivo_running_session"
     case timeTruthNotificationSchedule = "mivo_time_truth_notification_schedule"
+    case dailyScrollSchedules = "mivo_daily_scroll_schedules"
+    case dailyScrollScheduleNotification = "mivo_daily_scroll_schedule_notification"
     case weeklyReports = "mivo_weekly_reports"
     case appInterventionRules = "mivo_app_intervention_rules"
     case accountabilitySummary = "mivo_accountability_summary"

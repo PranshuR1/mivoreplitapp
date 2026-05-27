@@ -166,22 +166,26 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-            // Mark that the user now needs to go to Mivo
-            self.requestInterventionSetup()
-            // Clear countdown display
+            // 1. Clear countdown keys AND explicitly zero pendingInterventionSetup.
+            //    If a stale flag (from a prior session) is true, the shield config would
+            //    re-render to "Open Mivo" the instant countdown keys are removed (because
+            //    isCountingDown becomes false while needsMivoSetup is still true).
+            //    Zeroing it here prevents that flash so the glimpse happens cleanly first.
             let defaults = UserDefaults(suiteName: self.appGroup)
             defaults?.removeObject(forKey: self.countdownUntilKey)
             defaults?.removeObject(forKey: self.countdownRemainingKey)
+            defaults?.set(false, forKey: self.pendingInterventionSetupKey)
+            defaults?.removeObject(forKey: self.pendingInterventionSetupAtKey)
             defaults?.synchronize()
 
-            // ── Glimpse: clear shields so the app briefly shows (2 s) ──
+            // 2. Glimpse — clear ManagedSettings so the app becomes visible for 2 s.
             self.clearAllShields()
 
-            // ── Re-lock after 2 seconds → shield reappears in "Open Mivo" state ──
+            // 3. Re-lock after 2 s, THEN set pendingInterventionSetup so the shield
+            //    reappears in the "Open Mivo" state.  Correct order: glimpse → Open Mivo.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                self.requestInterventionSetup()
                 self.apply(selection: self.loadSelection())
-                // Extension process is no longer needed — signal iOS the action is handled.
-                // .defer keeps the shield visible; we already re-applied it above.
                 completionHandler(.defer)
             }
         }
@@ -410,6 +414,9 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         defaults?.set(now.timeIntervalSince1970, forKey: leaseMonitorScheduledAtKey)
         defaults?.synchronize()
         scheduleSystemLeaseRelock(after: leaseDuration)
+        // Belt-and-suspenders: local notification fallback for the next check-in.
+        // Fires even when the extension process dies before the DispatchQueue delays run.
+        scheduleCheckInNotification(after: leaseDuration)
 
         let relockOffsets: [TimeInterval] = [leaseDuration, leaseDuration + 0.25, leaseDuration + 0.75, leaseDuration + 1.5, leaseDuration + 3.0]
         for offset in relockOffsets {
@@ -421,6 +428,27 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
                 }
             }
         }
+    }
+
+    /// Schedules a local UNNotification for the next check-in time so the user is
+    /// alerted even if the DispatchQueue delays above are killed with the extension process.
+    private func scheduleCheckInNotification(after delay: TimeInterval) {
+        guard delay >= 30 else { return }
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["mivo.session.checkIn"])
+
+        let content = UNMutableNotificationContent()
+        content.title = "Mivo check-in"
+        content.body = "Your \(Int(delay / 60))-minute check-in is here. Open the blocked app to continue with a short pause."
+        content.sound = .default
+        content.categoryIdentifier = "MIVO_SESSION_ENDED"
+        content.userInfo = ["mivoRoute": "checkIn"]
+        if #available(iOS 15.0, *) {
+            content.interruptionLevel = .timeSensitive
+        }
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+        let request = UNNotificationRequest(identifier: "mivo.session.checkIn", content: content, trigger: trigger)
+        center.add(request, withCompletionHandler: nil)
     }
 
     private func activeSessionLeaseDuration() -> TimeInterval {

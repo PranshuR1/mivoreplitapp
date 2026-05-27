@@ -186,6 +186,10 @@ final class FamilyControlsManager: ObservableObject {
             let leaseDuration = nextActiveSessionLeaseDuration(for: durationSeconds)
             scheduleActiveSessionLeaseRelock(after: leaseDuration)
             scheduleSystemLeaseRelock(after: leaseDuration)
+            // Belt-and-suspenders: schedule a local notification for each check-in interval.
+            // This fires even when the DispatchWorkItem and DeviceActivity can't run, so the
+            // user is always alerted and the shield is visible when they open the blocked app.
+            scheduleCheckInNotification(after: leaseDuration, sessionDurationSeconds: durationSeconds)
         }
 
         let monitorScheduled = scheduleSystemSessionRelock(after: TimeInterval(durationSeconds))
@@ -237,6 +241,7 @@ final class FamilyControlsManager: ObservableObject {
         stopLeaseRelock()
         cancelBGSessionRelock()
         cancelSessionEndNotification()
+        cancelCheckInNotification()
 
         userDefaults?.set(false, forKey: mivoSessionActiveKey)
         userDefaults?.removeObject(forKey: mivoSessionEndsAtKey)
@@ -266,6 +271,7 @@ final class FamilyControlsManager: ObservableObject {
         stopLeaseRelock()
         cancelBGSessionRelock()
         cancelSessionEndNotification()
+        cancelCheckInNotification()
 
         userDefaults?.set(false, forKey: mivoSessionActiveKey)
         userDefaults?.removeObject(forKey: mivoSessionEndsAtKey)
@@ -362,6 +368,14 @@ private func scheduleActiveSessionLeaseRelock(after delay: TimeInterval) {
     }
     sessionRelockWorkItem = workItem
     DispatchQueue.main.asyncAfter(deadline: .now() + leaseDuration, execute: workItem)
+}
+
+/// Called from AppDelegate when the user taps the check-in notification.
+/// Re-applies shields immediately so the blocked app shows the "Active session
+/// check-in" shield as soon as the user navigates to it.
+func applyCheckInShieldIfSessionActive() {
+    guard #available(iOS 16.0, *) else { return }
+    reapplyShieldForActiveSessionLeaseEnd(source: "check-in-notification-tap")
 }
 
 @available(iOS 16.0, *)
@@ -521,6 +535,43 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
             "mivo.session.ended.nudge1",
             "mivo.session.ended.nudge2"
         ])
+    }
+
+    // MARK: - Check-in interval notification
+
+    /// Schedules a local notification at the next check-in interval.
+    /// This is a reliable fallback for when the DispatchWorkItem and DeviceActivity
+    /// extension can't fire (app backgrounded, system limits, etc.).
+    /// The notification reminds the user that their check-in is due; the shield is
+    /// (also) applied by the DeviceActivity extension to block the app.
+    func scheduleCheckInNotification(after delay: TimeInterval, sessionDurationSeconds: Int) {
+        cancelCheckInNotification()
+        // Only schedule if the check-in fires before the session ends.
+        let interval = min(delay, TimeInterval(sessionDurationSeconds))
+        guard interval >= 30 && interval < TimeInterval(sessionDurationSeconds) else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Mivo check-in"
+        content.body = "Your \(Int(interval / 60))-minute check-in is here. Open the blocked app to continue with a short pause."
+        content.sound = .default
+        content.categoryIdentifier = "MIVO_SESSION_ENDED"
+        content.userInfo = ["mivoRoute": "checkIn"]
+        if #available(iOS 15.0, *) {
+            content.interruptionLevel = .timeSensitive
+        }
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(interval, 1), repeats: false)
+        let request = UNNotificationRequest(identifier: "mivo.session.checkIn", content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request) { [weak self] error in
+            if let error {
+                self?.logger.warning("Check-in notification scheduling failed: \(error.localizedDescription)")
+            }
+        }
+        logger.info("Check-in notification scheduled in \(Int(interval))s")
+    }
+
+    func cancelCheckInNotification() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["mivo.session.checkIn"])
     }
 
     private func stopSystemSessionRelock() {

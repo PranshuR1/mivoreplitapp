@@ -10,6 +10,7 @@ class AppViewModel: ObservableObject {
     @Published var user: UserProfile? = nil
     @Published var sessions: [Session] = []
     @Published var truthChecks: [TruthCheckGuess] = []
+    @Published var dailyScrollSchedules: [DailyScrollSchedule] = []
     @Published var weeklyReports: [WeeklyReportSnapshot] = []
     @Published var appInterventionRules: [AppInterventionRule] = []
     @Published var settings: AppSettings = AppSettings(onboardingComplete: false, notificationsEnabled: false)
@@ -31,7 +32,13 @@ class AppViewModel: ObservableObject {
     @Published var deviceActivityReportGeneratedAt: Date? = nil
     @Published var mivoLaunchGateActive: Bool = false
     @Published var pendingSessionFeedback: PendingSessionFeedback? = nil
+    @Published var pendingExpiredRunningSession: RunningMivoSession? = nil
+    @Published var pendingResumedActiveSession: RunningMivoSession? = nil
     @Published var pendingTimeTruthPrompt: TimeTruthPrompt? = nil
+    @Published var pendingDailyScrollSchedulePrompt: DailyScrollSchedulePrompt? = nil
+    @Published var sessionActivationError: String? = nil
+    /// Set to true when the shield "Open Mivo" button triggers a deep link
+    @Published var deepLinkInterventionRequested: Bool = false
 
     init() {
         loadData()
@@ -59,11 +66,13 @@ class AppViewModel: ObservableObject {
             )
             adminToken = authRecord.adminToken
             isLoggedIn = true
-            applyRestrictionState(for: authRecord.email)
             loadUserScopedData(for: authRecord.email)
+            syncLearningModeProtectionState()
+            applyRestrictionState(for: authRecord.email)
         } else {
             adminToken = nil
             resetUserScopedState()
+            FamilyControlsManager.shared.setLearningModeUnlocked(false)
             FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
         }
         recoverExpiredRunningSessionIfNeeded()
@@ -73,17 +82,22 @@ class AppViewModel: ObservableObject {
     private func resetUserScopedState() {
         sessions = []
         truthChecks = []
+        dailyScrollSchedules = []
         weeklyReports = []
         appInterventionRules = defaultAppInterventionRules()
         settings = AppSettings(onboardingComplete: false, notificationsEnabled: false)
         onboardingProfile = OnboardingProfile()
         pendingSessionFeedback = nil
+        pendingExpiredRunningSession = nil
         pendingTimeTruthPrompt = nil
+        pendingDailyScrollSchedulePrompt = nil
+        FamilyControlsManager.shared.setCheckInIntervalMinutes(3)
     }
 
     private func loadUserScopedData(for email: String) {
         sessions = StorageService.load([Session].self, forKey: .sessions, email: email) ?? []
         truthChecks = StorageService.load([TruthCheckGuess].self, forKey: .truthChecks, email: email) ?? []
+        dailyScrollSchedules = StorageService.load([DailyScrollSchedule].self, forKey: .dailyScrollSchedules, email: email) ?? []
         weeklyReports = StorageService.load([WeeklyReportSnapshot].self, forKey: .weeklyReports, email: email) ?? []
         if let rules = StorageService.load([AppInterventionRule].self, forKey: .appInterventionRules, email: email) {
             appInterventionRules = rules
@@ -101,7 +115,12 @@ class AppViewModel: ObservableObject {
         } else {
             onboardingProfile = OnboardingProfile()
         }
+        let checkInMinutes = settings.checkInIntervalMinutes ?? onboardingProfile.checkInIntervalMinutes ?? 3
+        settings.checkInIntervalMinutes = checkInMinutes
+        FamilyControlsManager.shared.setCheckInIntervalMinutes(checkInMinutes)
+
         pendingSessionFeedback = StorageService.load(PendingSessionFeedback.self, forKey: .pendingSessionFeedback, email: email)
+        pendingExpiredRunningSession = nil
     }
 
     private func saveForCurrentUser<T: Encodable>(_ value: T, forKey key: StorageKey) {
@@ -198,8 +217,9 @@ class AppViewModel: ObservableObject {
         )
         adminToken = record.adminToken
         isLoggedIn = true
-        applyRestrictionState(for: record.email)
         loadUserScopedData(for: record.email)
+        syncLearningModeProtectionState()
+        applyRestrictionState(for: record.email)
 
         // Restore any saved onboarding profile for this user
         if let userOnboard = record.onboardingProfile,
@@ -272,6 +292,7 @@ class AppViewModel: ObservableObject {
             // Update published state on main actor
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
+                FamilyControlsManager.shared.setLearningModeUnlocked(false)
                 FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
                 self.user = nil
                 self.adminToken = nil
@@ -286,6 +307,7 @@ class AppViewModel: ObservableObject {
     func addSession(_ session: Session) {
         sessions.append(session)
         saveForCurrentUser(sessions, forKey: .sessions)
+        syncLearningModeProtectionState()
         refreshWeeklyReportSnapshot()
         updateWidgetSharedSummary()
         scheduleTimeTruthNotification()
@@ -300,6 +322,7 @@ class AppViewModel: ObservableObject {
 
     func clearPendingSessionFeedback() {
         pendingSessionFeedback = nil
+        pendingExpiredRunningSession = nil
         removeForCurrentUser(.pendingSessionFeedback)
         clearRunningSession()
     }
@@ -323,32 +346,115 @@ class AppViewModel: ObservableObject {
             return
         }
 
-        let elapsedSeconds = max(0, Int(now.timeIntervalSince(startedAt)))
-        let remainingSeconds = running.plannedSeconds - elapsedSeconds
+        let formatter = ISO8601DateFormatter()
+        let expiresAt = formatter.date(from: running.expiresAt)
+            ?? startedAt.addingTimeInterval(TimeInterval(running.approvedSeconds))
 
-        if remainingSeconds > 0 {
-            FamilyControlsManager.shared.setMivoSessionActive(true, exactDurationSeconds: remainingSeconds)
+        if running.state == .active, expiresAt > now {
+            let remainingSeconds = max(1, Int(expiresAt.timeIntervalSince(now).rounded(.up)))
+            let success = FamilyControlsManager.shared.setMivoSessionActive(true, exactDurationSeconds: remainingSeconds)
+            if !success {
+                print("[AppViewModel] ⚠️ Session recovery failed: Device Activity blocker not confirmed")
+            }
             return
         }
 
         FamilyControlsManager.shared.endSessionAndRelockForIntervention()
-        guard pendingSessionFeedback == nil else { return }
+        let expired = expiredChoiceSession(from: running, now: now)
+        saveRunningSession(expired)
+        pendingExpiredRunningSession = expired
+    }
 
-        savePendingSessionFeedback(
-            PendingSessionFeedback(
-                id: running.id,
-                intention: running.intention,
-                plannedDuration: running.plannedDuration,
-                actualDuration: max(1, Int((Double(elapsedSeconds) / 60.0).rounded())),
-                startTime: running.startTime,
-                endTime: ISO8601DateFormatter().string(from: now),
-                extendedOnce: running.extendedOnce,
-                urgeReason: running.urgeReason,
-                urgeNote: running.urgeNote,
-                emergencyUnlockUsed: running.emergencyUnlockUsed,
-                emergencyUnlockReason: running.emergencyUnlockReason
-            )
+    private func expiredChoiceSession(from running: RunningMivoSession, now: Date = Date()) -> RunningMivoSession {
+        let formatter = ISO8601DateFormatter()
+        let expiredAt = running.expiredAt ?? running.expiresAt
+        let elapsedSeconds = cappedElapsedSeconds(for: running, now: now)
+
+        return RunningMivoSession(
+            id: running.id,
+            intention: running.intention,
+            plannedDuration: running.plannedDuration,
+            plannedSeconds: running.plannedSeconds,
+            approvedSeconds: running.approvedSeconds,
+            startTime: running.startTime,
+            expiresAt: running.expiresAt,
+            expiredAt: expiredAt.isEmpty ? formatter.string(from: now) : expiredAt,
+            expirationSource: running.expirationSource ?? MivoSessionExpirationSource.sessionEnd.rawValue,
+            state: .expiredAwaitingChoice,
+            accumulatedElapsedSeconds: elapsedSeconds,
+            urgeReason: running.urgeReason,
+            urgeNote: running.urgeNote,
+            extendedOnce: running.extendedOnce,
+            emergencyUnlockUsed: running.emergencyUnlockUsed,
+            emergencyUnlockReason: running.emergencyUnlockReason
         )
+    }
+
+    func cappedElapsedSeconds(for running: RunningMivoSession, now: Date = Date()) -> Int {
+        let formatter = ISO8601DateFormatter()
+        let approved = max(1, running.approvedSeconds)
+        var candidate = running.accumulatedElapsedSeconds
+
+        if let start = formatter.date(from: running.startTime) {
+            if let expiredAt = running.expiredAt.flatMap({ formatter.date(from: $0) }) {
+                candidate = max(candidate, Int(expiredAt.timeIntervalSince(start)))
+            } else if let expiresAt = formatter.date(from: running.expiresAt), expiresAt <= now {
+                candidate = max(candidate, Int(expiresAt.timeIntervalSince(start)))
+            } else {
+                candidate = max(candidate, Int(now.timeIntervalSince(start)))
+            }
+        }
+
+        return max(1, min(candidate, approved))
+    }
+
+    func cappedElapsedMinutes(for running: RunningMivoSession, now: Date = Date()) -> Int {
+        max(1, Int((Double(cappedElapsedSeconds(for: running, now: now)) / 60.0).rounded()))
+    }
+
+    func extendExpiredRunningSession(_ running: RunningMivoSession, addedMinutes: Int, emergencyReason: String? = nil) -> Bool {
+        let addedSeconds = max(1, addedMinutes) * 60
+        let now = Date()
+        let formatter = ISO8601DateFormatter()
+        let elapsedSeconds = cappedElapsedSeconds(for: running, now: now)
+        let updated = RunningMivoSession(
+            id: running.id,
+            intention: running.intention,
+            plannedDuration: running.plannedDuration + addedMinutes,
+            plannedSeconds: running.plannedSeconds + addedSeconds,
+            approvedSeconds: running.approvedSeconds + addedSeconds,
+            startTime: running.startTime,
+            expiresAt: formatter.string(from: now.addingTimeInterval(TimeInterval(addedSeconds))),
+            expiredAt: nil,
+            expirationSource: nil,
+            state: .active,
+            accumulatedElapsedSeconds: elapsedSeconds,
+            urgeReason: running.urgeReason,
+            urgeNote: running.urgeNote,
+            extendedOnce: true,
+            emergencyUnlockUsed: (running.emergencyUnlockUsed == true) || emergencyReason != nil,
+            emergencyUnlockReason: emergencyReason ?? running.emergencyUnlockReason
+        )
+
+        let success = FamilyControlsManager.shared.setMivoSessionActive(true, exactDurationSeconds: addedSeconds)
+        guard success else {
+            sessionActivationError = "Failed to add time: Device Activity blocker could not be scheduled. Protected apps will remain locked."
+            return false
+        }
+
+        sessionActivationError = nil
+        pendingExpiredRunningSession = nil
+        pendingSessionFeedback = nil
+        pendingResumedActiveSession = updated
+        saveRunningSession(updated)
+        return true
+    }
+
+    func clearExpiredRunningSessionReview() {
+        pendingExpiredRunningSession = nil
+        pendingSessionFeedback = nil
+        removeForCurrentUser(.pendingSessionFeedback)
+        clearRunningSession()
     }
 
     var isAdminUser: Bool {
@@ -385,6 +491,7 @@ class AppViewModel: ObservableObject {
         )
         truthChecks.append(check)
         saveForCurrentUser(truthChecks, forKey: .truthChecks)
+        syncLearningModeProtectionState()
         scheduleTimeTruthNotification()
     }
 
@@ -398,11 +505,130 @@ class AppViewModel: ObservableObject {
         )
         truthChecks.append(check)
         saveForCurrentUser(truthChecks, forKey: .truthChecks)
+        syncLearningModeProtectionState()
         scheduleTimeTruthNotification()
+    }
+
+    func saveDailyScrollScheduleForToday(_ windows: [ScreenScrollWindow]) {
+        saveDailyScrollSchedule(windows, for: todayKey())
+    }
+
+    func saveDailyScrollSchedule(_ windows: [ScreenScrollWindow], for date: String) {
+        guard !windows.isEmpty else { return }
+        if dailyScrollSchedule(for: date) != nil { return }
+
+        let normalized = normalizeDailyScrollWindows(windows)
+        let schedule = DailyScrollSchedule(
+            id: date,
+            date: date,
+            windows: normalized,
+            createdAt: ISO8601DateFormatter().string(from: Date())
+        )
+        dailyScrollSchedules.removeAll { $0.date == date }
+        dailyScrollSchedules.insert(schedule, at: 0)
+        dailyScrollSchedules = Array(dailyScrollSchedules.prefix(45))
+        saveForCurrentUser(dailyScrollSchedules, forKey: .dailyScrollSchedules)
+        persistPreferredScrollWindows(normalized)
+        pendingDailyScrollSchedulePrompt = nil
+        appendAISummary("Daily scroll schedule locked for \(date): \(normalized.map { "\($0.title) \($0.startHour)-\($0.endHour)" }.joined(separator: ", "))")
+    }
+
+    func dailyScrollSchedule(for date: String? = nil) -> DailyScrollSchedule? {
+        let key = date ?? todayKey()
+        return dailyScrollSchedules.first { $0.date == key }
+    }
+
+    var isTodayScrollScheduleLocked: Bool {
+        dailyScrollSchedule() != nil
+    }
+
+    var todayScrollScheduleStatusText: String {
+        if let schedule = dailyScrollSchedule() {
+            let times = schedule.windows.map { "\(hourLabel($0.startHour))-\(hourLabel($0.endHour))" }.joined(separator: " and ")
+            return "Locked today: \(times). You can choose again tomorrow morning."
+        }
+        return "Choose today’s two scroll windows. Once saved, they lock until tomorrow."
     }
 
     func dismissTimeTruthPrompt() {
         pendingTimeTruthPrompt = nil
+    }
+
+    func evaluateDailyScrollSchedulePrompt(now: Date = Date()) {
+        guard isLoggedIn, settings.onboardingComplete else {
+            pendingDailyScrollSchedulePrompt = nil
+            return
+        }
+
+        let today = todayKey()
+        guard dailyScrollSchedule(for: today) == nil else {
+            if pendingDailyScrollSchedulePrompt?.date == today {
+                pendingDailyScrollSchedulePrompt = nil
+            }
+            return
+        }
+
+        let schedule = dailyScrollSchedulePromptTime()
+        let calendar = Calendar.current
+        let isBrandNewSchedule = dailyScrollSchedules.isEmpty
+        let dueAt = calendar.date(
+            bySettingHour: schedule.hour,
+            minute: schedule.minute,
+            second: 0,
+            of: now
+        ) ?? now
+        guard isBrandNewSchedule || now >= dueAt else { return }
+
+        if pendingDailyScrollSchedulePrompt?.date != today {
+            let recommendationReady = !rawAdaptiveScreenTimePlan().collecting
+            pendingDailyScrollSchedulePrompt = DailyScrollSchedulePrompt(
+                id: today,
+                date: today,
+                recommendedWindows: suggestedDailyScrollWindows(recommendationReady: recommendationReady),
+                isRecommendationReady: recommendationReady,
+                scheduledHour: schedule.hour,
+                scheduledMinute: schedule.minute
+            )
+        }
+    }
+
+    func scheduleDailyScrollScheduleNotification() {
+        guard isLoggedIn, settings.onboardingComplete else { return }
+
+        let schedule = dailyScrollSchedulePromptTime()
+        let scheduleKey = String(format: "%02d:%02d", schedule.hour, schedule.minute)
+        if let email = user?.email,
+           StorageService.load(String.self, forKey: .dailyScrollScheduleNotification, email: email) == scheduleKey {
+            return
+        }
+
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["mivo.scrollSchedule.daily"])
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { [weak self] granted, _ in
+            guard granted else { return }
+
+            let content = UNMutableNotificationContent()
+            content.title = "Set today’s scroll times"
+            content.body = "Choose your two scroll windows for today. Once saved, they lock until tomorrow."
+            content.sound = .default
+
+            var date = DateComponents()
+            date.hour = schedule.hour
+            date.minute = schedule.minute
+            let trigger = UNCalendarNotificationTrigger(dateMatching: date, repeats: true)
+            let request = UNNotificationRequest(identifier: "mivo.scrollSchedule.daily", content: content, trigger: trigger)
+
+            center.add(request) { error in
+                guard error == nil else { return }
+                DispatchQueue.main.async {
+                    self?.saveForCurrentUser(scheduleKey, forKey: .dailyScrollScheduleNotification)
+                    self?.settings.notificationsEnabled = true
+                    if let updated = self?.settings {
+                        self?.saveForCurrentUser(updated, forKey: .settings)
+                    }
+                }
+            }
+        }
     }
 
     func evaluateTimeTruthPrompt(now: Date = Date()) {
@@ -536,8 +762,15 @@ class AppViewModel: ObservableObject {
         if !partial.preferredApps.isEmpty || partial.preferredApps != onboardingProfile.preferredApps {
             onboardingProfile.preferredApps = partial.preferredApps
         }
+        if let windows = partial.preferredScrollWindows, !windows.isEmpty {
+            onboardingProfile.preferredScrollWindows = windows
+        }
         if let a = partial.age { onboardingProfile.age = a }
         if let ar = partial.ageRange { onboardingProfile.ageRange = ar }
+        if let interval = partial.checkInIntervalMinutes {
+            onboardingProfile.checkInIntervalMinutes = interval
+            FamilyControlsManager.shared.setCheckInIntervalMinutes(interval)
+        }
         // Persist the onboarding profile separately
         saveForCurrentUser(onboardingProfile, forKey: .onboardingProfile)
 
@@ -575,9 +808,35 @@ class AppViewModel: ObservableObject {
         }
         if let a = onboardingProfile.age { parts.append("Age: \(a)") }
         if let ar = onboardingProfile.ageRange { parts.append("Age range: \(ar)") }
+        if let interval = onboardingProfile.checkInIntervalMinutes { parts.append("Check-in interval: \(interval) min") }
+
+        if let windows = onboardingProfile.preferredScrollWindows, !windows.isEmpty {
+            let schedule = windows.map { "\($0.title): \($0.startHour)-\($0.endHour)" }.joined(separator: ", ")
+            parts.append("User scroll windows: \(schedule)")
+        }
 
         let summary = parts.joined(separator: " | ")
         appendAISummary(summary)
+    }
+
+    func updatePreferredScrollWindows(_ windows: [ScreenScrollWindow]) {
+        guard !isTodayScrollScheduleLocked else { return }
+        saveDailyScrollScheduleForToday(windows)
+    }
+
+    private func persistPreferredScrollWindows(_ windows: [ScreenScrollWindow]) {
+        onboardingProfile.preferredScrollWindows = windows
+        saveForCurrentUser(onboardingProfile, forKey: .onboardingProfile)
+        if var u = user {
+            u.onboardingProfile = onboardingProfile
+            StorageService.save(u, forKey: .user)
+            user = u
+        }
+        if var record = SecureAuthService.loadRecord() {
+            record.onboardingProfile = onboardingProfile
+            try? SecureAuthService.saveRecord(record)
+        }
+        updateWidgetSharedSummary()
     }
 
     // Append a short summary string into the aiDataset storage slot (simple string array)
@@ -603,6 +862,8 @@ class AppViewModel: ObservableObject {
         StorageService.remove(forKey: .onboardingProfile)
         StorageService.remove(forKey: .pendingSessionFeedback)
         StorageService.remove(forKey: .timeTruthNotificationSchedule)
+        StorageService.remove(forKey: .dailyScrollSchedules)
+        StorageService.remove(forKey: .dailyScrollScheduleNotification)
         StorageService.remove(forKey: .weeklyReports)
         StorageService.remove(forKey: .appInterventionRules)
         StorageService.remove(forKey: .accountabilitySummary)
@@ -614,6 +875,8 @@ class AppViewModel: ObservableObject {
             StorageService.remove(forKey: .pendingSessionFeedback, email: resetEmail)
             StorageService.remove(forKey: .runningSession, email: resetEmail)
             StorageService.remove(forKey: .timeTruthNotificationSchedule, email: resetEmail)
+            StorageService.remove(forKey: .dailyScrollSchedules, email: resetEmail)
+            StorageService.remove(forKey: .dailyScrollScheduleNotification, email: resetEmail)
             StorageService.remove(forKey: .weeklyReports, email: resetEmail)
             StorageService.remove(forKey: .appInterventionRules, email: resetEmail)
             StorageService.remove(forKey: .accountabilitySummary, email: resetEmail)
@@ -630,9 +893,11 @@ class AppViewModel: ObservableObject {
         weeklyReports = []
         appInterventionRules = defaultAppInterventionRules()
         pendingSessionFeedback = nil
+        pendingExpiredRunningSession = nil
         pendingTimeTruthPrompt = nil
         isLoggedIn = false
-        FamilyControlsManager.shared.setMivoSessionActive(false)
+        _ = FamilyControlsManager.shared.setMivoSessionActive(false)
+        FamilyControlsManager.shared.setLearningModeUnlocked(false)
         FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
 
         // Offload heavier history deletion to background, update published state on main when done.
@@ -656,6 +921,9 @@ class AppViewModel: ObservableObject {
     }
 
     func persistCurrentSettings() {
+        if let interval = settings.checkInIntervalMinutes {
+            FamilyControlsManager.shared.setCheckInIntervalMinutes(interval)
+        }
         saveForCurrentUser(settings, forKey: .settings)
     }
 
@@ -681,13 +949,40 @@ class AppViewModel: ObservableObject {
         return pending
     }
 
+    // MARK: - Deep link (shield "Open Mivo" button)
+
+    func handleDeepLink(_ url: URL) {
+        guard url.scheme == "mivo" else { return }
+        // Any mivo:// URL from the shield means "go to the intervention tab"
+        deepLinkInterventionRequested = true
+    }
+
+    /// Called on app foreground to pick up the flag written by the ShieldAction extension
+    func checkDeepLinkInterventionFlag() {
+        let defaults = UserDefaults(suiteName: FamilyControlsManager.shared.appGroup)
+        if defaults?.bool(forKey: "mivo.openInterventionOnLaunch") == true {
+            defaults?.set(false, forKey: "mivo.openInterventionOnLaunch")
+            defaults?.synchronize()
+            deepLinkInterventionRequested = true
+        }
+    }
+
     func markMivoLaunchSessionStarted(plannedMinutes: Int = 0) {
         guard !isRestrictionBypassUser else {
             clearRestrictionStateForTesting()
             return
         }
-        FamilyControlsManager.shared.setMivoSessionActive(true, plannedMinutes: plannedMinutes, exactDurationSeconds: max(1, plannedMinutes) * 60)
-        mivoLaunchGateActive = false
+        
+        let success = FamilyControlsManager.shared.setMivoSessionActive(true, plannedMinutes: plannedMinutes, exactDurationSeconds: max(1, plannedMinutes) * 60)
+        
+        if success {
+            sessionActivationError = nil
+            mivoLaunchGateActive = false
+            print("[AppViewModel] ✅ Session started successfully")
+        } else {
+            sessionActivationError = "Failed to start session: Device Activity blocker could not be scheduled. Protected apps will remain locked."
+            print("[AppViewModel] ❌ Session activation failed")
+        }
     }
 
     func markMivoSessionActiveFor(seconds: Int) {
@@ -695,8 +990,17 @@ class AppViewModel: ObservableObject {
             clearRestrictionStateForTesting()
             return
         }
-        FamilyControlsManager.shared.setMivoSessionActive(true, exactDurationSeconds: max(1, seconds))
-        mivoLaunchGateActive = false
+        
+        let success = FamilyControlsManager.shared.setMivoSessionActive(true, exactDurationSeconds: max(1, seconds))
+        
+        if success {
+            sessionActivationError = nil
+            mivoLaunchGateActive = false
+            print("[AppViewModel] ✅ Session started successfully")
+        } else {
+            sessionActivationError = "Failed to start session: Device Activity blocker could not be scheduled. Protected apps will remain locked."
+            print("[AppViewModel] ❌ Session activation failed")
+        }
     }
 
     func finishMivoSession(requiresReview: Bool = false) {
@@ -709,7 +1013,7 @@ class AppViewModel: ObservableObject {
             return
         }
         clearRunningSession()
-        FamilyControlsManager.shared.setMivoSessionActive(false)
+        _ = FamilyControlsManager.shared.setMivoSessionActive(false)
     }
 
     func sessionExtensionDecision(
@@ -732,12 +1036,12 @@ class AppViewModel: ObservableObject {
             )
         }
 
-        guard !plan.collecting || ruleMode == .plannedWindowsOnly else {
+        if plan.collecting {
             return SessionExtensionDecision(
                 allowed: true,
-                addedMinutes: 5,
-                title: "5 more minutes approved",
-                message: "Mivo is still learning your real scroll pattern. You can add a little time, and this session will help the adaptive plan get smarter."
+                addedMinutes: 30,
+                title: "Learning mode unlocked",
+                message: "For the first 3 days, Mivo only monitors your scrolling. No adaptive screen-time cap is enforced yet."
             )
         }
 
@@ -756,7 +1060,7 @@ class AppViewModel: ObservableObject {
             hour >= window.startHour && hour < window.endHour
         }
 
-        guard activeWindow != nil else {
+        guard let activeWindow else {
             return SessionExtensionDecision(
                 allowed: false,
                 addedMinutes: 0,
@@ -769,11 +1073,12 @@ class AppViewModel: ObservableObject {
         let remainingTarget = plan.targetMinutes - projectedToday
 
         guard remainingTarget >= 3 else {
+            let added = min(5, max(1, activeWindow.minutes))
             return SessionExtensionDecision(
-                allowed: false,
-                addedMinutes: 0,
-                title: "That is enough for now",
-                message: nextScrollWindowMessage(for: plan, now: now, fallback: "Mivo has enough data and you are at today's adaptive target. Save this session before the scroll turns automatic.")
+                allowed: true,
+                addedMinutes: added,
+                title: "Short check-in approved",
+                message: "You are inside your planned scroll window, so Mivo is allowing a short session even though today's recorded usage is already at the adaptive target."
             )
         }
 
@@ -796,13 +1101,12 @@ class AppViewModel: ObservableObject {
                 windowTitle: "Loose tracking"
             )
         }
-        guard !plan.collecting else {
-            let baselineCap = min(30, max(5, plan.baselineMinutes / 4))
+        if plan.collecting {
             return (
-                maxMinutes: baselineCap,
-                isLimited: baselineCap < 30,
-                message: "Mivo is still learning, so this setup is capped at \(baselineCap) min instead of leaving 30 min open every time.",
-                windowTitle: "Learning cap"
+                maxMinutes: 240,
+                isLimited: false,
+                message: "First 3 days: unlimited learning mode. Mivo is only monitoring your scrolling, then it builds your personalized screen-time meter after day 3.",
+                windowTitle: "3-day monitor"
             )
         }
 
@@ -828,26 +1132,19 @@ class AppViewModel: ObservableObject {
         let usedInWindow = minutesUsedToday(in: activeWindow)
         let remainingInWindow = max(0, activeWindow.minutes - usedInWindow)
         let remainingToday = max(0, plan.targetMinutes - todaysTotalMinutes)
-        let maxMinutes = min(30, remainingInWindow, remainingToday)
+        let computedMaxMinutes = min(30, remainingInWindow, remainingToday)
         let windowLength = max(1, activeWindow.endHour - activeWindow.startHour)
         let windowText = "\(activeWindow.title) - \(windowLength)h window"
 
-        guard maxMinutes > 0 else {
-            return (
-                maxMinutes: 0,
-                isLimited: true,
-                message: nextScrollWindowMessage(
-                    for: plan,
-                    now: now,
-                    fallback: "You already used this scroll window. Save the session and come back at the next planned time."
-                ),
-                windowTitle: windowText
-            )
+        if computedMaxMinutes <= 0 {
+            let activeWindowMinimum = min(5, max(1, activeWindow.minutes))
+            let message = "This scroll window is open now. Mivo is allowing a short \(activeWindowMinimum)-minute session even though recorded usage already hit the planned cap."
+            return (maxMinutes: activeWindowMinimum, isLimited: true, message: message, windowTitle: windowText)
         }
 
-        let message = "\(maxMinutes) min left in this \(windowLength)-hour window. Mivo is using your adaptive plan, not the old always-30-minute choice."
+        let message = "\(computedMaxMinutes) min left in this \(windowLength)-hour window. Mivo is using your adaptive plan, not the old always-30-minute choice."
 
-        return (maxMinutes: maxMinutes, isLimited: true, message: message, windowTitle: windowText)
+        return (maxMinutes: computedMaxMinutes, isLimited: true, message: message, windowTitle: windowText)
     }
 
     private func minutesUsedToday(in window: ScreenScrollWindow) -> Int {
@@ -881,15 +1178,75 @@ class AppViewModel: ObservableObject {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         let windowLength = max(1, nextWindow.endHour - nextWindow.startHour)
+        if plan.collecting {
+            return "Your chosen scroll schedule is active. Come back at \(formatter.string(from: nextDate)) and scroll up to \(nextWindow.minutes) minutes inside that \(windowLength)-hour window."
+        }
         return "Mivo has enough data now. Come back at \(formatter.string(from: nextDate)) and scroll up to \(nextWindow.minutes) minutes inside that \(windowLength)-hour window."
     }
 
     func adaptiveScreenTimePlan() -> ScreenTimeReductionPlan {
+        let plan = rawAdaptiveScreenTimePlan()
+        if let todaySchedule = dailyScrollSchedule() {
+            return planReplacingWindows(
+                in: plan,
+                windows: todaySchedule.windows,
+                idSuffix: "today-\(todaySchedule.date)",
+                collectingSummary: "First 3 days are unlimited learning mode. Mivo monitors your scrolling now, then builds a personalized screen-time meter after day 3.",
+                activeSummary: "Today’s scroll windows are locked from the morning check. Mivo is getting stricter gradually from your real pattern.",
+                reason: plan.collecting ? "Your times are saved for monitoring, but Mivo will not limit scrolling during the first 3 days." : "These windows are the schedule you locked for today. You can choose again tomorrow morning."
+            )
+        }
+        if plan.collecting {
+            return planReplacingWindows(
+                in: plan,
+                windows: [],
+                idSuffix: "needs-daily-schedule",
+                collectingSummary: "First 3 days are unlimited learning mode. Choose times if you want Mivo to watch those periods, but no adaptive cap starts until day 4.",
+                activeSummary: nil,
+                reason: "Mivo will not enforce a default window before you lock today’s schedule."
+            )
+        }
+        return plan
+    }
+
+    private func syncLearningModeProtectionState() {
+        guard isLoggedIn, !isRestrictionBypassUser else {
+            FamilyControlsManager.shared.setLearningModeUnlocked(false)
+            return
+        }
+
+        FamilyControlsManager.shared.setLearningModeUnlocked(rawAdaptiveScreenTimePlan().collecting)
+    }
+
+    private func rawAdaptiveScreenTimePlan() -> ScreenTimeReductionPlan {
         AIService.makeScreenTimeReductionPlan(
             sessions: sessions,
             truthChecks: truthChecks,
             todayScreenTimeMinutes: deviceActivityMinutesToday,
             profile: onboardingProfile
+        )
+    }
+
+    private func planReplacingWindows(
+        in plan: ScreenTimeReductionPlan,
+        windows: [ScreenScrollWindow],
+        idSuffix: String,
+        collectingSummary: String,
+        activeSummary: String?,
+        reason: String
+    ) -> ScreenTimeReductionPlan {
+        ScreenTimeReductionPlan(
+            id: "\(plan.id)-\(idSuffix)",
+            collecting: plan.collecting,
+            daysCollected: plan.daysCollected,
+            daysNeeded: plan.daysNeeded,
+            dayIndex: plan.dayIndex,
+            baselineMinutes: plan.baselineMinutes,
+            targetMinutes: plan.targetMinutes,
+            strictnessPercent: plan.strictnessPercent,
+            summary: plan.collecting ? collectingSummary : (activeSummary ?? plan.summary),
+            decisionReason: reason,
+            windows: windows
         )
     }
 
@@ -904,6 +1261,56 @@ class AppViewModel: ObservableObject {
     private func timeTruthActualMinutesForToday() -> Int {
         refreshScreenTimeData()
         return deviceActivityMinutesToday ?? todaysTotalMinutes
+    }
+
+    private func dailyScrollSchedulePromptTime() -> (hour: Int, minute: Int) {
+        (8, 0)
+    }
+
+    private func suggestedDailyScrollWindows(recommendationReady: Bool) -> [ScreenScrollWindow] {
+        let plan = adaptiveScreenTimePlan()
+        if recommendationReady, !plan.windows.isEmpty {
+            return plan.windows
+        }
+        if let windows = onboardingProfile.preferredScrollWindows, !windows.isEmpty {
+            return windows
+        }
+        let baseline = onboardingProfile.scrollEstimateMinutes ?? 60
+        let perWindow = max(5, min(20, baseline / 4))
+        return [
+            ScreenScrollWindow(id: "daily-session-1", title: "Session 1", startHour: 14, endHour: 15, minutes: perWindow, reason: "Your first daily scroll window."),
+            ScreenScrollWindow(id: "daily-session-2", title: "Session 2", startHour: 20, endHour: 21, minutes: perWindow, reason: "Your second daily scroll window.")
+        ]
+    }
+
+    private func normalizeDailyScrollWindows(_ windows: [ScreenScrollWindow]) -> [ScreenScrollWindow] {
+        let baseline = onboardingProfile.scrollEstimateMinutes ?? 60
+        let firstMinutes = max(5, min(30, Int(Double(baseline) * 0.55)))
+        let secondMinutes = max(5, min(30, baseline - firstMinutes))
+        return Array(windows.prefix(2).enumerated()).map { index, window in
+            let start = ((window.startHour % 24) + 24) % 24
+            let end = (start + 1) % 24
+            return ScreenScrollWindow(
+                id: "daily-session-\(index + 1)",
+                title: index == 0 ? "Today’s session 1" : "Today’s session 2",
+                startHour: start,
+                endHour: end == 0 ? 24 : end,
+                minutes: index == 0 ? firstMinutes : secondMinutes,
+                reason: "Locked for today. You can choose new times tomorrow morning."
+            )
+        }
+    }
+
+    private func adaptiveLearningDaysCollected() -> Int {
+        Set(Array(sessions.map(\.date)) + truthChecks.map(\.date)).count
+    }
+
+    private func hourLabel(_ hour: Int) -> String {
+        let normalized = ((hour % 24) + 24) % 24
+        if normalized == 0 { return "12a" }
+        if normalized < 12 { return "\(normalized)a" }
+        if normalized == 12 { return "12p" }
+        return "\(normalized - 12)p"
     }
 
     private func timeTruthSchedule() -> (hour: Int, minute: Int) {
@@ -1214,6 +1621,13 @@ class AppViewModel: ObservableObject {
             }
         }
 
+        if #available(iOS 16.0, *),
+           ScreenTimeDataCollector.shared.authorizationStatus == .authorized,
+           deviceActivityReportGeneratedAt != nil || deviceActivityMinutesToday != nil || !deviceActivityPerAppSeconds.isEmpty {
+            updateWidgetSharedSummary()
+            return
+        }
+
         lastDeviceActivityReportJSON = nil
         deviceActivityMinutesToday = nil
         deviceActivityPerAppSeconds = [:]
@@ -1410,6 +1824,7 @@ class AppViewModel: ObservableObject {
         if isBuiltInTestingEmail(email.lowercased()) {
             clearRestrictionStateForTesting()
         } else {
+            syncLearningModeProtectionState()
             FamilyControlsManager.shared.setSignedInForImpulseProtection(true)
         }
     }
@@ -1417,9 +1832,11 @@ class AppViewModel: ObservableObject {
     private func clearRestrictionStateForTesting() {
         mivoLaunchGateActive = false
         pendingSessionFeedback = nil
+        pendingExpiredRunningSession = nil
         removeForCurrentUser(.pendingSessionFeedback)
         clearRunningSession()
-        FamilyControlsManager.shared.setMivoSessionActive(false)
+        _ = FamilyControlsManager.shared.setMivoSessionActive(false)
+        FamilyControlsManager.shared.setLearningModeUnlocked(false)
         FamilyControlsManager.shared.clearPendingInterventionSetup()
         FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
     }

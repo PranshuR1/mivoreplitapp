@@ -52,6 +52,8 @@ struct MivoColors {
     static let timerGreen = secondary
     static let timerOrange = accent
     static let timerRed = Color(hex: "#B05540")
+    static let green = timerGreen
+    static let orange = timerOrange
     
     static let white = Color.white
     static let overlay = Color.black.opacity(0.5)

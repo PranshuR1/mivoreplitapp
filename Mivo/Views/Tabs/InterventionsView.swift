@@ -30,6 +30,7 @@ struct InterventionsView: View {
     var statusText: String {
         if let selection = startSelection { return "\(selection.intention.rawValue) · \(selection.duration) min" }
         if durationLimit.maxMinutes == 0 { return "No scroll window open" }
+        if !durationLimit.isLimited { return "Learning mode - no cap" }
         if let selectedDuration, selectedDuration > durationLimit.maxMinutes { return "Mivo recommends \(durationLimit.maxMinutes) min or less" }
         if selectedIntention != nil { return "Choose a time limit" }
         return "Choose why you are opening it"
@@ -65,7 +66,7 @@ struct InterventionsView: View {
             withAnimation(.easeInOut(duration: 1.45).repeatForever(autoreverses: true)) { pulse = true }
             clampSelectedDurationIfNeeded()
         }
-        .onChange(of: customDurationText) { value in
+        .onChange(of: customDurationText) { _, value in
             applyCustomDuration(value)
         }
         .alert("Adaptive limit", isPresented: Binding(
@@ -105,7 +106,7 @@ struct InterventionsView: View {
 
             HStack(spacing: 10) {
                 heroMetric(title: "Session", value: canStart ? "Ready" : "Setup", icon: canStart ? "checkmark" : "slider.horizontal.3")
-                heroMetric(title: durationLimit.windowTitle, value: durationLimit.maxMinutes > 0 ? "\(durationLimit.maxMinutes)m left" : "Closed", icon: "timer")
+                heroMetric(title: durationLimit.windowTitle, value: durationLimit.isLimited ? (durationLimit.maxMinutes > 0 ? "\(durationLimit.maxMinutes)m left" : "Closed") : "Unlimited", icon: "timer")
             }
         }
         .padding(20)
@@ -201,7 +202,7 @@ struct InterventionsView: View {
                         .font(.system(size: 12, weight: .bold))
                     Text(durationLimit.windowTitle)
                     Spacer(minLength: 0)
-                    Text(durationLimit.maxMinutes > 0 ? "\(durationLimit.maxMinutes) min available" : "come back later")
+                    Text(durationLimit.isLimited ? (durationLimit.maxMinutes > 0 ? "\(durationLimit.maxMinutes) min available" : "come back later") : "unlimited learning")
                 }
                 .font(.system(size: 12, weight: .bold))
                 .foregroundColor(durationLimit.maxMinutes > 0 ? MivoColors.accent : MivoColors.textMuted)
@@ -401,11 +402,6 @@ struct InterventionsView: View {
             .scaleEffect(canStart && pulse ? 1.012 : 1)
         }
         .disabled(!canStart)
-        .simultaneousGesture(TapGesture().onEnded {
-            guard let selection else { return }
-            appVM.markMivoLaunchSessionStarted(plannedMinutes: selection.duration)
-            HapticsService.success()
-        })
     }
 
     private func sectionTitle(_ title: String, subtitle: String, icon: String) -> some View {

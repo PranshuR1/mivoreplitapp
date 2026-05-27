@@ -32,7 +32,7 @@ struct OnboardingAgeView: View {
                         .background(MivoColors.card)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .foregroundColor(MivoColors.textPrimary)
-                        .onChange(of: ageText) { _ in HapticsService.selection() }
+                        .onChange(of: ageText) { _, _ in HapticsService.selection() }
 
                     Text("Or pick an age range")
                         .font(.system(size: 13))

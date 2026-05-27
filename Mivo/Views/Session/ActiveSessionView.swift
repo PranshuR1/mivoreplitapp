@@ -452,7 +452,17 @@ struct ActiveSessionView: View {
             return
         }
 
+        // Cap elapsed at the current totalPlanned before adding extra time.
+        // Without this, if the user waited (e.g. 30 s) after the timer expired before
+        // tapping "Add more time", `elapsed` would be totalPlanned + 30, making the new
+        // remaining = addedSeconds − 30 instead of the full addedSeconds the user expects.
+        let priorTotal = totalPlanned
         extraSeconds += decision.addedMinutes * 60
+        if elapsed > priorTotal {
+            // Slide startTime forward so elapsed reads exactly priorTotal.
+            startTime = startTime.addingTimeInterval(TimeInterval(elapsed - priorTotal))
+            elapsed = priorTotal
+        }
         extensionUsed = true
         didPulseAtLimit = false
         feedbackPresentedForTimeLimit = false
@@ -472,7 +482,12 @@ struct ActiveSessionView: View {
         guard reason.count >= 3 else { return }
         emergencyUnlockUsed = true
         emergencyUnlockSavedReason = reason
+        let priorTotalEmergency = totalPlanned
         extraSeconds += 5 * 60
+        if elapsed > priorTotalEmergency {
+            startTime = startTime.addingTimeInterval(TimeInterval(elapsed - priorTotalEmergency))
+            elapsed = priorTotalEmergency
+        }
         extensionUsed = true
         didPulseAtLimit = false
         feedbackPresentedForTimeLimit = false
