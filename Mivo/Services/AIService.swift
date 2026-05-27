@@ -48,6 +48,7 @@ enum OpenRouterService {
         let dayIndex = localPlan.dayIndex
         let baseline = localPlan.baselineMinutes
         let localTarget = localPlan.targetMinutes
+        let goal = profile?.dailyScrollGoalMinutes.map { "\($0)" } ?? "(not set — assume 30)"
 
         return """
 You are a compassionate screen-time coach inside Mivo, an iOS focus app.
@@ -58,19 +59,21 @@ User profile:
 - Apps they use most: \(apps)
 - Plan day (day 1 = first day after 3-day observation): \(dayIndex)
 - 3-day observation average (the user's actual daily screen time): \(baseline) min
+- User's daily scroll goal (end target, set during onboarding): \(goal) min
 - Rule-based target today: \(localTarget) min
 
 Recent sessions (last 10):
 \(recentSessions.isEmpty ? "None yet." : recentSessions)
 
 Generate a PERSONALIZED screen time plan that follows this philosophy:
-- Day 1 of the plan should equal the observation average (\(baseline) min) — start where
+- Day 1 of the plan equals the observation average (\(baseline) min) — start where
   the user actually is, never below.
-- Week 1 (plan days 1–7) is the lenient week: each day should be slightly harder
-  than the previous, with very small daily decrements (around 2–4 min/day).
-- Week 2+ (plan days 8+) tightens faster: the per-day decrement grows by about 1
-  minute per week. Make it "harder every week, slowly but surely."
-- Floor at 30 min — never recommend a target below that.
+- The plan ramps DOWN smoothly toward the user's goal (\(goal) min) over weeks,
+  never below the goal. NEVER drop more than 5 min from one day to the next.
+- Week 1 (plan days 1–7) is the lenient week: 2–4 min/day decrement.
+- Week 2+ tightens slightly faster: the per-day decrement grows by ~1 min per
+  week. "Harder every week, slowly but surely."
+- Once the plan reaches the goal, it stays there — don't go lower.
 - Suggest exactly 2 scroll windows that fit the user's session patterns.
 - Be warm and personalized in summary/decisionReason (mention their main app or
   intention, and frame it as a gentle build-up, not a crash diet).
@@ -448,9 +451,10 @@ class AIService {
         //   • Week 2+: the per-day decrement grows by 1 min per week (week 2 is
         //     -4/day, week 3 is -5/day, …), so it gets harder week by week
         //     "slowly but surely."
-        //   • Floor at 30 min.
+        //   • Floor at the user's daily-scroll goal (set in onboarding), or 30
+        //     min if no goal is on file.
         let daysNeeded = 3
-        let floorMinutes = 30
+        let floorMinutes = max(15, profile?.dailyScrollGoalMinutes ?? 30)
         let dailyTotals = Dictionary(grouping: sessions, by: \.date)
             .mapValues { daySessions in
                 daySessions.reduce(0) { $0 + $1.actualDuration }
@@ -554,6 +558,19 @@ class AIService {
             if total <= floor { return floor }
         }
         return max(floor, total)
+    }
+
+    /// How many plan days the personalized ramp takes to reach `goal` starting
+    /// from `baseline`. Returns 1 if the baseline already meets the goal.
+    /// Capped at 365 days for safety.
+    static func daysUntilGoalReached(baseline: Int, goal: Int) -> Int {
+        guard baseline > goal else { return 1 }
+        for day in 1...365 {
+            if personalizedTargetMinutes(dayIndex: day, baseline: baseline, floor: goal) <= goal {
+                return day
+            }
+        }
+        return 365
     }
 
     static func makeScreenTimeReductionPlanOnline(

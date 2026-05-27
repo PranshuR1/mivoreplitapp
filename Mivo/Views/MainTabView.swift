@@ -80,6 +80,7 @@ struct MainTabView: View {
             appVM.scheduleDailyScrollScheduleNotification()
             appVM.evaluateDailyScrollSchedulePrompt()
             appVM.evaluateTimeTruthPrompt()
+            appVM.evaluateGoalForecastPrompt()
             appVM.recoverExpiredRunningSessionIfNeeded()
 
             if shouldShowTutorial {
@@ -105,11 +106,13 @@ struct MainTabView: View {
             appVM.scheduleDailyScrollScheduleNotification()
             appVM.evaluateDailyScrollSchedulePrompt()
             appVM.evaluateTimeTruthPrompt()
+            appVM.evaluateGoalForecastPrompt()
         }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
             guard !shouldShowTutorial else { return }
             appVM.evaluateDailyScrollSchedulePrompt()
             appVM.evaluateTimeTruthPrompt()
+            appVM.evaluateGoalForecastPrompt()
         }
         .onReceive(pendingInterventionPoller) { _ in
             guard scenePhase == .active, !shouldShowTutorial else { return }
@@ -154,6 +157,11 @@ struct MainTabView: View {
         }
         .fullScreenCover(item: $appVM.pendingDailyScrollSchedulePrompt) { prompt in
             DailyScrollScheduleCheckView(prompt: prompt)
+                .environmentObject(appVM)
+                .interactiveDismissDisabled()
+        }
+        .fullScreenCover(item: $appVM.pendingGoalForecastPrompt) { prompt in
+            GoalForecastPromptView(prompt: prompt)
                 .environmentObject(appVM)
                 .interactiveDismissDisabled()
         }
@@ -1162,5 +1170,161 @@ private struct AppTutorialToolbar: View {
                 .strokeBorder(MivoColors.white.opacity(0.5), lineWidth: 1)
         )
         .shadow(color: MivoColors.primary.opacity(0.24), radius: 22, y: 10)
+    }
+}
+
+// MARK: - Goal forecast prompt
+//
+// One-time post-observation prompt that tells the user how their personalized
+// plan will get them from their 3-day observation average to their daily
+// scroll goal. Similar styling to TimeTruthCheckView.
+
+private struct GoalForecastPromptView: View {
+    @EnvironmentObject var appVM: AppViewModel
+    let prompt: GoalForecastPrompt
+
+    var body: some View {
+        ZStack {
+            MivoColors.background.ignoresSafeArea()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 22) {
+                    iconMark
+
+                    VStack(spacing: 9) {
+                        Text("Your plan is ready")
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .foregroundColor(MivoColors.textPrimary)
+                            .multilineTextAlignment(.center)
+
+                        Text("Based on your 3 days of real usage, here is how Mivo will get you to your goal.")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(MivoColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                            .padding(.horizontal, 14)
+                    }
+
+                    summaryCard
+                    timelineCard
+
+                    Button {
+                        appVM.dismissGoalForecastPrompt()
+                        HapticsService.success()
+                    } label: {
+                        Text("Start my plan")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(MivoColors.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 17)
+                            .background(MivoColors.textPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .shadow(color: MivoColors.textPrimary.opacity(0.22), radius: 14, y: 8)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 30)
+            }
+        }
+    }
+
+    private var iconMark: some View {
+        ZStack {
+            Circle()
+                .fill(MivoColors.surface)
+                .frame(width: 102, height: 102)
+                .overlay(Circle().strokeBorder(MivoColors.border.opacity(0.7), lineWidth: 1))
+            Image(systemName: "target")
+                .font(.system(size: 42, weight: .bold))
+                .foregroundColor(MivoColors.accent)
+        }
+    }
+
+    private var summaryCard: some View {
+        VStack(spacing: 12) {
+            HStack {
+                bigStat(label: "Observation avg", value: format(prompt.observationAverageMinutes))
+                bigStat(label: "Your goal", value: format(prompt.goalMinutes), accent: true)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("\(prompt.daysToReachGoal) days to reach \(format(prompt.goalMinutes))")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Text("Mivo will trim a few minutes off each day — small in week 1, then a bit more each week. Once you reach the goal, the plan holds steady.")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineSpacing(3)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(16)
+        .background(MivoColors.white.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private var timelineCard: some View {
+        VStack(spacing: 10) {
+            timelineRow(day: "Day 1", value: format(prompt.firstPlanDayTarget), color: MivoColors.accent)
+            timelineRow(day: "Day 8", value: format(prompt.oneWeekTarget), color: MivoColors.accent)
+            timelineRow(day: "Day 15", value: format(prompt.twoWeekTarget), color: MivoColors.accent)
+            timelineRow(day: "Day \(prompt.daysToReachGoal)", value: format(prompt.goalMinutes), color: MivoColors.timerGreen, highlight: true)
+        }
+        .padding(16)
+        .background(MivoColors.white.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private func timelineRow(day: String, value: String, color: Color, highlight: Bool = false) -> some View {
+        HStack {
+            Circle()
+                .fill(color)
+                .frame(width: 9, height: 9)
+            Text(day)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(MivoColors.textPrimary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundColor(highlight ? MivoColors.timerGreen : MivoColors.textPrimary)
+                .monospacedDigit()
+            if highlight {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(MivoColors.timerGreen)
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(highlight ? MivoColors.timerGreen.opacity(0.14) : MivoColors.surface.opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func bigStat(label: String, value: String, accent: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(MivoColors.textMuted)
+                .textCase(.uppercase)
+            Text(value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundColor(accent ? MivoColors.accent : MivoColors.textPrimary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(MivoColors.heroText.opacity(0.72))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func format(_ minutes: Int) -> String {
+        if minutes < 60 { return "\(minutes)m" }
+        let h = minutes / 60
+        let m = minutes % 60
+        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
     }
 }

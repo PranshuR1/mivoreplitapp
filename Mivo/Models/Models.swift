@@ -222,6 +222,19 @@ struct DailyScrollSchedulePrompt: Identifiable, Equatable {
     let scheduledMinute: Int
 }
 
+/// One-time prompt shown after the 3-day observation completes: tells the user
+/// how many days until their personalized plan reaches their daily scroll goal.
+struct GoalForecastPrompt: Identifiable, Equatable {
+    let id: String
+    let observationAverageMinutes: Int
+    let goalMinutes: Int
+    let daysToReachGoal: Int
+    let firstPlanDayTarget: Int
+    let oneWeekTarget: Int
+    let twoWeekTarget: Int
+    let createdAt: String
+}
+
 struct WeeklyReportSnapshot: Codable, Identifiable {
     let id: String
     let weekStart: String
@@ -286,6 +299,9 @@ struct OnboardingProfile: Codable {
     var age: Int?
     var ageRange: String?
     var checkInIntervalMinutes: Int?
+    /// The user's target daily scrolling minutes — the floor that the
+    /// personalized plan ramps down to from the observation average.
+    var dailyScrollGoalMinutes: Int?
 
     init(primaryIntention: Intention? = nil, scrollEstimateMinutes: Int? = nil, preferredApps: [String] = [], preferredScrollWindows: [ScreenScrollWindow]? = nil) {
         self.primaryIntention = primaryIntention
@@ -296,6 +312,7 @@ struct OnboardingProfile: Codable {
         self.age = nil
         self.ageRange = nil
         self.checkInIntervalMinutes = nil
+        self.dailyScrollGoalMinutes = nil
     }
 }
 

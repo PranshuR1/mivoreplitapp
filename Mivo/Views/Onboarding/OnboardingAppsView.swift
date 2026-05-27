@@ -38,8 +38,8 @@ struct OnboardingAppsView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 4,
-                            total: 9,
+                            step: 5,
+                            total: 10,
                             eyebrow: "Apps",
                             title: "Where should Mivo pay attention?",
                             subtitle: "Choose the places that tend to pull you in. This stays private and helps your first insights feel relevant."
@@ -573,8 +573,8 @@ private struct CheckInOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 5,
-                            total: 9,
+                            step: 6,
+                            total: 10,
                             eyebrow: "Check-ins",
                             title: "How often should Mivo pause?",
                             subtitle: "For longer sessions, Mivo will briefly pause the protected app so you can check whether you still want to keep scrolling."
@@ -727,8 +727,8 @@ private struct AgeOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 6,
-                            total: 9,
+                            step: 7,
+                            total: 10,
                             eyebrow: "Personalize",
                             title: "How should we frame your time?",
                             subtitle: "Your age helps Mivo turn daily scrolling into a life-sized view. It stays on device."
@@ -965,8 +965,8 @@ private struct LifeBreakdownView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 22) {
                         OnboardingStepHeader(
-                            step: 7,
-                            total: 9,
+                            step: 8,
+                            total: 10,
                             eyebrow: "Perspective",
                             title: "Your time, made visible",
                             subtitle: "Each square is roughly one year ahead. We’ll color the picture so your phone time has context."
@@ -1202,8 +1202,8 @@ private struct ResultOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
                         OnboardingStepHeader(
-                            step: 8,
-                            total: 9,
+                            step: 9,
+                            total: 10,
                             eyebrow: "Recovery",
                             title: "We can recover this time",
                             subtitle: "Small pauses compound. Mivo turns tiny choices into visible time we can bring back."
@@ -1435,8 +1435,8 @@ private struct WidgetOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 9,
-                            total: 9,
+                            step: 10,
+                            total: 10,
                             eyebrow: "Widget",
                             title: "Keep Mivo visible",
                             subtitle: "Add the Mivo widget so your scroll time and next window stay visible before you drift."

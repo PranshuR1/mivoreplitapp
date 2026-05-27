@@ -30,7 +30,7 @@ struct OnboardingCalibrationView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
                             step: 2,
-                            total: 9,
+                            total: 10,
                             eyebrow: "Baseline",
                             title: "How much time disappears?",
                             subtitle: "A rough estimate is enough. This gives Mivo a starting line for your first report."
@@ -69,7 +69,7 @@ struct OnboardingCalibrationView: View {
 
                 OnboardingBottomBar {
                     NavigationLink {
-                        OnboardingScrollWindowsView()
+                        OnboardingGoalView()
                     } label: {
                         HStack(spacing: 10) {
                             Text("Continue")
@@ -166,8 +166,8 @@ private struct OnboardingScrollWindowsView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 3,
-                            total: 9,
+                            step: 4,
+                            total: 10,
                             eyebrow: "Schedule",
                             title: "When do you want to scroll?",
                             subtitle: "You choose the first two daily scroll sessions. Mivo will follow these for 3 days, then recommend better times from your real pattern."
@@ -355,5 +355,185 @@ private struct OnboardingScrollWindowsView: View {
         if normalized < 12 { return "\(normalized) AM" }
         if normalized == 12 { return "12 PM" }
         return "\(normalized - 12) PM"
+    }
+}
+
+// MARK: - Goal step (NEW)
+
+/// Asks the user how much scrolling they want to do per day — the floor that
+/// the personalized plan ramps down to from the observation average.
+struct OnboardingGoalView: View {
+    @EnvironmentObject var appVM: AppViewModel
+    @Environment(\.dismiss) var dismiss
+    @State private var selectedMinutes: Int = 60
+    @State private var appear = false
+
+    /// Goal options in minutes. UIKit-style wheel options.
+    private let goalOptions: [Int] = [15, 20, 30, 45, 60, 75, 90, 120, 150, 180]
+
+    var body: some View {
+        ZStack {
+            OnboardingBackdrop()
+
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        OnboardingStepHeader(
+                            step: 3,
+                            total: 10,
+                            eyebrow: "Goal",
+                            title: "How much do you want to scroll each day?",
+                            subtitle: "Pick a daily target. Mivo will work toward this number from your real 3-day average — gently, over weeks, not overnight."
+                        )
+                        .onboardingEntrance(appear)
+
+                        goalSummaryCard
+                            .onboardingEntrance(appear, delay: 0.08)
+
+                        wheelPickerCard
+                            .onboardingEntrance(appear, delay: 0.14)
+
+                        rationaleCard
+                            .onboardingEntrance(appear, delay: 0.2)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, 120)
+                }
+
+                OnboardingBottomBar {
+                    NavigationLink {
+                        OnboardingScrollWindowsView()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text("Set my goal")
+                                .font(.system(size: 16, weight: .semibold))
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundColor(MivoColors.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 17)
+                        .background(MivoColors.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
+                    }
+                    .simultaneousGesture(TapGesture().onEnded {
+                        var profile = appVM.onboardingProfile
+                        profile.dailyScrollGoalMinutes = selectedMinutes
+                        appVM.saveOnboardingProfile(profile)
+                        HapticsService.impact(style: .light)
+                    })
+                }
+            }
+        }
+        .navigationBarBackButtonHidden()
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { dismiss() } label: {
+                    Image(systemName: "arrow.left")
+                        .foregroundColor(MivoColors.textSecondary)
+                }
+            }
+        }
+        .onAppear {
+            // Pre-fill from saved value (if any), otherwise default to 60.
+            if let saved = appVM.onboardingProfile.dailyScrollGoalMinutes, goalOptions.contains(saved) {
+                selectedMinutes = saved
+            }
+            appear = true
+        }
+    }
+
+    private var goalSummaryCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(selectedMinutes)")
+                    .font(.system(size: 56, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundColor(MivoColors.textPrimary)
+                    .contentTransition(.numericText())
+                Text("min / day")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                Spacer()
+                Image(systemName: "target")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(MivoColors.accent)
+            }
+
+            Text(goalDescription)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(MivoColors.textSecondary)
+                .lineSpacing(3)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MivoColors.white.opacity(0.64))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(MivoColors.white.opacity(0.6), lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.04), radius: 14, y: 7)
+    }
+
+    private var wheelPickerCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "dial.medium")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(MivoColors.accent)
+                Text("Spin to choose")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(MivoColors.textPrimary)
+                Spacer()
+            }
+
+            Picker("Goal minutes per day", selection: $selectedMinutes) {
+                ForEach(goalOptions, id: \.self) { mins in
+                    Text(displayLabel(forMinutes: mins))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(MivoColors.textPrimary)
+                        .tag(mins)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(height: 160)
+            .onChange(of: selectedMinutes) { _, _ in HapticsService.selection() }
+        }
+        .padding(16)
+        .background(MivoColors.white.opacity(0.58))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private var rationaleCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("How Mivo gets you there", systemImage: "arrow.down.right.circle.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(MivoColors.accent)
+            Text("After the 3-day observation, Mivo will tell you exactly how many days it will take to reach \(selectedMinutes) min/day. Week 1 is gentle; the daily trim grows a little every week — slowly but surely.")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(MivoColors.textSecondary)
+                .lineSpacing(4)
+        }
+        .padding(16)
+        .background(MivoColors.white.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+    }
+
+    private var goalDescription: String {
+        switch selectedMinutes {
+        case ..<25: return "A tight goal — you only want a few quick check-ins per day."
+        case ..<45: return "A short scroll budget — enough to catch up on what matters."
+        case ..<75: return "A balanced goal — one or two relaxed sessions per day."
+        case ..<120: return "A moderate goal — comfortable room for downtime without losing the day."
+        default: return "A generous goal — Mivo will still tighten things up over time."
+        }
+    }
+
+    private func displayLabel(forMinutes minutes: Int) -> String {
+        if minutes < 60 { return "\(minutes) min" }
+        let h = minutes / 60
+        let m = minutes % 60
+        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
     }
 }

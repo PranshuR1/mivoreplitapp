@@ -36,6 +36,9 @@ class AppViewModel: ObservableObject {
     @Published var pendingResumedActiveSession: RunningMivoSession? = nil
     @Published var pendingTimeTruthPrompt: TimeTruthPrompt? = nil
     @Published var pendingDailyScrollSchedulePrompt: DailyScrollSchedulePrompt? = nil
+    /// One-time post-observation prompt that tells the user how many days until
+    /// their personalized plan reaches the goal they set in onboarding.
+    @Published var pendingGoalForecastPrompt: GoalForecastPrompt? = nil
     @Published var sessionActivationError: String? = nil
     /// Set to true when the shield "Open Mivo" button triggers a deep link
     @Published var deepLinkInterventionRequested: Bool = false
@@ -664,6 +667,48 @@ class AppViewModel: ObservableObject {
                 scheduledMinute: schedule.minute
             )
         }
+    }
+
+    /// Show the one-time goal-forecast prompt the first time the user enters
+    /// their personalized plan (i.e. right after observation completes).
+    func evaluateGoalForecastPrompt() {
+        guard isLoggedIn, settings.onboardingComplete else {
+            pendingGoalForecastPrompt = nil
+            return
+        }
+        guard pendingGoalForecastPrompt == nil else { return }
+        // Don't re-show after the user has dismissed it once.
+        if let email = user?.email,
+           StorageService.load(Bool.self, forKey: .goalForecastShown, email: email) == true { return }
+
+        let plan = rawAdaptiveScreenTimePlan()
+        // Wait until the plan exits observation mode.
+        guard !plan.collecting else { return }
+
+        let observationAverage = plan.baselineMinutes
+        let goal = max(15, onboardingProfile.dailyScrollGoalMinutes ?? 30)
+        // Goal already reached on day 1: no forecast needed.
+        guard observationAverage > goal else { return }
+
+        let daysToReachGoal = AIService.daysUntilGoalReached(baseline: observationAverage, goal: goal)
+        let firstDay = AIService.personalizedTargetMinutes(dayIndex: 1, baseline: observationAverage, floor: goal)
+        let oneWeek = AIService.personalizedTargetMinutes(dayIndex: 8, baseline: observationAverage, floor: goal)
+        let twoWeek = AIService.personalizedTargetMinutes(dayIndex: 15, baseline: observationAverage, floor: goal)
+        pendingGoalForecastPrompt = GoalForecastPrompt(
+            id: "goal-forecast-\(observationAverage)-\(goal)",
+            observationAverageMinutes: observationAverage,
+            goalMinutes: goal,
+            daysToReachGoal: daysToReachGoal,
+            firstPlanDayTarget: firstDay,
+            oneWeekTarget: oneWeek,
+            twoWeekTarget: twoWeek,
+            createdAt: ISO8601DateFormatter().string(from: Date())
+        )
+    }
+
+    func dismissGoalForecastPrompt() {
+        pendingGoalForecastPrompt = nil
+        saveForCurrentUser(true, forKey: .goalForecastShown)
     }
 
     func scheduleTimeTruthNotification() {

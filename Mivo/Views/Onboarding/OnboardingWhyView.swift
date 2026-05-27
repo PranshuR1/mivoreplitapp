@@ -27,7 +27,7 @@ struct OnboardingWhyView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
                             step: 1,
-                            total: 9,
+                            total: 10,
                             eyebrow: "Pattern",
                             title: "What usually pulls you in?",
                             subtitle: "Pick the reasons that feel true. Mivo uses this to make the pause feel personal, not preachy."

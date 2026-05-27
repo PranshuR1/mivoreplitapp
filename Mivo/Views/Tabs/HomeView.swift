@@ -274,7 +274,7 @@ struct HomeView: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showMonthlyForecast) {
-            MonthlyPlanForecastView(plan: plan)
+            MonthlyPlanForecastView(plan: plan).environmentObject(appVM)
         }
     }
 
@@ -695,8 +695,11 @@ struct MonthlyPlanForecastView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let daysToShow = 30
-    private let floorMinutes = 30
     private let observationDuration = 3
+    @EnvironmentObject private var appVM: AppViewModel
+    private var floorMinutes: Int {
+        max(15, appVM.onboardingProfile.dailyScrollGoalMinutes ?? 30)
+    }
 
     var body: some View {
         NavigationView {
