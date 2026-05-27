@@ -42,21 +42,20 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         let sessionExpired    = sessionExpiredAfterTimer()
 
         // ── 1. Counting down (highest priority — shown during pause) ──
-        // No buttons: the countdown finishes on its own, then the glimpse + re-lock
-        // happens automatically. The user just waits — there is nothing to tap.
+        // No buttons: the countdown finishes on its own. Every visible element
+        // (icon, title, subtitle) changes each second so the user can see the
+        // pause is actually progressing even when iOS is slow to re-render the
+        // shield surface.
         if isCountingDown {
             let n = countdownRemaining()
+            let total = pauseDurationSeconds()
+            let elapsed = max(0, total - n)
             return ShieldConfiguration(
                 backgroundBlurStyle: .systemUltraThinMaterialLight,
                 backgroundColor: cream,
-                icon: timerIcon(state: .countdown),
-                title: label(hasActiveSession ? "Pausing…  \(n)s" : "Pausing…  \(n)s", color: textPrimary),
-                subtitle: label(
-                    hasActiveSession
-                        ? "Hang on. The app opens when the pause ends."
-                        : "Wait for the pause to finish. This gives your mind a moment.",
-                    color: textMuted
-                ),
+                icon: timerIcon(state: .countdown(remaining: n, total: total)),
+                title: label(countdownTitle(remaining: n, total: total, isActiveSession: hasActiveSession), color: textPrimary),
+                subtitle: label(progressDotsSubtitle(elapsed: elapsed, total: total, remaining: n), color: textMuted),
                 primaryButtonLabel: nil,
                 primaryButtonBackgroundColor: nil,
                 secondaryButtonLabel: nil
@@ -140,7 +139,13 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         ShieldConfiguration.Label(text: text, color: color)
     }
 
-    private enum IconState { case timer, countdown, locked }
+    private enum IconState {
+        case timer
+        case locked
+        /// `remaining` and `total` drive the progress ring + countdown digit so
+        /// every tick draws a visibly different icon.
+        case countdown(remaining: Int, total: Int)
+    }
 
     private func timerIcon(state: IconState) -> UIImage {
         let size = CGSize(width: 96, height: 96)
@@ -155,8 +160,10 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
             ring.setStroke()
             let rp = UIBezierPath(ovalIn: circleRect); rp.lineWidth = 6; rp.stroke()
             switch state {
-            case .locked:    drawLock(in: bounds, color: foreground)
-            case .countdown: drawHourglass(in: bounds, color: foreground)
+            case .locked:
+                drawLock(in: bounds, color: foreground)
+            case .countdown(let remaining, let total):
+                drawCountdownProgress(in: bounds, remaining: remaining, total: total, foreground: foreground)
             case .timer:
                 let n = pauseDurationSeconds()
                 let fontSize: CGFloat = n >= 10 ? 34 : 42
@@ -169,6 +176,67 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
                 ("\(n)" as NSString).draw(in: CGRect(x: 0, y: yOffset, width: size.width, height: 52), withAttributes: attrs)
             }
         }
+    }
+
+    /// Title that visibly changes each tick — different verb per second, plus a
+    /// monospaced digit so the redraw is obvious even when iOS lags.
+    private func countdownTitle(remaining: Int, total: Int, isActiveSession: Bool) -> String {
+        // Verb cycles by remaining seconds: gives the user something concrete to
+        // notice every second so it feels alive even if iOS coalesces ticks.
+        let verbs: [String]
+        if isActiveSession {
+            verbs = ["Almost there", "Easing back", "Settling", "Steady", "Breathing"]
+        } else {
+            verbs = ["One last beat", "Almost there", "Settling in", "Steady", "Breathing"]
+        }
+        // Pick verb by remaining (clamped). Higher remaining = earlier in pause.
+        let idx = min(max(remaining - 1, 0), verbs.count - 1)
+        let verb = verbs[idx]
+        return "\(verb)  ·  \(remaining)s"
+    }
+
+    /// Progress dots that fill in left-to-right as the pause elapses. Even if
+    /// the title text gets cached, the dots row changes shape every second.
+    private func progressDotsSubtitle(elapsed: Int, total: Int, remaining: Int) -> String {
+        let clampedTotal = min(max(total, 1), 10)
+        let clampedElapsed = min(max(elapsed, 0), clampedTotal)
+        let filled = String(repeating: "●", count: clampedElapsed)
+        let empty = String(repeating: "○", count: max(0, clampedTotal - clampedElapsed))
+        return "\(filled)\(empty)   \(remaining) second\(remaining == 1 ? "" : "s") left"
+    }
+
+    /// Draws an arc-style progress ring + large digit. `remaining`/`total` mean
+    /// each tick paints a different arc length and a different number — iOS
+    /// can't cache this to a single static image.
+    private func drawCountdownProgress(in bounds: CGRect, remaining: Int, total: Int, foreground: UIColor) {
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let radius: CGFloat = 34
+        let clampedTotal = max(total, 1)
+        let progress = CGFloat(max(0, min(clampedTotal - remaining, clampedTotal))) / CGFloat(clampedTotal)
+        // Background ring (dim)
+        UIColor(red: 0.85, green: 0.78, blue: 0.66, alpha: 0.55).setStroke()
+        let bg = UIBezierPath(arcCenter: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: true)
+        bg.lineWidth = 6
+        bg.stroke()
+        // Foreground arc — grows as the pause elapses.
+        if progress > 0 {
+            let startAngle = -CGFloat.pi / 2
+            let endAngle = startAngle + (.pi * 2 * progress)
+            let arc = UIBezierPath(arcCenter: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: true)
+            arc.lineWidth = 6
+            arc.lineCapStyle = .round
+            foreground.setStroke()
+            arc.stroke()
+        }
+        // Large monospaced digit so even the bitmap of the icon differs per tick.
+        let para = NSMutableParagraphStyle(); para.alignment = .center
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.monospacedDigitSystemFont(ofSize: 30, weight: .bold),
+            .foregroundColor: foreground,
+            .paragraphStyle: para
+        ]
+        let text = "\(remaining)" as NSString
+        text.draw(in: CGRect(x: 0, y: bounds.midY - 19, width: bounds.width, height: 36), withAttributes: attrs)
     }
 
     // MARK: - State readers

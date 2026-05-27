@@ -126,9 +126,16 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         updateCountdownDisplay(remaining: Int(countdownDuration), endTime: endTime)
         applyFullShieldDuringActiveSession(markSource: "active-check-in-countdown")
 
-        for second in 1..<Int(countdownDuration) {
-            let remaining = Int(countdownDuration) - second
-            DispatchQueue.main.asyncAfter(deadline: .now() + TimeInterval(second)) {
+        // Tick twice per second so iOS has more opportunities to redraw the
+        // shield and the user sees the pause progressing instead of looking
+        // hung. The displayed remaining-seconds value still steps by 1.
+        let totalSec = Int(countdownDuration)
+        let ticksPerSecond = 2
+        let totalTicks = totalSec * ticksPerSecond
+        for tick in 1..<totalTicks {
+            let delay = TimeInterval(tick) / TimeInterval(ticksPerSecond)
+            let remaining = max(1, totalSec - tick / ticksPerSecond)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 self.updateCountdownDisplay(remaining: remaining, endTime: endTime)
                 self.applyFullShieldDuringActiveSession(markSource: "active-check-in-countdown")
             }
@@ -155,10 +162,15 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         let endTime = Date().addingTimeInterval(duration).timeIntervalSince1970
         updateCountdownDisplay(remaining: Int(duration), endTime: endTime)
 
-        // Refresh shield display every second so the countdown ticks down
-        for second in 1..<Int(duration) {
-            let remaining = Int(duration) - second
-            DispatchQueue.main.asyncAfter(deadline: .now() + TimeInterval(second)) {
+        // Tick twice per second so iOS has more chances to repaint the shield.
+        // The shown remaining-seconds value still steps once per real second.
+        let totalSec = Int(duration)
+        let ticksPerSecond = 2
+        let totalTicks = totalSec * ticksPerSecond
+        for tick in 1..<totalTicks {
+            let delay = TimeInterval(tick) / TimeInterval(ticksPerSecond)
+            let remaining = max(1, totalSec - tick / ticksPerSecond)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 self.updateCountdownDisplay(remaining: remaining, endTime: endTime)
                 self.apply(selection: self.loadSelection())
             }
