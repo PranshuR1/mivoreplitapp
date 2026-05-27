@@ -433,12 +433,14 @@ class AIService {
         todayScreenTimeMinutes: Int?,
         profile: OnboardingProfile?
     ) -> ScreenTimeReductionPlan {
-        // Learning mode lasts 5 days at a lenient 120-minute/day cap split across two
-        // 1-hour scroll sessions. After day 5 the personalized plan starts at the
-        // user's past-3-day average and decrements by 10 min/day (with a floor).
-        let daysNeeded = 5
-        let learningModeTotalMinutes = 120
-        let learningModePerSessionMinutes = 60
+        // Plan structure:
+        //   • Days 1–3: 3-day observation period. No enforced cap — Mivo just
+        //     records the user's actual usage so it can build a personalized
+        //     starting target from real data.
+        //   • Day 4+: Personalized plan. Day 1 of the plan equals the average
+        //     of the 3 observation days; each subsequent day trims 10 minutes,
+        //     down to a 30-minute floor.
+        let daysNeeded = 3
         let perDayDecrement = 10
         let floorMinutes = 30
         let dailyTotals = Dictionary(grouping: sessions, by: \.date)
@@ -452,19 +454,22 @@ class AIService {
             dailyTotals.isEmpty ? fallbackEstimate : dailyTotals.values.reduce(0, +) / max(dailyTotals.count, 1),
             20
         )
-        let userWindows = userPreferredScrollWindows(from: profile, targetMinutes: learningModeTotalMinutes)
-        let collectionWindows = userWindows.isEmpty ? recommendedScrollWindows(from: sessions, targetMinutes: learningModeTotalMinutes) : userWindows
 
         guard daysCollected >= daysNeeded else {
-            // First 5 days are lenient: 2 hour total scrolling, split across two 1-hour windows.
-            let lenientWindows = collectionWindows.map { w in
+            // Observation period: no cap, just track usage.  Windows are
+            // suggested from the user's preferred times (or sensible defaults)
+            // but don't enforce a minute limit.
+            let userWindows = userPreferredScrollWindows(from: profile, targetMinutes: baseline)
+            let collectionWindows = userWindows.isEmpty ? recommendedScrollWindows(from: sessions, targetMinutes: baseline) : userWindows
+            let observationWindows = collectionWindows.map { w in
                 ScreenScrollWindow(
-                    id: w.id, title: w.title, startHour: w.startHour,
-                    endHour: max(w.endHour, w.startHour + 2),
-                    minutes: learningModePerSessionMinutes,
+                    id: w.id, title: w.title, startHour: w.startHour, endHour: w.endHour,
+                    minutes: 0,
                     reason: w.reason
                 )
             }
+            let remaining = max(0, daysNeeded - daysCollected)
+            let dayLabel = min(daysCollected + 1, daysNeeded)
             return ScreenTimeReductionPlan(
                 id: "collecting-\(daysCollected)",
                 collecting: true,
@@ -472,15 +477,15 @@ class AIService {
                 daysNeeded: daysNeeded,
                 dayIndex: 0,
                 baselineMinutes: baseline,
-                targetMinutes: learningModeTotalMinutes,
+                targetMinutes: 0,
                 strictnessPercent: 0,
-                summary: "Day \(daysCollected + 1) of 5 — lenient mode. You have a generous 2-hour daily cap split across two 1-hour scroll sessions while Mivo learns your patterns.",
-                decisionReason: "For days 1–5, Mivo eases you in with a 2-hour daily cap (1 hour per scroll session). After day 5 the personalized plan starts from your real past-3-day average and trims 10 min per day.",
-                windows: lenientWindows
+                summary: "Day \(dayLabel) of \(daysNeeded) — observation mode. \(remaining) day\(remaining == 1 ? "" : "s") left before your personalized plan starts at the average of these 3 days.",
+                decisionReason: "Mivo observes freely for 3 days — no cap, no restrictions. Your personalized plan begins on day 4 at the average of these 3 days, then trims by \(perDayDecrement) min per day down to a \(floorMinutes)-min floor.",
+                windows: observationWindows
             )
         }
 
-        // Past-3-day average — only the most recent observed days, in date order.
+        // Past-3-day average — the 3 most-recent observed daily totals.
         let recentTotals = dailyTotals
             .sorted { $0.key > $1.key }
             .prefix(3)
@@ -490,7 +495,7 @@ class AIService {
             return max(floorMinutes, recentTotals.reduce(0, +) / recentTotals.count)
         }()
 
-        // Day 1 of plan = average of the past 3 days; subtract 10 min/day after that.
+        // Plan day 1 = past-3-day average; subtract 10 min per subsequent day.
         let dayIndex = max(1, daysCollected - daysNeeded + 1)
         let decremented = pastThreeDayAverage - (dayIndex - 1) * perDayDecrement
         let target = max(floorMinutes, decremented)
@@ -499,9 +504,9 @@ class AIService {
 
         let summaryLine: String
         if dayIndex == 1 {
-            summaryLine = "Plan day 1 — starting at your past-3-day average of \(pastThreeDayAverage) min. Mivo will gently reduce this by 10 min each day."
+            summaryLine = "Plan day 1 — starting at your 3-day observation average of \(pastThreeDayAverage) min. Mivo will trim this by \(perDayDecrement) min each day."
         } else {
-            summaryLine = "Plan day \(dayIndex) — target is \(target) min/day, \(pastThreeDayAverage - target) min below your 3-day baseline and \(strictness)% lighter overall."
+            summaryLine = "Plan day \(dayIndex) — target is \(target) min/day, \(pastThreeDayAverage - target) min below your 3-day observation average and \(strictness)% lighter overall."
         }
 
         return ScreenTimeReductionPlan(
@@ -514,7 +519,7 @@ class AIService {
             targetMinutes: target,
             strictnessPercent: strictness,
             summary: summaryLine,
-            decisionReason: "Mivo starts your personalized plan at your past-3-day average and trims it by 10 min each day, with a floor of \(floorMinutes) min. The two scroll windows split the daily target where your sessions cluster.",
+            decisionReason: "Mivo starts your personalized plan at the average of your 3 observation days, then trims by \(perDayDecrement) min each day down to a \(floorMinutes)-min floor. The two scroll windows split the daily target where your sessions cluster.",
             windows: activeWindows
         )
     }

@@ -289,10 +289,10 @@ struct HomeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(plan.collecting ? "5-day lenient mode" : "Personalized meter")
+                    Text(plan.collecting ? "3-day observation" : "Personalized meter")
                         .font(.system(size: 19, weight: .bold, design: .rounded))
                         .foregroundColor(MivoColors.textPrimary)
-                    Text(plan.collecting ? "Day \(min(plan.daysCollected + 1, plan.daysNeeded)) of \(plan.daysNeeded) - 2h/day cap" : "Day \(plan.dayIndex) - \(plan.strictnessPercent)% stricter")
+                    Text(plan.collecting ? "Day \(min(plan.daysCollected + 1, plan.daysNeeded)) of \(plan.daysNeeded) - no cap" : "Day \(plan.dayIndex) - \(plan.strictnessPercent)% stricter")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(plan.collecting ? MivoColors.blue : MivoColors.accent)
                 }
@@ -311,7 +311,7 @@ struct HomeView: View {
 
             HStack(spacing: 10) {
                 planMetric(title: "Baseline", value: formatDuration(plan.baselineMinutes))
-                planMetric(title: plan.collecting ? "Cap" : "Target", value: plan.collecting ? "2h/day" : formatDuration(plan.targetMinutes))
+                planMetric(title: plan.collecting ? "Mode" : "Target", value: plan.collecting ? "Observing" : formatDuration(plan.targetMinutes))
                 planMetric(title: "Sessions", value: "\(plan.windows.count)")
             }
 
@@ -407,7 +407,7 @@ struct HomeView: View {
                 }
             }
 
-            Text("First 5 days: lenient mode with a 2-hour daily cap split across two 1-hour scroll sessions. After day 5, Mivo builds your personalized screen-time meter starting at your past-3-day average and trims 10 min/day.")
+            Text("First 3 days: observation mode — no cap enforced. On day 4, Mivo builds your personalized screen-time meter starting at the average of these 3 days, then trims 10 min/day down to a 30-min floor.")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(MivoColors.textSecondary)
                 .lineSpacing(3)
@@ -697,8 +697,7 @@ struct MonthlyPlanForecastView: View {
     private let daysToShow = 30
     private let perDayDecrement = 10
     private let floorMinutes = 30
-    private let learningModeDailyMinutes = 120
-    private let learningModeDuration = 5
+    private let observationDuration = 3
 
     var body: some View {
         NavigationView {
@@ -771,7 +770,7 @@ struct MonthlyPlanForecastView: View {
                     .foregroundColor(MivoColors.textPrimary)
                 Text(entry.phaseLabel)
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(entry.isLearningMode ? MivoColors.blue : MivoColors.accent)
+                    .foregroundColor(entry.isObservation ? MivoColors.blue : MivoColors.accent)
             }
             Spacer()
             Text(entry.formattedMinutes)
@@ -787,21 +786,21 @@ struct MonthlyPlanForecastView: View {
 
     private var summaryText: String {
         if plan.collecting {
-            let remaining = max(0, learningModeDuration - plan.daysCollected)
+            let remaining = max(0, observationDuration - plan.daysCollected)
             if remaining > 0 {
-                return "You have \(remaining) lenient day\(remaining == 1 ? "" : "s") left at a 2-hour daily cap. After that, your plan starts at your past-3-day average and trims by 10 min per day until it hits a \(floorMinutes)-min floor."
+                return "You have \(remaining) observation day\(remaining == 1 ? "" : "s") left — no cap is enforced. After that, your personalized plan begins at the average of these 3 days and trims by \(perDayDecrement) min per day until it hits a \(floorMinutes)-min floor."
             }
-            return "Personalized plan starts tomorrow. It begins at your past-3-day average of \(plan.baselineMinutes) min and trims by 10 min per day until it hits a \(floorMinutes)-min floor."
+            return "Personalized plan starts tomorrow at the average of your 3 observation days. It trims by \(perDayDecrement) min per day until it hits a \(floorMinutes)-min floor."
         }
         let projectedFloorDay = max(plan.dayIndex, plan.dayIndex + (plan.targetMinutes - floorMinutes) / perDayDecrement)
-        return "Today's target is \(plan.targetMinutes) min. The plan keeps trimming 10 min per day from your \(plan.baselineMinutes)-min baseline until it hits the \(floorMinutes)-min floor (around plan day \(projectedFloorDay))."
+        return "Today's target is \(plan.targetMinutes) min. The plan keeps trimming \(perDayDecrement) min per day from your \(plan.baselineMinutes)-min observation average until it hits the \(floorMinutes)-min floor (around plan day \(projectedFloorDay))."
     }
 
     private struct ForecastEntry {
         let dayNumber: Int
         let date: Date
         let minutes: Int
-        let isLearningMode: Bool
+        let isObservation: Bool
         let isToday: Bool
 
         var dateLabel: String {
@@ -811,10 +810,11 @@ struct MonthlyPlanForecastView: View {
         }
 
         var phaseLabel: String {
-            isLearningMode ? "Lenient mode" : "Plan day \(dayNumber)"
+            isObservation ? "Observation day \(dayNumber)" : "Plan day \(dayNumber)"
         }
 
         var formattedMinutes: String {
+            if isObservation { return "No cap" }
             let hours = minutes / 60
             let mins = minutes % 60
             return hours > 0 ? "\(hours)h \(mins)m" : "\(mins)m"
@@ -824,30 +824,31 @@ struct MonthlyPlanForecastView: View {
     private var forecast: [ForecastEntry] {
         let calendar = Calendar.current
         let today = Date()
-        let collectingDays = plan.collecting ? max(0, plan.daysNeeded - plan.daysCollected) : 0
+        let remainingObservation = plan.collecting ? max(0, plan.daysNeeded - plan.daysCollected) : 0
         let startingDayIndex = plan.collecting ? 1 : plan.dayIndex
         let pastAverage = plan.baselineMinutes
         var entries: [ForecastEntry] = []
         for offset in 0..<daysToShow {
             guard let date = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
             let isToday = offset == 0
-            if offset < collectingDays {
+            if offset < remainingObservation {
+                let observationDayNumber = plan.daysCollected + offset + 1
                 entries.append(ForecastEntry(
-                    dayNumber: offset + 1,
+                    dayNumber: observationDayNumber,
                     date: date,
-                    minutes: learningModeDailyMinutes,
-                    isLearningMode: true,
+                    minutes: 0,
+                    isObservation: true,
                     isToday: isToday
                 ))
                 continue
             }
-            let planDay = startingDayIndex + (offset - collectingDays)
+            let planDay = startingDayIndex + (offset - remainingObservation)
             let minutes = max(floorMinutes, pastAverage - (planDay - 1) * perDayDecrement)
             entries.append(ForecastEntry(
                 dayNumber: planDay,
                 date: date,
                 minutes: minutes,
-                isLearningMode: false,
+                isObservation: false,
                 isToday: isToday
             ))
         }

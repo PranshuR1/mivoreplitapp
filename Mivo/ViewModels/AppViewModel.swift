@@ -1040,8 +1040,8 @@ class AppViewModel: ObservableObject {
             return SessionExtensionDecision(
                 allowed: true,
                 addedMinutes: 30,
-                title: "Learning mode unlocked",
-                message: "For the first 5 days, Mivo runs in lenient mode with a 2-hour daily cap split across two 1-hour scroll sessions. No personalized adaptive cap kicks in until day 6."
+                title: "Observation mode",
+                message: "Mivo is in its 3-day observation period — no cap is enforced. Your personalized plan starts on day 4 at the average of these 3 days."
             )
         }
 
@@ -1103,10 +1103,10 @@ class AppViewModel: ObservableObject {
         }
         if plan.collecting {
             return (
-                maxMinutes: 120,
-                isLimited: true,
-                message: "First 5 days: lenient mode with a 2-hour daily cap split across two 1-hour scroll sessions. Personalized adaptive caps start on day 6.",
-                windowTitle: "5-day lenient mode"
+                maxMinutes: 240,
+                isLimited: false,
+                message: "First 3 days: observation mode. Mivo is recording your real usage so it can start the personalized plan on day 4 at the average of these 3 days.",
+                windowTitle: "3-day observation"
             )
         }
 
@@ -1191,9 +1191,9 @@ class AppViewModel: ObservableObject {
                 in: plan,
                 windows: todaySchedule.windows,
                 idSuffix: "today-\(todaySchedule.date)",
-                collectingSummary: "First 5 days are lenient learning mode — 2-hour daily cap split across two 1-hour scroll sessions. After day 5, Mivo builds a personalized screen-time meter from your real past-3-day average.",
-                activeSummary: "Today’s scroll windows are locked from the morning check. Mivo trims your target by 10 min per day from your past-3-day average.",
-                reason: plan.collecting ? "Your times are saved for monitoring. For days 1–5 the cap is a generous 2 hours/day (1 hour per session)." : "These windows are the schedule you locked for today. You can choose again tomorrow morning."
+                collectingSummary: "First 3 days are observation mode — no cap enforced. On day 4 your personalized plan starts at the average of these 3 days and trims 10 min per day from there.",
+                activeSummary: "Today’s scroll windows are locked from the morning check. Mivo trims your target by 10 min per day from your 3-day observation average.",
+                reason: plan.collecting ? "Your times are saved for tracking. Days 1–3 have no enforced cap — Mivo just observes." : "These windows are the schedule you locked for today. You can choose again tomorrow morning."
             )
         }
         if plan.collecting {
@@ -1201,7 +1201,7 @@ class AppViewModel: ObservableObject {
                 in: plan,
                 windows: [],
                 idSuffix: "needs-daily-schedule",
-                collectingSummary: "First 5 days are lenient learning mode (2-hour cap across two 1-hour windows). Choose times if you want Mivo to watch those periods. Personalized adaptive caps start on day 6.",
+                collectingSummary: "First 3 days are observation mode — no cap enforced. Choose times if you want Mivo to watch those periods. Your personalized plan starts on day 4 at the average of these 3 days.",
                 activeSummary: nil,
                 reason: "Mivo will not enforce a default window before you lock today’s schedule."
             )
