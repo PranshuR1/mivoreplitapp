@@ -32,6 +32,170 @@ enum SessionOutcomeScore: String, Codable, CaseIterable, Identifiable {
     case notWorthIt = "Not worth it"
 
     var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .worthIt: return "Worth it"
+        case .mixed: return "Partly worth it"
+        case .notWorthIt: return "Not worth it"
+        }
+    }
+}
+
+enum WeeklyExperimentType: String, Codable, CaseIterable {
+    case protectedWindow = "protected_window"
+    case reduceExtensions = "reduce_extensions"
+    case strongerFriction = "stronger_friction"
+}
+
+enum WeeklyExperimentStatus: String, Codable {
+    case proposed
+    case active
+    case completed
+    case declined
+}
+
+enum WeeklyExperimentOutcome: String, Codable {
+    case helped
+    case inconclusive = "no_clear_change"
+    case worsened = "made_things_worse"
+}
+
+enum WeeklyExperimentDecision: String, Codable {
+    case keep
+    case adjust
+    case stop
+}
+
+enum WeeklyExperimentFeedback: String, Codable, CaseIterable, Identifiable {
+    case helpful
+    case neutral
+    case notHelpful = "not_helpful"
+
+    var id: String { rawValue }
+}
+
+struct ExperimentMetrics: Codable, Equatable {
+    let comparableSessions: Int
+    let outsideWindowMinutes: Int
+    let extensionRate: Double
+    let cancellationRate: Double
+    let truthAccuracyMinutes: Double
+    let worthwhileRate: Double
+}
+
+struct WeeklyExperimentRule: Codable, Equatable {
+    var startHour: Int?
+    var endHour: Int?
+    var allowedMinutes: Int?
+    var strongerFrictionEnabled: Bool
+}
+
+struct WeeklyExperiment: Codable, Identifiable, Equatable {
+    let id: String
+    let userId: String?
+    let type: WeeklyExperimentType
+    var status: WeeklyExperimentStatus
+    let title: String
+    let reason: String
+    let primaryMetric: String
+    var rule: WeeklyExperimentRule
+    let baselineMetrics: ExperimentMetrics
+    var resultMetrics: ExperimentMetrics?
+    var startsAt: String?
+    var endsAt: String?
+    var outcome: WeeklyExperimentOutcome?
+    var finalDecision: WeeklyExperimentDecision?
+    var userFeedback: WeeklyExperimentFeedback? = nil
+    var feedbackNote: String? = nil
+    var feedbackSubmittedAt: String? = nil
+    let createdAt: String
+    var updatedAt: String
+
+    var dayNumber: Int {
+        dayNumber(on: Date())
+    }
+
+    func dayNumber(on date: Date, calendar: Calendar = .current) -> Int {
+        guard let startsAt, let start = Self.experimentDate(from: startsAt) else { return 0 }
+        let startDay = calendar.startOfDay(for: start)
+        let currentDay = calendar.startOfDay(for: date)
+        let elapsedCalendarDays = calendar.dateComponents([.day], from: startDay, to: currentDay).day ?? 0
+        return min(7, max(1, elapsedCalendarDays + 1))
+    }
+
+    func progress(on date: Date = Date(), calendar: Calendar = .current) -> Double {
+        guard status == .active else { return status == .completed ? 1 : 0 }
+        return Double(dayNumber(on: date, calendar: calendar)) / 7.0
+    }
+
+    static func experimentDate(from value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value) {
+            return date
+        }
+
+        // Supabase can return microsecond precision and an explicit +00:00 offset.
+        // DateFormatter covers those PostgreSQL timestamp variants on older iOS builds.
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        for format in [
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX",
+            "yyyy-MM-dd'T'HH:mm:ssXXXXX"
+        ] {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: value) { return date }
+        }
+        return nil
+    }
+}
+
+struct WeeklyExperimentEnforcementPolicy: Equatable {
+    let experimentID: String?
+    let type: WeeklyExperimentType?
+    let rule: WeeklyExperimentRule?
+
+    init(experiment: WeeklyExperiment?) {
+        experimentID = experiment?.id
+        type = experiment?.type
+        rule = experiment?.rule
+    }
+
+    var blocksExtensions: Bool {
+        type == .reduceExtensions
+    }
+
+    var strengthensRepeatedOpenings: Bool {
+        type == .strongerFriction && rule?.strongerFrictionEnabled == true
+    }
+
+    func protects(hour: Int) -> Bool {
+        guard type == .protectedWindow,
+              let startHour = rule?.startHour,
+              let endHour = rule?.endHour else { return false }
+        let start = ((startHour % 24) + 24) % 24
+        let end = ((endHour % 24) + 24) % 24
+        let current = ((hour % 24) + 24) % 24
+        if start == end { return true }
+        return start < end
+            ? (current >= start && current < end)
+            : (current >= start || current < end)
+    }
+}
+
+struct InterventionAttemptRecord: Codable, Identifiable, Equatable {
+    let id: String
+    let occurredAt: String
+    var continued: Bool?
+}
+
+struct InterventionFrictionState: Equatable {
+    let level: Int
+    let attemptCount: Int
+    let waitSeconds: Int
 }
 
 enum AppRuleMode: String, Codable, CaseIterable, Identifiable {
@@ -196,6 +360,66 @@ struct TruthCheckGuess: Codable, Identifiable {
     let date: String
     let guess: Int
     let actual: Int
+    let checkedAt: String?
+    let perAppMinutes: [String: Int]?
+
+    init(
+        id: String,
+        date: String,
+        guess: Int,
+        actual: Int,
+        checkedAt: String? = nil,
+        perAppMinutes: [String: Int]? = nil
+    ) {
+        self.id = id
+        self.date = date
+        self.guess = guess
+        self.actual = actual
+        self.checkedAt = checkedAt
+        self.perAppMinutes = perAppMinutes
+    }
+}
+
+struct DailyScreenTimeObservation: Codable, Identifiable, Equatable {
+    var id: String { date }
+    let date: String
+    let minutes: Int
+    let recordedAt: String
+}
+
+struct ForgottenTimeSlice: Identifiable, Equatable {
+    let appName: String
+    let minutes: Int
+    let share: Double
+    var id: String { appName }
+}
+
+struct PersonalizedPatternInsight: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let detail: String
+    let evidence: String
+    let tomorrowExperiment: String
+    let icon: String
+}
+
+struct DailyTruthSummary {
+    let check: TruthCheckGuess
+    let accuracyScore: Int
+    let forgottenMinutes: Int
+    let overestimatedMinutes: Int
+    let forgottenBreakdown: [ForgottenTimeSlice]
+    let insight: PersonalizedPatternInsight
+}
+
+struct WeeklyTruthSummary {
+    let checkCount: Int
+    let averageAccuracyScore: Int
+    let totalForgottenMinutes: Int
+    let averageSignedGapMinutes: Int
+    let accuracyChangePoints: Int?
+    let topForgottenApp: String?
+    let dailyAccuracyScores: [(date: String, score: Int)]
 }
 
 struct TimeTruthPrompt: Identifiable, Equatable {
@@ -277,6 +501,23 @@ struct UserProfile: Codable {
     // Optional onboarding profile stored with the user so AI and features can use it
     var onboardingProfile: OnboardingProfile?
     var isAdmin: Bool? = nil
+    var accountRole: String? = nil
+}
+
+enum AppAppearanceMode: String, Codable, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
 }
 
 struct AppSettings: Codable {
@@ -286,9 +527,15 @@ struct AppSettings: Codable {
     var notificationsChoiceMade: Bool? = nil
     var accountabilityEnabled: Bool? = nil
     var checkInIntervalMinutes: Int? = nil
+    var lateNightProtectionEnabled: Bool? = nil
+    var lateNightStartHour: Int? = nil
+    var lateNightWakeHour: Int? = nil
+    var lastScrollNightKey: String? = nil
+    var appearanceMode: AppAppearanceMode? = nil
 }
 
 struct OnboardingProfile: Codable {
+    var observationStartedAt: String?
     var primaryIntention: Intention?
     var scrollEstimateMinutes: Int?
     var preferredApps: [String]
@@ -299,11 +546,15 @@ struct OnboardingProfile: Codable {
     var age: Int?
     var ageRange: String?
     var checkInIntervalMinutes: Int?
+    var referralCode: String?
+    var referralSource: String?
+    var referralAmbassadorName: String?
     /// The user's target daily scrolling minutes — the floor that the
-    /// personalized plan ramps down to from the observation average.
+    /// personalized plan ramps down to from the blended observed baseline.
     var dailyScrollGoalMinutes: Int?
 
     init(primaryIntention: Intention? = nil, scrollEstimateMinutes: Int? = nil, preferredApps: [String] = [], preferredScrollWindows: [ScreenScrollWindow]? = nil) {
+        self.observationStartedAt = nil
         self.primaryIntention = primaryIntention
         self.scrollEstimateMinutes = scrollEstimateMinutes
         self.preferredApps = preferredApps
@@ -312,6 +563,9 @@ struct OnboardingProfile: Codable {
         self.age = nil
         self.ageRange = nil
         self.checkInIntervalMinutes = nil
+        self.referralCode = nil
+        self.referralSource = nil
+        self.referralAmbassadorName = nil
         self.dailyScrollGoalMinutes = nil
     }
 }
@@ -355,6 +609,11 @@ struct FocusRecommendation: Codable {
     let dailySchedule: String
 }
 
+struct EmergencyUnlockReview: Equatable {
+    let approved: Bool
+    let message: String
+}
+
 struct ScreenScrollWindow: Codable, Identifiable, Equatable {
     let id: String
     let title: String
@@ -376,4 +635,115 @@ struct ScreenTimeReductionPlan: Codable, Identifiable {
     let summary: String
     let decisionReason: String
     let windows: [ScreenScrollWindow]
+}
+
+/// The one place that turns a `Date` into the `yyyy-MM-dd` key every stored
+/// record is filed under.
+///
+/// A plain `DateFormatter` renders `yyyy` using whatever calendar the device is
+/// set to, so the same instant becomes "2026-08-03" on a Gregorian device and
+/// "2569-08-03" on a Buddhist one. Mivo writes day keys from sessions, screen
+/// time observations, schedules, and experiments, then matches them by string,
+/// so a mismatch between two call sites makes records disappear from Patterns
+/// and skews report totals instead of failing loudly. Going through a fixed
+/// Gregorian calendar keeps every key comparable regardless of device settings.
+enum MivoDay {
+    /// Gregorian, pinned to the device's current time zone so a day boundary
+    /// still means midnight where the user actually is.
+    static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar
+    }
+
+    static func key(_ date: Date) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    static func date(from key: String) -> Date? {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var components = DateComponents()
+        components.year = parts[0]
+        components.month = parts[1]
+        components.day = parts[2]
+        return calendar.date(from: components)
+    }
+
+    static var todayKey: String { key(Date()) }
+
+    /// A `DateFormatter` producing exactly the same keys as `key(_:)`, for call
+    /// sites that format in a loop or need `date(from:)` parsing. A fresh
+    /// instance each time, since `DateFormatter` is not thread-safe.
+    static var formatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }
+
+    static func key(offsetFromToday days: Int, from reference: Date = Date()) -> String {
+        key(calendar.date(byAdding: .day, value: days, to: reference) ?? reference)
+    }
+
+    /// Whole days from `key` to today, or nil when the key is unparseable.
+    static func daysSince(_ key: String, now: Date = Date()) -> Int? {
+        guard let start = date(from: key) else { return nil }
+        return calendar.dateComponents([.day], from: start, to: calendar.startOfDay(for: now)).day
+    }
+}
+
+/// Why a number Mivo would normally show cannot be trusted right now.
+///
+/// Mivo's headline figures come from Apple's DeviceActivity report, which is
+/// absent before authorization, before the first report lands, and whenever the
+/// extension hands back a report for a different day. Substituting Mivo's own
+/// in-app session minutes in those moments produces a much smaller number that
+/// looks authoritative, which is worse than admitting the gap.
+enum MivoDataUnavailableReason: String, Codable, Equatable {
+    case screenTimeNotAuthorized
+    case awaitingFirstReport
+    case reportFromAnotherDay
+
+    var title: String { "Data unavailable" }
+
+    var detail: String {
+        switch self {
+        case .screenTimeNotAuthorized:
+            return "Screen Time access is off, so Mivo cannot read your real usage."
+        case .awaitingFirstReport:
+            return "Apple has not delivered today's Screen Time report yet."
+        case .reportFromAnotherDay:
+            return "The most recent Screen Time report is from another day."
+        }
+    }
+
+    var recoveryAction: String? {
+        switch self {
+        case .screenTimeNotAuthorized: return "Turn on Screen Time"
+        case .awaitingFirstReport, .reportFromAnotherDay: return "Refresh"
+        }
+    }
+}
+
+/// A measurement that is either trustworthy or explicitly missing. Callers must
+/// handle both, which is what stops a fallback from quietly becoming a fact.
+enum MivoMeasurement: Equatable {
+    case available(Int)
+    case unavailable(MivoDataUnavailableReason)
+
+    var minutes: Int? {
+        if case .available(let value) = self { return value }
+        return nil
+    }
+
+    var reason: MivoDataUnavailableReason? {
+        if case .unavailable(let reason) = self { return reason }
+        return nil
+    }
+
+    var isAvailable: Bool { minutes != nil }
 }

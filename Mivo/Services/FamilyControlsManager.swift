@@ -21,6 +21,35 @@ import ManagedSettings
 
 import ActivityKit
 
+enum InterventionFrictionTracker {
+    private static let lastAttemptKey = "mivo.friction.lastAttempt"
+    private static let attemptCountKey = "mivo.friction.attemptCount"
+    private static let resetInterval: TimeInterval = 30 * 60
+
+    static func registerAttempt(now: Date = Date()) -> InterventionFrictionState {
+        let defaults = UserDefaults(suiteName: MivoScreenTimeKeys.appGroup) ?? .standard
+        let previous = defaults.double(forKey: lastAttemptKey)
+        let continuesSequence = previous > 0 && now.timeIntervalSince1970 - previous <= resetInterval
+        let count = continuesSequence ? defaults.integer(forKey: attemptCountKey) + 1 : 1
+        defaults.set(now.timeIntervalSince1970, forKey: lastAttemptKey)
+        defaults.set(count, forKey: attemptCountKey)
+        defaults.synchronize()
+        let level = count >= 2 ? 2 : 1
+        return InterventionFrictionState(level: level, attemptCount: count, waitSeconds: count >= 2 ? 10 : 5)
+    }
+
+    static func currentState(now: Date = Date()) -> InterventionFrictionState {
+        let defaults = UserDefaults(suiteName: MivoScreenTimeKeys.appGroup) ?? .standard
+        let previous = defaults.double(forKey: lastAttemptKey)
+        guard previous > 0, now.timeIntervalSince1970 - previous <= resetInterval else {
+            return InterventionFrictionState(level: 1, attemptCount: 0, waitSeconds: 5)
+        }
+        let count = max(1, defaults.integer(forKey: attemptCountKey))
+        let level = count >= 2 ? 2 : 1
+        return InterventionFrictionState(level: level, attemptCount: count, waitSeconds: count >= 2 ? 10 : 5)
+    }
+}
+
 @available(iOS 15.0, *)
 @MainActor
 final class FamilyControlsManager: ObservableObject {
@@ -90,6 +119,53 @@ final class FamilyControlsManager: ObservableObject {
             return FamilyActivitySelection()
         }
         return selection
+    }
+
+    @available(iOS 16.0, *)
+    func saveMivoClearMapping(_ selection: FamilyActivitySelection, for platform: MivoClearPlatform) throws {
+        guard selection.applicationTokens.count == 1,
+              selection.categoryTokens.isEmpty,
+              selection.webDomainTokens.isEmpty,
+              let token = selection.applicationTokens.first else {
+            throw MivoClearMappingError.selectOneApp
+        }
+
+        for otherPlatform in MivoClearPlatform.supportedCases where otherPlatform != platform {
+            if loadMivoClearToken(for: otherPlatform) == token {
+                throw MivoClearMappingError.alreadyMapped(otherPlatform)
+            }
+        }
+
+        guard let tokenData = try? JSONEncoder().encode(token) else {
+            throw MivoClearMappingError.selectOneApp
+        }
+        userDefaults?.set(tokenData, forKey: mivoClearMappingKey(for: platform))
+
+        var protectedSelection = loadFamilyActivitySelection()
+        protectedSelection.applicationTokens.insert(token)
+        saveFamilyActivitySelection(protectedSelection)
+        userDefaults?.synchronize()
+    }
+
+    @available(iOS 16.0, *)
+    func loadMivoClearToken(for platform: MivoClearPlatform) -> ApplicationToken? {
+        guard let data = userDefaults?.data(forKey: mivoClearMappingKey(for: platform)) else { return nil }
+        return try? JSONDecoder().decode(ApplicationToken.self, from: data)
+    }
+
+    @available(iOS 16.0, *)
+    func hasMivoClearMapping(for platform: MivoClearPlatform) -> Bool {
+        loadMivoClearToken(for: platform) != nil
+    }
+
+    @available(iOS 16.0, *)
+    func clearMivoClearMapping(for platform: MivoClearPlatform) {
+        userDefaults?.removeObject(forKey: mivoClearMappingKey(for: platform))
+        userDefaults?.synchronize()
+    }
+
+    private func mivoClearMappingKey(for platform: MivoClearPlatform) -> String {
+        MivoScreenTimeKeys.mivoClearMappingPrefix + platform.rawValue
     }
 
     @available(iOS 16.0, *)
@@ -210,10 +286,12 @@ final class FamilyControlsManager: ObservableObject {
         scheduleSessionEndNotification(after: TimeInterval(durationSeconds))
 
         // Live Activity: shows a live countdown on the lock screen and Dynamic Island.
-        // Requires NSSupportsLiveActivities = YES in Info.plist and the MivoWidgets
-        // extension target set up in Xcode (see Mivo/Constants/MivoLiveActivityAttributes.swift).
-        let sessionEnd = Date().addingTimeInterval(TimeInterval(durationSeconds))
-        startSessionLiveActivity(sessionEndsAt: sessionEnd, planMinutes: durationSeconds / 60, intentionLabel: "Session active")
+        if ProductExpansionStore.shared.isEnabled(.liveActivities) {
+            let sessionEnd = Date().addingTimeInterval(TimeInterval(durationSeconds))
+            startSessionLiveActivity(sessionEndsAt: sessionEnd, planMinutes: durationSeconds / 60, intentionLabel: "Session active")
+        } else {
+            endSessionLiveActivity()
+        }
 
         return .success(())
     }
@@ -227,6 +305,28 @@ final class FamilyControlsManager: ObservableObject {
 
         finishMivoSessionState()
         return true
+    }
+
+    /// Re-locks the selected apps while Mivo runs the post-intention pause.
+    /// A new active session is created only after that pause has completed.
+    func prepareForSessionStartPause() {
+        _ = setMivoSessionActive(false)
+
+        if #available(iOS 16.0, *), hasImpulseSelection() {
+            // Choosing to start a protected session should repair an accidentally
+            // disabled protection toggle instead of leaving the apps exposed.
+            userDefaults?.set(true, forKey: impulseProtectionSignedInKey)
+            userDefaults?.set(true, forKey: impulseProtectionEnabledKey)
+            userDefaults?.synchronize()
+            applyImpulseProtectionIfNeeded()
+        }
+    }
+
+    func cancelSessionStartPauseAndRelock() {
+        _ = setMivoSessionActive(false)
+        if #available(iOS 16.0, *) {
+            applyImpulseProtectionIfNeeded()
+        }
     }
 
     func endSessionAndRelockForIntervention() {
@@ -507,17 +607,16 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
             if let error { self?.logger.warning("Session-end notification scheduling failed: \(error.localizedDescription)") }
         }
 
-        // Nudges: in case the user misses or dismisses the first banner, fire follow-ups
-        // 30s and 90s after session end. These keep prompting until the user opens Mivo
-        // (which re-locks the apps and cancels any pending notifications via cancelSessionEndNotification).
+        // Nudges are fallbacks only while the selected apps remain unlocked. The app
+        // and Device Activity extension cancel them as soon as shields are re-applied.
         scheduleSessionEndNudge(identifier: "mivo.session.ended.nudge1", after: max(delay, 1) + 30)
         scheduleSessionEndNudge(identifier: "mivo.session.ended.nudge2", after: max(delay, 1) + 90)
     }
 
     private func scheduleSessionEndNudge(identifier: String, after delay: TimeInterval) {
         let content = UNMutableNotificationContent()
-        content.title = "Apps still unlocked"
-        content.body = "Open Mivo to re-lock and start fresh."
+        content.title = "Open Mivo"
+        content.body = "Finish the session and re-lock your apps."
         content.sound = .default
         content.categoryIdentifier = "MIVO_SESSION_ENDED"
         content.userInfo = ["openIntervention": true]
@@ -530,11 +629,7 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
     }
 
     private func cancelSessionEndNotification() {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [
-            "mivo.session.ended",
-            "mivo.session.ended.nudge1",
-            "mivo.session.ended.nudge2"
-        ])
+        SessionEndedNotificationCleaner.clearPendingAndDelivered()
     }
 
     // MARK: - Check-in interval notification
@@ -759,7 +854,18 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
         let selection = loadFamilyActivitySelection()
         apply(selection: selection, to: makeInterventionStore())
         apply(selection: selection, to: ManagedSettingsStore())
+        cancelSessionEndNudgesAfterRelock()
         logger.info("Shield re-applied: apps=\(selection.applicationTokens.count) categories=\(selection.categoryTokens.count) domains=\(selection.webDomainTokens.count)")
+    }
+
+    private func cancelSessionEndNudgesAfterRelock() {
+        let identifiers = [
+            "mivo.session.ended.nudge1",
+            "mivo.session.ended.nudge2"
+        ]
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
     }
 
     @available(iOS 16.0, *)

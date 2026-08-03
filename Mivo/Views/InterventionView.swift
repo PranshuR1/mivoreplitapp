@@ -74,8 +74,8 @@ struct InterventionView: View {
 
                     Text("Just a moment.")
                         .font(.system(size: 30, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
                         .tracking(-0.8)
+                        .foregroundColor(MivoColors.textPrimary)
                         .multilineTextAlignment(.center)
 
                     Text(prompt)
@@ -90,8 +90,8 @@ struct InterventionView: View {
                         if !canProceed {
                             Text("\(countdown)")
                                 .font(.system(size: 56, weight: .bold))
-                                .foregroundColor(MivoColors.accent)
                                 .tracking(-2)
+                                .foregroundColor(MivoColors.accent)
                                 .monospacedDigit()
                             Text("seconds")
                                 .font(.system(size: 14))
@@ -127,14 +127,9 @@ struct InterventionView: View {
 
                 // Actions
                 VStack(spacing: 10) {
-                    if let intention, let duration {
-                        NavigationLink {
-                            ActiveSessionView(
-                                intention: intention,
-                                plannedMinutes: duration,
-                                urgeReason: selectedUrge,
-                                urgeNote: selectedUrge == .other ? urgeNote.trimmingCharacters(in: .whitespacesAndNewlines) : nil
-                            )
+                    if isSessionStart {
+                        Button {
+                            showSession = true
                         } label: {
                             Text(sessionButtonTitle)
                                 .font(.system(size: 16, weight: .semibold))
@@ -142,7 +137,7 @@ struct InterventionView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(canBeginSession ? MivoColors.accent : MivoColors.accentLight)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .disabled(!canBeginSession)
                     } else {
@@ -155,7 +150,7 @@ struct InterventionView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(canProceed ? MivoColors.accent : MivoColors.accentLight)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .disabled(!canProceed)
                     }
@@ -177,6 +172,21 @@ struct InterventionView: View {
         .onAppear {
             withAnimation(.easeIn(duration: 0.6)) { opacity = 1 }
             startCountdown()
+        }
+        .fullScreenCover(isPresented: $showSession) {
+            if let intention, let duration {
+                ActiveSessionView(
+                    intention: intention,
+                    plannedMinutes: duration,
+                    urgeReason: selectedUrge,
+                    urgeNote: selectedUrge == .other ? urgeNote.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
+                    onFinished: {
+                        showSession = false
+                        onComplete?()
+                        dismiss()
+                    }
+                )
+            }
         }
     }
 
@@ -211,8 +221,8 @@ struct InterventionView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(selectedUrge == reason ? MivoColors.accent : MivoColors.card)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(selectedUrge == reason ? MivoColors.accent : MivoColors.border, lineWidth: 1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selectedUrge == reason ? MivoColors.accent : MivoColors.border, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -223,13 +233,11 @@ struct InterventionView: View {
                     .font(.system(size: 14))
                     .padding(12)
                     .background(MivoColors.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(MivoColors.border, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border, lineWidth: 1))
             }
         }
-        .padding(14)
-        .background(MivoColors.white.opacity(0.62))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .mivoSectionSurface()
     }
 
     func startCountdown() {

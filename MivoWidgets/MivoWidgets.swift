@@ -4,6 +4,17 @@ import ActivityKit
 
 private let appGroup = "group.com.mivo.mivoapp"
 private let widgetSummaryKey = "mivo_widget_shared_summary"
+private let experimentEnforcedKey = "mivo.experiment.enforced"
+private let experimentTypeKey = "mivo.experiment.type"
+private let experimentEndsAtKey = "mivo.experiment.endsAt"
+
+private func activeExperimentBlocksExtensions() -> Bool {
+    guard let defaults = UserDefaults(suiteName: appGroup),
+          defaults.bool(forKey: experimentEnforcedKey),
+          defaults.string(forKey: experimentTypeKey) == "reduce_extensions" else { return false }
+    let endsAt = defaults.double(forKey: experimentEndsAtKey)
+    return endsAt <= 0 || endsAt > Date().timeIntervalSince1970
+}
 
 // Must match the WidgetSharedSummary in Models.swift
 struct WidgetSharedSummary: Codable {
@@ -215,16 +226,35 @@ private struct MivoSessionLiveActivityView: View {
 
             Spacer()
 
-            // Progress ring (elapsed vs planned)
-            ZStack {
-                Circle()
-                    .stroke(cream, lineWidth: 5)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(brown, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+            VStack(spacing: 7) {
+                ZStack {
+                    Circle()
+                        .stroke(cream, lineWidth: 5)
+                    Circle()
+                        .trim(from: 0, to: progress)
+                        .stroke(brown, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                .frame(width: 40, height: 40)
+
+                HStack(spacing: 6) {
+                    Link(destination: URL(string: "mivo://session/finish")!) {
+                        Image(systemName: "checkmark")
+                            .frame(width: 26, height: 24)
+                    }
+                    .accessibilityLabel("Finish session")
+
+                    if !activeExperimentBlocksExtensions() {
+                        Link(destination: URL(string: "mivo://session/addTime")!) {
+                            Image(systemName: "plus")
+                                .frame(width: 26, height: 24)
+                        }
+                        .accessibilityLabel("Add time")
+                    }
+                }
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(brown)
             }
-            .frame(width: 40, height: 40)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -317,15 +347,22 @@ struct MivoSessionLiveActivityWidget: Widget {
                         .foregroundColor(Color(red: 0.35, green: 0.19, blue: 0.09))
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack {
-                        Text(context.attributes.intentionLabel)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
+                    HStack(spacing: 8) {
+                        Link(destination: URL(string: "mivo://session/finish")!) {
+                            Label("Finish", systemImage: "checkmark")
+                        }
+                        if !activeExperimentBlocksExtensions() {
+                            Link(destination: URL(string: "mivo://session/addTime")!) {
+                                Label("Add time", systemImage: "plus")
+                            }
+                        }
                         Spacer()
                         Text("ends \(context.state.sessionEndsAt.formatted(date: .omitted, time: .shortened))")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.secondary)
                     }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color(red: 0.35, green: 0.19, blue: 0.09))
                     .padding(.top, 4)
                 }
             } compactLeading: {
@@ -343,7 +380,7 @@ struct MivoSessionLiveActivityWidget: Widget {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(Color(red: 0.35, green: 0.19, blue: 0.09))
             }
-            .widgetURL(URL(string: "mivo://home"))
+            .widgetURL(URL(string: "mivo://session/finish"))
         }
     }
 }

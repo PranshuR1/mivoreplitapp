@@ -13,6 +13,14 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     private let sessionExpiredAtKey = "mivo.sessionExpiredAt"
     private let sessionExpiredSourceKey = "mivo.sessionExpiredSource"
     private let shieldPauseDurationKey = "mivo.shieldPauseDuration"
+    private let experimentEnforcedKey = "mivo.experiment.enforced"
+    private let experimentTypeKey = "mivo.experiment.type"
+    private let experimentEndsAtKey = "mivo.experiment.endsAt"
+    private let experimentStartHourKey = "mivo.experiment.startHour"
+    private let experimentEndHourKey = "mivo.experiment.endHour"
+    private let experimentStrongerFrictionKey = "mivo.experiment.strongerFriction"
+    private let mivoClearMappingPrefix = "mivo.clear.mapping."
+    private let mivoClearEnabledPrefix = "mivo.clear.enabled."
     private let pendingSetupFreshnessWindow: TimeInterval = 10 * 60
 
     // Brand colours (match Mivo's palette)
@@ -23,10 +31,10 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     private let btnBrown     = UIColor(red: 0.55, green: 0.31, blue: 0.16, alpha: 1.0) // #8C4F28
 
     override func configuration(shielding application: Application) -> ShieldConfiguration {
-        makeConfiguration()
+        makeConfiguration(applicationToken: application.token)
     }
     override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
-        makeConfiguration()
+        makeConfiguration(applicationToken: application.token)
     }
     override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
         makeConfiguration()
@@ -35,7 +43,7 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         makeConfiguration()
     }
 
-    private func makeConfiguration() -> ShieldConfiguration {
+    private func makeConfiguration(applicationToken: ApplicationToken? = nil) -> ShieldConfiguration {
         let isCountingDown    = countdownRemaining() > 0
         let hasActiveSession  = isSessionActive()
         let needsMivoSetup    = pendingInterventionSetup() && !hasActiveSession
@@ -84,13 +92,15 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         // automatically unlocks the app. No "Not now" option — the goal is a brief
         // mid-scroll moment of notice, not a wall.
         if hasActiveSession {
+            let seconds = pauseDurationSeconds()
+            let experimentPause = isExperimentActive() && experimentStrongerFriction()
             return ShieldConfiguration(
                 backgroundBlurStyle: .systemUltraThinMaterialLight,
                 backgroundColor: cream,
                 icon: timerIcon(state: .timer),
-                title: label("Take a breath", color: textPrimary),
+                title: label(experimentPause ? "Experiment pause" : "Take a breath", color: textPrimary),
                 subtitle: label(
-                    "Quick 5-second pause, then back to scrolling. Tap to begin — Mivo unlocks the app on its own.",
+                    "Quick \(seconds)-second pause, then back to scrolling. Tap to begin — Mivo unlocks the app on its own.",
                     color: textMuted
                 ),
                 primaryButtonLabel: label("Pause & continue", color: .white),
@@ -99,7 +109,40 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
             )
         }
 
-        // ── 4. Post-countdown "Open Mivo" screen ──
+        // ── 4. Approved protected-window experiment ──
+        if isProtectedExperimentHour() {
+            if let applicationToken, let clearPlatform = mappedMivoClearPlatform(for: applicationToken) {
+                return ShieldConfiguration(
+                    backgroundBlurStyle: .systemUltraThinMaterialLight,
+                    backgroundColor: cream,
+                    icon: timerIcon(state: .locked),
+                    title: label("This hour is protected", color: textPrimary),
+                    subtitle: label(
+                        "Your approved 7-day experiment keeps the native app locked \(protectedExperimentWindowText()). Mivo Clear stays available.",
+                        color: textMuted
+                    ),
+                    primaryButtonLabel: label("Use Mivo Clear", color: .white),
+                    primaryButtonBackgroundColor: btnBrown,
+                    secondaryButtonLabel: label("Open Mivo", color: textMuted)
+                )
+            }
+
+            return ShieldConfiguration(
+                backgroundBlurStyle: .systemUltraThinMaterialLight,
+                backgroundColor: cream,
+                icon: timerIcon(state: .locked),
+                title: label("This hour is protected", color: textPrimary),
+                subtitle: label(
+                    "Your approved 7-day experiment keeps this app locked \(protectedExperimentWindowText()).",
+                    color: textMuted
+                ),
+                primaryButtonLabel: label("Open Mivo", color: .white),
+                primaryButtonBackgroundColor: btnBrown,
+                secondaryButtonLabel: label("Not now", color: textMuted)
+            )
+        }
+
+        // ── 5. "Open Mivo" session-setup screen ──
         if needsMivoSetup {
             return ShieldConfiguration(
                 backgroundBlurStyle: .systemUltraThinMaterialLight,
@@ -116,18 +159,33 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
             )
         }
 
-        // ── 5. Default — "Pause before opening" with Start button ──
-        let pauseSecs = pauseDurationSeconds()
+        if let applicationToken, let clearPlatform = mappedMivoClearPlatform(for: applicationToken) {
+            return ShieldConfiguration(
+                backgroundBlurStyle: .systemUltraThinMaterialLight,
+                backgroundColor: cream,
+                icon: timerIcon(state: .locked),
+                title: label("Open \(clearPlatform.title) with less noise", color: textPrimary),
+                subtitle: label(
+                    "Use the focused tools in Mivo Clear, or start a timed session in the native app.",
+                    color: textMuted
+                ),
+                primaryButtonLabel: label("Use Mivo Clear", color: .white),
+                primaryButtonBackgroundColor: btnBrown,
+                secondaryButtonLabel: label("Start timed session", color: textMuted)
+            )
+        }
+
+        // ── 6. Default — route to Mivo; the pause follows intention selection ──
         return ShieldConfiguration(
             backgroundBlurStyle: .systemUltraThinMaterialLight,
             backgroundColor: cream,
-            icon: timerIcon(state: .timer),
-            title: label("Pause before opening", color: textPrimary),
+            icon: timerIcon(state: .locked),
+            title: label("Open Mivo", color: textPrimary),
             subtitle: label(
-                "Start the \(pauseSecs)-second pause to check your intention before this app opens.",
+                "Set your intention and time in Mivo. This app stays locked until the pause is complete and your session starts.",
                 color: textMuted
             ),
-            primaryButtonLabel: label("Start", color: .white),
+            primaryButtonLabel: label("Open Mivo", color: .white),
             primaryButtonBackgroundColor: btnBrown,
             secondaryButtonLabel: label("Not now", color: textMuted)
         )
@@ -137,6 +195,30 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     private func label(_ text: String, color: UIColor) -> ShieldConfiguration.Label {
         ShieldConfiguration.Label(text: text, color: color)
+    }
+
+    private func mappedMivoClearPlatform(for token: ApplicationToken) -> ClearPlatform? {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return nil }
+        for platform in ClearPlatform.allCases {
+            guard defaults.bool(forKey: mivoClearEnabledPrefix + platform.rawValue) else { continue }
+            guard let data = defaults.data(forKey: mivoClearMappingPrefix + platform.rawValue),
+                  let mapped = try? JSONDecoder().decode(ApplicationToken.self, from: data) else { continue }
+            if mapped == token { return platform }
+        }
+        return nil
+    }
+
+    private enum ClearPlatform: String, CaseIterable {
+        case instagram, tiktok, youtube, snapchat
+
+        var title: String {
+            switch self {
+            case .instagram: return "Instagram"
+            case .tiktok: return "TikTok"
+            case .youtube: return "YouTube"
+            case .snapchat: return "Snapchat"
+            }
+        }
     }
 
     private enum IconState {
@@ -255,6 +337,50 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         let stored = d.integer(forKey: shieldPauseDurationKey)
         guard stored > 0 else { return 5 }
         return min(max(stored, 3), 30)
+    }
+
+    private func isExperimentActive() -> Bool {
+        guard let defaults = UserDefaults(suiteName: appGroup),
+              defaults.bool(forKey: experimentEnforcedKey) else { return false }
+        let endsAt = defaults.double(forKey: experimentEndsAtKey)
+        return endsAt <= 0 || endsAt > Date().timeIntervalSince1970
+    }
+
+    private func experimentStrongerFriction() -> Bool {
+        guard isExperimentActive(),
+              let defaults = UserDefaults(suiteName: appGroup) else { return false }
+        return defaults.bool(forKey: experimentStrongerFrictionKey)
+    }
+
+    private func isProtectedExperimentHour() -> Bool {
+        guard isExperimentActive(),
+              let defaults = UserDefaults(suiteName: appGroup),
+              defaults.string(forKey: experimentTypeKey) == "protected_window" else { return false }
+        let start = normalizedHour(defaults.integer(forKey: experimentStartHourKey))
+        let end = normalizedHour(defaults.integer(forKey: experimentEndHourKey))
+        let current = Calendar.current.component(.hour, from: Date())
+        if start == end { return true }
+        return start < end
+            ? (current >= start && current < end)
+            : (current >= start || current < end)
+    }
+
+    private func protectedExperimentWindowText() -> String {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return "during this hour" }
+        let start = normalizedHour(defaults.integer(forKey: experimentStartHourKey))
+        let end = normalizedHour(defaults.integer(forKey: experimentEndHourKey))
+        return "from \(hourText(start)) to \(hourText(end))"
+    }
+
+    private func normalizedHour(_ hour: Int) -> Int {
+        ((hour % 24) + 24) % 24
+    }
+
+    private func hourText(_ hour: Int) -> String {
+        let normalized = normalizedHour(hour)
+        if normalized == 0 { return "12 AM" }
+        if normalized == 12 { return "12 PM" }
+        return normalized < 12 ? "\(normalized) AM" : "\(normalized - 12) PM"
     }
 
     private func isSessionActive() -> Bool {

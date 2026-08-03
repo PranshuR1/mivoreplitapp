@@ -10,8 +10,121 @@ struct SecureAuthRecord: Codable {
     var passwordSalt: String
     var passwordIterations: Int
     var isAdmin: Bool?
+    var accountRole: String? = nil
     var adminToken: String?
     var onboardingProfile: OnboardingProfile?
+    var remoteUserId: String?
+    var remoteAccessToken: String?
+    var remoteRefreshToken: String?
+}
+
+struct DeviceBindingRecord: Codable {
+    let installationID: String
+    let userID: String
+    let email: String
+    var failedAccountAttempts: Int?
+}
+
+enum DeviceBindingService {
+    private static let keychainService = "app.mivo.device-binding"
+    private static let installationAccount = "installation-id"
+    private static let bindingAccount = "bound-account"
+
+    static var boundEmail: String? {
+        loadBinding()?.email
+    }
+
+    static var boundEmailHint: String? {
+        loadBinding().map { emailHint(for: $0.email, attempt: 1) }
+    }
+
+    static func installationID() throws -> String {
+        if let data = KeychainStore.read(service: keychainService, account: installationAccount),
+           let value = String(data: data, encoding: .utf8),
+           !value.isEmpty {
+            return value
+        }
+
+        let value = UUID().uuidString.lowercased()
+        guard let data = value.data(using: .utf8) else { throw AppError.secureStorageFailed }
+        try KeychainStore.save(data, service: keychainService, account: installationAccount)
+        return value
+    }
+
+    static func assertAllows(email: String) throws {
+        guard var binding = loadBinding() else { return }
+        let normalizedEmail = normalizeEmail(email)
+        guard binding.email == normalizedEmail else {
+            let attempts = min((binding.failedAccountAttempts ?? 0) + 1, 3)
+            binding.failedAccountAttempts = attempts
+            try saveBinding(binding)
+            throw AppError.deviceBoundToAnotherAccount(hint: emailHint(for: binding.email, attempt: attempts))
+        }
+
+        if binding.failedAccountAttempts != nil {
+            binding.failedAccountAttempts = nil
+            try saveBinding(binding)
+        }
+    }
+
+    static func bind(userID: String, email: String, replacingLocalBinding: Bool = false) throws {
+        let normalizedEmail = normalizeEmail(email)
+        if !replacingLocalBinding {
+            try assertAllows(email: normalizedEmail)
+        }
+        let record = DeviceBindingRecord(
+            installationID: try installationID(),
+            userID: userID,
+            email: normalizedEmail,
+            failedAccountAttempts: nil
+        )
+        try saveBinding(record)
+    }
+
+    static func releaseIfBound(email: String) {
+        guard loadBinding()?.email == normalizeEmail(email) else { return }
+        KeychainStore.delete(service: keychainService, account: bindingAccount)
+    }
+
+    private static func loadBinding() -> DeviceBindingRecord? {
+        guard let data = KeychainStore.read(service: keychainService, account: bindingAccount) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(DeviceBindingRecord.self, from: data)
+    }
+
+    private static func saveBinding(_ binding: DeviceBindingRecord) throws {
+        let data = try JSONEncoder().encode(binding)
+        try KeychainStore.save(data, service: keychainService, account: bindingAccount)
+    }
+
+    private static func emailHint(for email: String, attempt: Int) -> String {
+        guard attempt < 3 else { return email }
+        let parts = email.split(separator: "@", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return masked(parts.first ?? email, visible: attempt) }
+
+        let localVisible = attempt == 1 ? 1 : min(3, parts[0].count)
+        let local = masked(parts[0], visible: localVisible)
+        if attempt == 2 {
+            return "\(local)@\(parts[1])"
+        }
+
+        let domainParts = parts[1].split(separator: ".", maxSplits: 1).map(String.init)
+        let domainName = masked(domainParts[0], visible: 1)
+        let suffix = domainParts.count == 2 ? ".\(domainParts[1])" : ""
+        return "\(local)@\(domainName)\(suffix)"
+    }
+
+    private static func masked(_ value: String, visible: Int) -> String {
+        let visibleCount = min(max(visible, 1), value.count)
+        let prefix = value.prefix(visibleCount)
+        let maskCount = max(value.count - visibleCount, 3)
+        return String(prefix) + String(repeating: "*", count: maskCount)
+    }
+
+    private static func normalizeEmail(_ email: String) -> String {
+        email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 enum SecureAuthService {
@@ -61,10 +174,15 @@ enum SecureAuthService {
         if let email = StorageService.load(String.self, forKey: .rememberedEmail) {
             deleteRecord(email: email)
         }
+        KeychainStore.delete(service: keychainService, account: legacyUserAccount)
     }
 
     static func deleteRecord(email: String) {
         KeychainStore.delete(service: keychainService, account: accountKey(for: normalizeEmail(email)))
+    }
+
+    static func deleteAllRecords() {
+        KeychainStore.deleteAll(service: keychainService)
     }
 
     static func createRecord(email: String, password: String, name: String) throws -> SecureAuthRecord {
@@ -200,6 +318,14 @@ private enum KeychainStore {
 
     static func delete(service: String, account: String) {
         SecItemDelete(baseQuery(service: service, account: account) as CFDictionary)
+    }
+
+    static func deleteAll(service: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 
     private static func baseQuery(service: String, account: String) -> [String: Any] {

@@ -38,8 +38,8 @@ struct OnboardingAppsView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 5,
-                            total: 10,
+                            step: 6,
+                            total: 12,
                             eyebrow: "Apps",
                             title: "Where should Mivo pay attention?",
                             subtitle: "Choose the places that tend to pull you in. This stays private and helps your first insights feel relevant."
@@ -74,13 +74,12 @@ struct OnboardingAppsView: View {
                                     .foregroundColor(selected.contains(app) ? MivoColors.white : MivoColors.textSecondary)
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 11)
-                                    .background(selected.contains(app) ? MivoColors.accent : MivoColors.white.opacity(0.62))
+                                    .background(selected.contains(app) ? MivoColors.accent : OnboardingTheme.surface)
                                     .clipShape(Capsule())
                                     .overlay(
                                         Capsule()
-                                            .strokeBorder(selected.contains(app) ? MivoColors.accent : MivoColors.white.opacity(0.58), lineWidth: 1)
+                                            .strokeBorder(selected.contains(app) ? MivoColors.accent : OnboardingTheme.border, lineWidth: 1)
                                     )
-                                    .shadow(color: Color.black.opacity(selected.contains(app) ? 0.08 : 0.025), radius: selected.contains(app) ? 12 : 6, y: 4)
                                 }
                                 .buttonStyle(.plain)
                                 .onboardingEntrance(appear, delay: 0.14 + Double(index) * 0.025)
@@ -117,7 +116,7 @@ struct OnboardingAppsView: View {
                 }
             }
         }
-        .navigationBarBackButtonHidden()
+        .onboardingNavigationChromeHidden()
         .navigationDestination(isPresented: $goToCheckIn) {
             CheckInOnboardingView_Internal()
         }
@@ -146,14 +145,6 @@ struct OnboardingAppsView: View {
             }
         }
         #endif
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "arrow.left")
-                        .foregroundColor(MivoColors.textSecondary)
-                }
-            }
-        }
         .onAppear {
             appear = true
             refreshSetupState()
@@ -367,8 +358,12 @@ struct OnboardingAppsView: View {
                     .clipShape(Capsule())
             }
             .padding(12)
-            .background(MivoColors.background.opacity(0.62))
+            .background(MivoColors.white.opacity(0.62))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(MivoColors.white.opacity(0.62), lineWidth: 1)
+            }
         }
         .buttonStyle(.plain)
     }
@@ -573,8 +568,8 @@ private struct CheckInOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 6,
-                            total: 10,
+                            step: 7,
+                            total: 12,
                             eyebrow: "Check-ins",
                             title: "How often should Mivo pause?",
                             subtitle: "For longer sessions, Mivo will briefly pause the protected app so you can check whether you still want to keep scrolling."
@@ -627,7 +622,7 @@ private struct CheckInOnboardingView_Internal: View {
                                                 .foregroundColor(MivoColors.textPrimary)
                                                 .padding(.horizontal, 10)
                                                 .padding(.vertical, 7)
-                                                .background(MivoColors.white.opacity(0.62))
+                                        .background(MivoColors.white.opacity(0.62))
                                                 .clipShape(Capsule())
                                         }
                                         .padding(15)
@@ -679,15 +674,7 @@ private struct CheckInOnboardingView_Internal: View {
                 appear = true
             }
         }
-        .navigationBarBackButtonHidden()
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "arrow.left")
-                        .foregroundColor(MivoColors.textSecondary)
-                }
-            }
-        }
+        .onboardingNavigationChromeHidden()
     }
 
     private func intervalSubtitle(for minutes: Int) -> String {
@@ -727,8 +714,8 @@ private struct AgeOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 7,
-                            total: 10,
+                            step: 8,
+                            total: 12,
                             eyebrow: "Personalize",
                             title: "How should we frame your time?",
                             subtitle: "Your age helps Mivo turn daily scrolling into a life-sized view. It stays on device."
@@ -763,7 +750,6 @@ private struct AgeOnboardingView_Internal: View {
                         .padding(.vertical, 17)
                         .background(hasSelection ? MivoColors.textPrimary : MivoColors.textMuted.opacity(0.36))
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .shadow(color: hasSelection ? MivoColors.textPrimary.opacity(0.18) : .clear, radius: 16, y: 8)
                     }
                     .disabled(!hasSelection)
                     .simultaneousGesture(TapGesture().onEnded {
@@ -779,7 +765,7 @@ private struct AgeOnboardingView_Internal: View {
             }
             .onAppear { appear = true }
         }
-        .navigationBarBackButtonHidden()
+        .onboardingNavigationChromeHidden()
     }
 
     private var ageCard: some View {
@@ -819,7 +805,6 @@ private struct AgeOnboardingView_Internal: View {
         .background(MivoColors.white.opacity(0.64))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
-        .shadow(color: Color.black.opacity(0.04), radius: 16, y: 8)
     }
 
     private var rangeGrid: some View {
@@ -852,8 +837,370 @@ private struct AgeOnboardingView_Internal: View {
     }
 }
 
-// Full-screen life breakdown view: large grid fills screen; other UI appears after a delay
+private enum LifeTimeCategory: String {
+    case past
+    case sleep
+    case work
+    case essentials
+    case free
+    case scrolling
+
+    var title: String {
+        switch self {
+        case .past: return "Time already lived"
+        case .sleep: return "Sleep"
+        case .work: return "Work and school"
+        case .essentials: return "Life essentials"
+        case .free: return "Free time"
+        case .scrolling: return "Projected scrolling"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .past: return Color(hex: "#BF5B55")
+        case .sleep: return MivoColors.blue
+        case .work: return Color(hex: "#6F9A7A")
+        case .essentials: return Color(hex: "#B39BC8")
+        case .free: return Color(hex: "#74B98B")
+        case .scrolling: return Color(hex: "#9B3855")
+        }
+    }
+}
+
+// Dense week-by-week reveal inspired by the user's reference video.
 private struct LifeBreakdownView_Internal: View {
+    @EnvironmentObject private var appVM: AppViewModel
+
+    let providedAge: Int?
+    let providedAgeRange: String?
+
+    @State private var categories: [LifeTimeCategory] = []
+    @State private var animationStartedAt: Date?
+    @State private var animationTask: Task<Void, Never>?
+    @State private var isLoading = true
+    @State private var showResult = false
+    @State private var revealID = UUID()
+
+    private let columns = 52
+    private let revealDuration: TimeInterval = 8.4
+
+    var body: some View {
+        ZStack {
+            OnboardingBackdrop()
+
+            VStack(spacing: 0) {
+                VStack(spacing: 3) {
+                    Text("THIS IS YOUR TIME")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(MivoColors.textMuted)
+                        .tracking(1.5)
+                    Text("Each square is one week")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                }
+                .padding(.top, 10)
+                .padding(.bottom, 12)
+
+                if isLoading {
+                    Spacer()
+                    ProgressView("Building your time view")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.textSecondary)
+                        .tint(MivoColors.accent)
+                    Spacer()
+                } else {
+                    animatedGrid
+                }
+
+                OnboardingBottomBar {
+                    if showResult {
+                        NavigationLink {
+                            ResultOnboardingView_Internal(
+                                providedAge: providedAge,
+                                providedAgeRange: providedAgeRange
+                            )
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text("Show time we can recover")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 15, weight: .semibold))
+                            }
+                            .foregroundColor(MivoColors.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 17)
+                            .background(MivoColors.textPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
+                        }
+                    } else {
+                        Button(action: finishAnimation) {
+                            HStack(spacing: 9) {
+                                Text("Show the full picture")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Image(systemName: "forward.fill")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .foregroundColor(MivoColors.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 17)
+                            .background(Color.white.opacity(0.64))
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                    }
+                }
+            }
+        }
+        .onboardingNavigationChromeHidden()
+        .onAppear(perform: loadVisualization)
+        .onDisappear {
+            animationTask?.cancel()
+            revealID = UUID()
+        }
+    }
+
+    private var animatedGrid: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: showResult)) { timeline in
+            let visibleCount = visibleCellCount(at: timeline.date)
+            let active = activeCategory(for: visibleCount)
+
+            VStack(spacing: 12) {
+                WeeklyLifeGrid(
+                    categories: categories,
+                    visibleCount: visibleCount,
+                    columns: columns
+                )
+                .padding(.horizontal, 22)
+
+                if showResult {
+                    VStack(spacing: 3) {
+                        Text("\(scrollingShare)%")
+                            .font(.system(size: 46, weight: .heavy, design: .rounded).monospacedDigit())
+                            .foregroundColor(LifeTimeCategory.scrolling.color)
+                        Text("of projected free time could go to scrolling")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(MivoColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                        Text("A projection from your estimate, not a prediction.")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(MivoColors.textMuted)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(active.color)
+                            .frame(width: 8, height: 8)
+                        Text(active.title)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(MivoColors.textPrimary)
+                    }
+                    .id(active.rawValue)
+                    .transition(.opacity)
+                }
+
+                compactLegend
+            }
+            .animation(.spring(response: 0.48, dampingFraction: 0.86), value: showResult)
+        }
+    }
+
+    private var compactLegend: some View {
+        HStack(spacing: 0) {
+            ForEach(
+                [LifeTimeCategory.past, .sleep, .work, .essentials, .free, .scrolling],
+                id: \.rawValue
+            ) { category in
+                VStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(category.color)
+                        .frame(width: 12, height: 12)
+                    Text(shortLabel(category))
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(MivoColors.textMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.bottom, 8)
+    }
+
+    private func loadVisualization() {
+        animationTask?.cancel()
+        categories = []
+        animationStartedAt = nil
+        isLoading = true
+        showResult = false
+        let currentRevealID = UUID()
+        revealID = currentRevealID
+
+        animationTask = Task {
+            let yearsAhead = remainingYears
+            let counts = await AIService.estimateLifeBreakdown(
+                profile: appVM.onboardingProfile,
+                lifeExpectancy: yearsAhead
+            )
+            guard !Task.isCancelled else { return }
+
+            let map = makeWeekMap(counts: counts, yearsAhead: yearsAhead)
+            await MainActor.run {
+                categories = map
+                isLoading = false
+                animationStartedAt = Date()
+                HapticsService.impact(style: .light)
+            }
+
+            for stage in 1...6 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + (1.4 * Double(stage))) {
+                    guard revealID == currentRevealID else { return }
+                    if stage < 6 {
+                        stage == 5 ? HapticsService.impact(style: .medium) : HapticsService.selection()
+                    } else {
+                        withAnimation(.spring(response: 0.48, dampingFraction: 0.84)) {
+                            showResult = true
+                        }
+                        HapticsService.success()
+                    }
+                }
+            }
+        }
+    }
+
+    private func makeWeekMap(
+        counts: (sleepYears: Int, workYears: Int, eatYears: Int, basicsYears: Int, scrollYears: Int, freeYears: Int),
+        yearsAhead: Int
+    ) -> [LifeTimeCategory] {
+        let future: [(LifeTimeCategory, Int)] = [
+            (.sleep, counts.sleepYears),
+            (.work, counts.workYears),
+            (.essentials, counts.eatYears + counts.basicsYears),
+            (.free, counts.freeYears),
+            (.scrolling, counts.scrollYears)
+        ]
+
+        var map = Array(repeating: LifeTimeCategory.past, count: max(0, currentAge * columns))
+        for (category, years) in future {
+            map.append(contentsOf: Array(repeating: category, count: max(0, years * columns)))
+        }
+
+        let expectedCount = max(1, (currentAge + yearsAhead) * columns)
+        if map.count < expectedCount {
+            map.append(contentsOf: Array(repeating: .free, count: expectedCount - map.count))
+        } else if map.count > expectedCount {
+            map = Array(map.prefix(expectedCount))
+        }
+        return map
+    }
+
+    private func visibleCellCount(at date: Date) -> Int {
+        guard let animationStartedAt else { return 0 }
+        if showResult { return categories.count }
+        let elapsed = max(0, date.timeIntervalSince(animationStartedAt))
+        let progress = min(1, elapsed / revealDuration)
+        return min(categories.count, Int(Double(categories.count) * progress))
+    }
+
+    private func activeCategory(for visibleCount: Int) -> LifeTimeCategory {
+        guard !categories.isEmpty else { return .past }
+        let index = min(max(visibleCount - 1, 0), categories.count - 1)
+        return categories[index]
+    }
+
+    private func finishAnimation() {
+        guard !showResult else { return }
+        animationTask?.cancel()
+        withAnimation(.spring(response: 0.48, dampingFraction: 0.84)) {
+            showResult = true
+        }
+        HapticsService.success()
+    }
+
+    private var scrollingShare: Int {
+        let scrolling = categories.filter { $0 == .scrolling }.count
+        let free = categories.filter { $0 == .free }.count
+        guard scrolling + free > 0 else { return 0 }
+        return min(99, Int((Double(scrolling) / Double(scrolling + free) * 100).rounded()))
+    }
+
+    private var currentAge: Int {
+        if let providedAge { return max(1, min(89, providedAge)) }
+        switch providedAgeRange ?? appVM.onboardingProfile.ageRange {
+        case "Under 18": return 17
+        case "18-24": return 21
+        case "25-34": return 29
+        case "35-44": return 39
+        case "45-54": return 49
+        case "55+": return 59
+        default: return max(1, min(89, appVM.onboardingProfile.age ?? 25))
+        }
+    }
+
+    private var remainingYears: Int {
+        switch currentAge {
+        case 0...24: return 60
+        case 25...34: return 50
+        case 35...44: return 40
+        case 45...54: return 30
+        default: return 20
+        }
+    }
+
+    private func shortLabel(_ category: LifeTimeCategory) -> String {
+        switch category {
+        case .past: return "Past"
+        case .sleep: return "Sleep"
+        case .work: return "Work"
+        case .essentials: return "Life"
+        case .free: return "Free"
+        case .scrolling: return "Scroll"
+        }
+    }
+}
+
+private struct WeeklyLifeGrid: View {
+    let categories: [LifeTimeCategory]
+    let visibleCount: Int
+    let columns: Int
+
+    var body: some View {
+        Canvas { context, size in
+            let rows = max(1, Int(ceil(Double(categories.count) / Double(columns))))
+            let gap: CGFloat = 0.8
+            let cellWidth = max(1, (size.width - CGFloat(columns - 1) * gap) / CGFloat(columns))
+            let cellHeight = max(1, (size.height - CGFloat(rows - 1) * gap) / CGFloat(rows))
+
+            for index in categories.indices {
+                let row = index / columns
+                let column = index % columns
+                let rect = CGRect(
+                    x: CGFloat(column) * (cellWidth + gap),
+                    y: CGFloat(row) * (cellHeight + gap),
+                    width: cellWidth,
+                    height: cellHeight
+                )
+                let color = index < visibleCount
+                    ? categories[index].color
+                    : Color(hex: "#E8DED2").opacity(0.64)
+                context.fill(Path(roundedRect: rect, cornerRadius: 0.8), with: .color(color))
+            }
+        }
+        .aspectRatio(gridAspectRatio, contentMode: .fit)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Week-by-week life projection")
+    }
+
+    private var gridAspectRatio: CGFloat {
+        let rows = max(1, Int(ceil(Double(categories.count) / Double(columns))))
+        return CGFloat(columns) / CGFloat(rows)
+    }
+}
+
+// Retained temporarily as a reference while the new week-grid view is validated.
+private struct LegacyLifeBreakdownView_Internal: View {
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.dismiss) var dismiss
 
@@ -871,6 +1218,9 @@ private struct LifeBreakdownView_Internal: View {
     @State private var loading: Bool = false
     @State private var appear = false
     @State private var showDetails = false
+    @State private var displayedScrollYears = 0
+    @State private var showProjectionCopy = false
+    @State private var showProjectionFootnote = false
 
     // reveal sequence
     @State private var visibleCells: Int = 0          // how many cells are currently visible in the grid (left->right)
@@ -962,31 +1312,58 @@ private struct LifeBreakdownView_Internal: View {
             let boxes = boxesForAge(providedAge, ageRange: providedAgeRange)
 
             VStack(spacing: 0) {
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
-                        OnboardingStepHeader(
-                            step: 8,
-                            total: 10,
-                            eyebrow: "Perspective",
-                            title: "Your time, made visible",
-                            subtitle: "Each square is roughly one year ahead. We’ll color the picture so your phone time has context."
-                        )
-                        .onboardingEntrance(appear)
-
-                        yearPreviewCard(boxes: boxes)
-                            .onboardingEntrance(appear, delay: 0.08)
-
-                        lifeGridCard(boxes: boxes)
-                            .onboardingEntrance(appear, delay: 0.16)
-
-                        if showDetails, let counts = lifeCounts {
-                            lifeLegend(counts: counts)
-                                .onboardingEntrance(showDetails, delay: 0.02)
-                        }
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("YOUR TIME, MADE VISIBLE")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(OnboardingTheme.accent)
+                        Spacer()
+                        Text("9 of 12")
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                            .foregroundColor(OnboardingTheme.textSecondary)
                     }
                     .padding(.horizontal, 24)
-                    .padding(.top, 24)
-                    .padding(.bottom, 124)
+                    .padding(.top, 14)
+
+                    Spacer(minLength: 22)
+
+                    VStack(spacing: 24) {
+                        Text("At your current estimate, you are on track to spend")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(OnboardingTheme.textPrimary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                            .padding(.horizontal, 26)
+                            .onboardingEntrance(showProjectionCopy)
+
+                        if loading && lifeCounts == nil {
+                            ProgressView()
+                                .tint(OnboardingTheme.accent)
+                                .scaleEffect(1.15)
+                                .frame(height: 154)
+                        } else {
+                            projectionYearRoller
+                                .onboardingEntrance(showProjectionCopy, delay: 0.08)
+                        }
+
+                        Text("of the years ahead looking down at your phone.")
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .foregroundColor(OnboardingTheme.textPrimary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                            .padding(.horizontal, 30)
+                            .onboardingEntrance(showProjectionFootnote)
+
+                        Text("This is a projection from your estimate, not a prediction. Mivo will replace it with your observed pattern after the first three days.")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(OnboardingTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                            .padding(.horizontal, 34)
+                            .onboardingEntrance(showProjectionFootnote, delay: 0.12)
+                    }
+
+                    Spacer(minLength: 20)
                 }
 
                 OnboardingBottomBar {
@@ -1003,22 +1380,48 @@ private struct LifeBreakdownView_Internal: View {
                             .foregroundColor(MivoColors.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 17)
-                            .background(MivoColors.textPrimary)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
+                            .background(OnboardingTheme.accent)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
                     } else {
-                        OnboardingPrimaryButton(started ? "Visualizing..." : "Build my life map", enabled: !loading) {
-                            Image(systemName: "sparkles")
-                        } action: {
-                            startVisualization(boxes: boxes)
-                        }
+                        Text("Building your projection...")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(OnboardingTheme.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
                     }
                 }
             }
-            .onAppear { appear = true }
+            .onAppear {
+                guard !appear else { return }
+                appear = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    startVisualization(boxes: boxes)
+                }
+            }
         }
-        .navigationBarBackButtonHidden()
+        .onboardingNavigationChromeHidden()
+    }
+
+    private var projectionYearRoller: some View {
+        VStack(spacing: 1) {
+            Text("\(max(0, displayedScrollYears - 1)) years")
+                .font(.system(size: 27, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundColor(OnboardingTheme.accent.opacity(0.28))
+
+            Text("\(displayedScrollYears) \(displayedScrollYears == 1 ? "year" : "years")")
+                .font(.system(size: 48, weight: .heavy, design: .rounded).monospacedDigit())
+                .foregroundColor(OnboardingTheme.accent)
+                .contentTransition(.numericText(countsDown: false))
+                .animation(.spring(response: 0.42, dampingFraction: 0.78), value: displayedScrollYears)
+
+            Text("\(displayedScrollYears + 1) years")
+                .font(.system(size: 27, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundColor(MivoColors.blue.opacity(0.42))
+        }
+        .frame(height: 154)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Projected phone time: \(displayedScrollYears) years")
     }
 
     private func yearPreviewCard(boxes: Int) -> some View {
@@ -1043,9 +1446,9 @@ private struct LifeBreakdownView_Internal: View {
             }
         }
         .padding(18)
-        .background(MivoColors.white.opacity(0.64))
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+        .background(MivoColors.surfaceRaised.opacity(0.64))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(OnboardingTheme.border, lineWidth: 1))
     }
 
     private func lifeGridCard(boxes: Int) -> some View {
@@ -1094,10 +1497,9 @@ private struct LifeBreakdownView_Internal: View {
             }
         }
         .padding(18)
-        .background(MivoColors.white.opacity(0.66))
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
-        .shadow(color: Color.black.opacity(0.04), radius: 16, y: 8)
+        .background(MivoColors.surfaceRaised.opacity(0.66))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(OnboardingTheme.border, lineWidth: 1))
     }
 
     private func lifeLegend(counts: (sleepYears: Int, workYears: Int, eatYears: Int, basicsYears: Int, scrollYears: Int, freeYears: Int)) -> some View {
@@ -1115,7 +1517,8 @@ private struct LifeBreakdownView_Internal: View {
         guard !loading else { return }
         started = true
         loading = true
-        HapticsService.impact(style: .light)
+        showProjectionCopy = true
+        HapticsService.impact(style: .medium)
 
         Task {
             let counts = await AIService.estimateLifeBreakdown(profile: appVM.onboardingProfile, lifeExpectancy: boxes)
@@ -1128,38 +1531,20 @@ private struct LifeBreakdownView_Internal: View {
             await MainActor.run {
                 lifeCounts = adjusted
                 lifeMap = map
-                visibleCells = 0
+                displayedScrollYears = max(0, adjusted.4 - 3)
             }
 
-            let categoriesOrder = ["sleep", "work", "eat", "basics", "scroll", "free"]
-            var startIndex = 0
-            for category in categoriesOrder {
-                let count = map.filter { $0 == category }.count
-                if count == 0 { continue }
+            let firstYear = max(0, adjusted.4 - 3)
+            for year in firstYear...max(firstYear, adjusted.4) {
                 await MainActor.run {
-                    floatingText = floatingLabelFor(category: category, counts: adjusted)
-                    showFloatingText = true
-                    highlightedCategory = category
+                    displayedScrollYears = year
+                    HapticsService.selection()
                 }
-
-                var revealed = 0
-                while revealed < count {
-                    revealed += min(revealBatchSize, count - revealed)
-                    await MainActor.run {
-                        withAnimation(.easeOut(duration: 0.16)) {
-                            visibleCells = startIndex + revealed
-                        }
-                    }
-                    try? await Task.sleep(nanoseconds: 180_000_000)
-                }
-
-                try? await Task.sleep(nanoseconds: 650_000_000)
-                startIndex += count
+                try? await Task.sleep(nanoseconds: 360_000_000)
             }
 
             await MainActor.run {
-                showFloatingText = false
-                highlightedCategory = nil
+                showProjectionFootnote = true
                 showDetails = true
                 loading = false
                 HapticsService.success()
@@ -1180,19 +1565,22 @@ private struct LifeBreakdownView_Internal: View {
     }
 }
 
-private struct ResultOnboardingView_Internal: View {
-    @EnvironmentObject var appVM: AppViewModel
-    @Environment(\.dismiss) var dismiss
+struct ResultOnboardingView_Internal: View {
+    @EnvironmentObject private var appVM: AppViewModel
 
-    // Accept provided age/range so remaining life matches the visualization
     let providedAge: Int?
     let providedAgeRange: String?
 
-    @State private var estimateMinutes: Int? = nil
-    @State private var estimateYears: Double? = nil
-    @State private var displayYears: Double = 0.0
+    @State private var estimateMinutes: Int?
+    @State private var estimateYears: Double?
+    @State private var displayYears = 0.0
     @State private var appear = false
-    @State private var spin = false
+    @State private var recoveredCellCount = 0
+    @State private var recoveryAnimationTask: Task<Void, Never>?
+    @State private var recoveryFinished = false
+
+    private let recoveryColumns = 15
+    private let recoveryRows = 9
 
     var body: some View {
         ZStack {
@@ -1202,8 +1590,8 @@ private struct ResultOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
                         OnboardingStepHeader(
-                            step: 9,
-                            total: 10,
+                            step: 10,
+                            total: 12,
                             eyebrow: "Recovery",
                             title: "We can recover this time",
                             subtitle: "Small pauses compound. Mivo turns tiny choices into visible time we can bring back."
@@ -1213,8 +1601,8 @@ private struct ResultOnboardingView_Internal: View {
                         recoveredWheel
                             .onboardingEntrance(appear, delay: 0.08)
 
-                        if let mins = estimateMinutes, let years = estimateYears {
-                            recoveredStats(minutes: mins, years: years)
+                        if let minutes = estimateMinutes, let years = estimateYears {
+                            recoveredStats(minutes: minutes, years: years)
                                 .onboardingEntrance(appear, delay: 0.18)
                         }
                     }
@@ -1240,52 +1628,110 @@ private struct ResultOnboardingView_Internal: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
                     }
-                    .simultaneousGesture(TapGesture().onEnded {
-                        HapticsService.impact(style: .light)
-                    })
                 }
             }
-            .onAppear {
-                appear = true
-                computeEstimates()
-            }
-         }
-         .navigationBarBackButtonHidden(true)
+        }
+        .onboardingNavigationChromeHidden()
+        .onAppear {
+            appear = true
+            computeEstimates()
+        }
+        .onDisappear {
+            recoveryAnimationTask?.cancel()
+        }
     }
 
     private var recoveredWheel: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .fill(Color(hex: "#4A2E1F"))
-                .frame(height: 330)
-
-            Circle()
-                .stroke(Color.white.opacity(0.12), lineWidth: 18)
-                .frame(width: 220, height: 220)
-
-            Circle()
-                .trim(from: 0, to: CGFloat(trimFraction()))
-                .stroke(
-                    AngularGradient(gradient: Gradient(colors: [Color(hex: "#F3EBE3"), Color(hex: "#E6B17E"), MivoColors.accent]), center: .center),
-                    style: StrokeStyle(lineWidth: 18, lineCap: .round)
-                )
-                .rotationEffect(.degrees(spin ? 270 : -90))
-                .frame(width: 220, height: 220)
-                .animation(.interpolatingSpring(stiffness: 70, damping: 11).speed(0.48), value: estimateYears)
-
-            VStack(spacing: 7) {
-                Text((estimateYears != nil || displayYears > 0) ? String(format: "%.2f", displayYears > 0 ? displayYears : (estimateYears ?? 0)) : "--")
-                    .font(.system(size: 48, weight: .bold).monospacedDigit())
-                    .foregroundColor(.white)
+        VStack(spacing: 18) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("YOUR TIME, RETURNING")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(MivoColors.accent)
+                    Text("Each square is a few days")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                }
+                Spacer()
+                Text(recoveryFinished ? "RECLAIMED" : "\(recoveryPercent)%")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
+                    .foregroundColor(recoveryFinished ? MivoColors.blue : MivoColors.textSecondary)
                     .contentTransition(.numericText())
-                Text("years we can recover")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.68))
+            }
+
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: 3),
+                    count: recoveryColumns
+                ),
+                spacing: 3
+            ) {
+                ForEach(0..<recoveryCellTotal, id: \.self) { index in
+                    let recovered = isRecoveredCell(index)
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(recoveryCellColor(index))
+                        .aspectRatio(1, contentMode: .fit)
+                        .scaleEffect(recovered ? 1 : 0.94)
+                        .overlay {
+                            if recovered {
+                                RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                                    .strokeBorder(MivoColors.white.opacity(0.38), lineWidth: 0.75)
+                            }
+                        }
+                        .animation(
+                            .spring(response: 0.28, dampingFraction: 0.68),
+                            value: recoveredCellCount
+                        )
+                }
+            }
+            .overlay {
+                GeometryReader { proxy in
+                    if recoveredCellCount > 0 && !recoveryFinished {
+                        Capsule()
+                            .fill(MivoColors.blue.opacity(0.55))
+                            .frame(height: 2)
+                            .shadow(color: MivoColors.blue.opacity(0.34), radius: 5)
+                            .offset(y: recoverySweepOffset(in: proxy.size.height))
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+
+            HStack(spacing: 18) {
+                recoveryLegend(color: MivoColors.textPrimary.opacity(0.82), text: "Scrolling")
+                recoveryLegend(color: MivoColors.blue, text: "Time returned")
+                Spacer()
+            }
+
+            VStack(spacing: 3) {
+                Text(estimateYears == nil ? "--" : String(format: "%.2f", displayYears))
+                    .font(.system(size: 44, weight: .heavy, design: .rounded).monospacedDigit())
+                    .foregroundColor(MivoColors.textPrimary)
+                    .contentTransition(.numericText(countsDown: false))
+                Text("years recovered for the things you choose")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .multilineTextAlignment(.center)
             }
         }
-        .onTapGesture {
-            HapticsService.impact(style: .medium)
-            withAnimation(.easeOut(duration: 1.6)) { spin.toggle() }
+        .padding(20)
+        .background(MivoColors.surfaceRaised.opacity(0.78))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(MivoColors.border.opacity(0.7), lineWidth: 1)
+        )
+        .shadow(color: MivoColors.textPrimary.opacity(0.06), radius: 18, y: 8)
+    }
+
+    private func recoveryLegend(color: Color, text: String) -> some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(color)
+                .frame(width: 9, height: 9)
+            Text(text)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(MivoColors.textSecondary)
         }
     }
 
@@ -1320,9 +1766,294 @@ private struct ResultOnboardingView_Internal: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(MivoColors.white.opacity(0.64))
+        .background(Color.white.opacity(0.64))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.58), lineWidth: 1)
+        )
+    }
+
+    private var recoveryCellTotal: Int { recoveryColumns * recoveryRows }
+
+    private var scrollingRows: Int {
+        let dailyScroll = appVM.onboardingProfile.scrollEstimateMinutes ?? 60
+        return min(7, max(3, Int((Double(dailyScroll) / 45.0).rounded())))
+    }
+
+    private var scrollingCellStart: Int {
+        recoveryCellTotal - (scrollingRows * recoveryColumns)
+    }
+
+    private var recoveryTargetCellCount: Int {
+        guard let estimateYears else { return 0 }
+        let representedYearFraction = min(1, max(0, estimateYears))
+        let target = max(1, Int((representedYearFraction * Double(recoveryCellTotal)).rounded()))
+        return min(recoveryCellTotal - scrollingCellStart, target)
+    }
+
+    private var recoveryPercent: Int {
+        guard recoveryTargetCellCount > 0 else { return 0 }
+        return min(100, Int((Double(recoveredCellCount) / Double(recoveryTargetCellCount) * 100).rounded()))
+    }
+
+    private func isRecoveredCell(_ index: Int) -> Bool {
+        guard index >= scrollingCellStart else { return false }
+        return index - scrollingCellStart < recoveredCellCount
+    }
+
+    private func recoveryCellColor(_ index: Int) -> Color {
+        if isRecoveredCell(index) {
+            return MivoColors.blue
+        }
+        if index >= scrollingCellStart {
+            return MivoColors.textPrimary.opacity(0.82)
+        }
+        return MivoColors.border.opacity(0.42)
+    }
+
+    private func recoverySweepOffset(in height: CGFloat) -> CGFloat {
+        let startRatio = CGFloat(recoveryRows - scrollingRows) / CGFloat(recoveryRows)
+        let availableHeight = height * CGFloat(scrollingRows) / CGFloat(recoveryRows)
+        return min(height - 2, (height * startRatio) + (availableHeight * CGFloat(recoveryPercent) / 100))
+    }
+
+    private var currentAge: Int {
+        if let providedAge { return providedAge }
+        switch providedAgeRange ?? appVM.onboardingProfile.ageRange {
+        case "Under 18": return 17
+        case "18-24": return 21
+        case "25-34": return 29
+        case "35-44": return 39
+        case "45-54": return 49
+        case "55+": return 59
+        default: return appVM.onboardingProfile.age ?? 30
+        }
+    }
+
+    private func computeEstimates() {
+        let profile = appVM.onboardingProfile
+        let estimatedScroll = Double(profile.scrollEstimateMinutes ?? 60)
+        let intentionBoost = Double(min(profile.intentions.count, 4)) * 0.03
+        let repeatedLoopBoost = profile.intentions.contains(.killTime) || profile.intentions.contains(.bored) ? 0.18 : 0
+        let heuristic = max(3, min(240, Int((estimatedScroll * (0.10 + intentionBoost + repeatedLoopBoost)).rounded())))
+
+        publishEstimate(heuristic, saveSummary: false)
+
+        Task {
+            let aiEstimate = await AIService.estimateSavedMinutes(profile: profile)
+            let saved = max(3, min(240, max(aiEstimate, heuristic)))
+            await MainActor.run { publishEstimate(saved, saveSummary: true) }
+        }
+    }
+
+    private func publishEstimate(_ minutes: Int, saveSummary: Bool) {
+        let recovered = (Double(minutes) / (60 * 24)) * Double(max(1, 80 - currentAge))
+        let shouldAnimate = estimateMinutes != minutes || estimateYears == nil
+        estimateMinutes = minutes
+        estimateYears = recovered
+        if shouldAnimate {
+            animateRecovery(to: recovered)
+        }
+
+        guard saveSummary else { return }
+        appVM.appendAISummary(
+            String(format: "PredictedSavedMinPerDay: %d | PredictedRecoveredYears: %.2f", minutes, recovered)
+        )
+    }
+
+    private func animateRecovery(to recoveredYears: Double) {
+        recoveryAnimationTask?.cancel()
+        recoveredCellCount = 0
+        displayYears = 0
+        recoveryFinished = false
+
+        recoveryAnimationTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            guard !Task.isCancelled else { return }
+
+            let target = recoveryTargetCellCount
+            guard target > 0 else { return }
+            for cell in 1...target {
+                guard !Task.isCancelled else { return }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) {
+                    recoveredCellCount = cell
+                    displayYears = recoveredYears * Double(cell) / Double(target)
+                }
+                if cell.isMultiple(of: recoveryColumns) || cell == target {
+                    HapticsService.impact(style: .medium)
+                }
+                try? await Task.sleep(nanoseconds: 42_000_000)
+            }
+
+            guard !Task.isCancelled else { return }
+            withAnimation(.spring(response: 0.46, dampingFraction: 0.78)) {
+                displayYears = recoveredYears
+                recoveryFinished = true
+            }
+            HapticsService.success()
+        }
+    }
+}
+
+private struct LegacyResultOnboardingView_Internal: View {
+    @EnvironmentObject var appVM: AppViewModel
+    @Environment(\.dismiss) var dismiss
+
+    // Accept provided age/range so remaining life matches the visualization
+    let providedAge: Int?
+    let providedAgeRange: String?
+
+    @State private var estimateMinutes: Int? = nil
+    @State private var estimateYears: Double? = nil
+    @State private var displayYears: Double = 0.0
+    @State private var appear = false
+    @State private var spin = false
+    @State private var showRecoveryCopy = false
+    @State private var showRecoveryDetails = false
+
+    var body: some View {
+        ZStack {
+            OnboardingBackdrop()
+
+            VStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("YOUR RECOVERY")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(OnboardingTheme.accent)
+                        Spacer()
+                        Text("10 of 12")
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                            .foregroundColor(OnboardingTheme.textSecondary)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 14)
+
+                    Spacer(minLength: 22)
+
+                    VStack(spacing: 24) {
+                        Text("The good news is that Mivo can help you get back")
+                            .font(.system(size: 19, weight: .bold, design: .rounded))
+                            .foregroundColor(OnboardingTheme.textPrimary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 30)
+                            .onboardingEntrance(showRecoveryCopy)
+
+                        recoveredWheel
+                            .onboardingEntrance(showRecoveryCopy, delay: 0.08)
+
+                        if let mins = estimateMinutes, let years = estimateYears {
+                            recoveredStats(minutes: mins, years: years)
+                                .onboardingEntrance(showRecoveryDetails)
+                        }
+                    }
+
+                    Spacer(minLength: 18)
+                }
+
+                OnboardingBottomBar {
+                    NavigationLink {
+                        WidgetOnboardingView_Internal()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text("Continue")
+                                .font(.system(size: 16, weight: .semibold))
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundColor(MivoColors.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 17)
+                        .background(MivoColors.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
+                    }
+                    .simultaneousGesture(TapGesture().onEnded {
+                        HapticsService.impact(style: .light)
+                    })
+                }
+            }
+            .onAppear {
+                guard !appear else { return }
+                appear = true
+                showRecoveryCopy = true
+                computeEstimates()
+            }
+         }
+         .onboardingNavigationChromeHidden()
+    }
+
+    private var recoveredWheel: some View {
+        VStack(spacing: 3) {
+            Text((estimateYears != nil || displayYears > 0) ? String(format: "%.1f years", displayYears > 0 ? displayYears : (estimateYears ?? 0)) : "--")
+                .font(.system(size: 52, weight: .heavy, design: .rounded).monospacedDigit())
+                .foregroundColor(OnboardingTheme.accent)
+                .contentTransition(.numericText(countsDown: false))
+                .animation(.spring(response: 0.45, dampingFraction: 0.8), value: displayYears)
+
+            Text("of your life for the things you choose")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundColor(OnboardingTheme.textPrimary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 10)
+        }
+        .frame(height: 172)
+        .padding(.horizontal, 20)
+    }
+
+    private func recoveredStats(minutes: Int, years: Double) -> some View {
+        VStack(spacing: 0) {
+            recoverySummaryRow(icon: "clock.fill", value: "\(minutes) min", label: "potentially recovered each day")
+            Rectangle().fill(OnboardingTheme.border).frame(height: 1)
+            recoverySummaryRow(icon: "sun.max.fill", value: String(format: "%.0f days", years * 365), label: "potentially recovered over time")
+
+            Text("This estimate becomes more accurate after Mivo observes your real behavior.")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(OnboardingTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .padding(.top, 16)
+        }
+        .padding(.horizontal, 24)
+    }
+
+    private func recoverySummaryRow(icon: String, value: String, label: String) -> some View {
+        HStack(spacing: 13) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(OnboardingTheme.accent)
+                .frame(width: 32, height: 48)
+            Text(value)
+                .font(.system(size: 16, weight: .bold).monospacedDigit())
+                .foregroundColor(OnboardingTheme.textPrimary)
+            Spacer()
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(OnboardingTheme.textSecondary)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func recoveryStatCard(value: String, label: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Color(hex: "#A97B5B"))
+            Text(value)
+                .font(.system(size: 25, weight: .bold).monospacedDigit())
+                .foregroundColor(MivoColors.textPrimary)
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(MivoColors.textSecondary)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(MivoColors.surfaceRaised.opacity(0.64))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(OnboardingTheme.border, lineWidth: 1))
     }
 
     // Compute the trim fraction for the wheel: yearsRecovered / remainingYears (clamped 0..1)
@@ -1386,7 +2117,10 @@ private struct ResultOnboardingView_Internal: View {
                 }
             }
             HapticsService.impact(style: .medium)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { HapticsService.success() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                showRecoveryDetails = true
+                HapticsService.success()
+            }
 
             guard shouldSaveSummary else { return }
             var parts: [String] = []
@@ -1423,8 +2157,6 @@ private struct ResultOnboardingView_Internal: View {
 }
 
 private struct WidgetOnboardingView_Internal: View {
-    @EnvironmentObject var appVM: AppViewModel
-    @Environment(\.dismiss) var dismiss
     @State private var appear = false
     
     var body: some View {
@@ -1435,8 +2167,8 @@ private struct WidgetOnboardingView_Internal: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 10,
-                            total: 10,
+                            step: 11,
+                            total: 12,
                             eyebrow: "Widget",
                             title: "Keep Mivo visible",
                             subtitle: "Add the Mivo widget so your scroll time and next window stay visible before you drift."
@@ -1459,21 +2191,30 @@ private struct WidgetOnboardingView_Internal: View {
                 }
                 
                 OnboardingBottomBar {
-                    OnboardingPrimaryButton("I added it") {
-                        Image(systemName: "checkmark")
-                    } action: {
-                        dismiss()
-                        Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 50_000_000)
-                            appVM.completeOnboarding()
-                            HapticsService.success()
+                    NavigationLink {
+                        OnboardingReferralSourceView()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text("I added it")
+                                .font(.system(size: 16, weight: .semibold))
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 15, weight: .semibold))
                         }
+                        .foregroundColor(MivoColors.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 17)
+                        .background(MivoColors.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
                     }
+                    .simultaneousGesture(TapGesture().onEnded {
+                        HapticsService.impact(style: .light)
+                    })
                 }
             }
             .onAppear { appear = true }
         }
-        .navigationBarBackButtonHidden(true)
+        .onboardingNavigationChromeHidden()
     }
     
     private var widgetPreview: some View {
@@ -1534,6 +2275,14 @@ private struct WidgetOnboardingView_Internal: View {
         )
     }
 }
+
+#if DEBUG
+struct OnboardingTimePreviewView: View {
+    var body: some View {
+        LifeBreakdownView_Internal(providedAge: 17, providedAgeRange: "Under 18")
+    }
+}
+#endif
 
 // Small UIKit-backed blur wrapper for SwiftUI
 private struct BlurView: UIViewRepresentable {

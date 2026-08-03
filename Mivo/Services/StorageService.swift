@@ -4,6 +4,7 @@ enum StorageKey: String {
     case user = "mivo_user"
     case sessions = "mivo_sessions"
     case truthChecks = "mivo_truth_checks"
+    case dailyScreenTimeObservations = "mivo_daily_screen_time_observations"
     case settings = "mivo_settings"
     case credentials = "mivo_credentials"
     case authSession = "mivo_auth_session"
@@ -19,6 +20,18 @@ enum StorageKey: String {
     case appInterventionRules = "mivo_app_intervention_rules"
     case accountabilitySummary = "mivo_accountability_summary"
     case widgetSharedSummary = "mivo_widget_shared_summary"
+    case weeklyExperiments = "mivo_weekly_experiments"
+    case interventionAttempts = "mivo_intervention_attempts"
+    case featureFlags = "mivo_feature_flags"
+    case recoveryPlans = "mivo_recovery_plans"
+    case appFrictionProfiles = "mivo_app_friction_profiles"
+    case monthlyEffectReports = "mivo_monthly_effect_reports"
+    case accountabilityConnections = "mivo_accountability_connections"
+    case diagnosticsEnabled = "mivo_diagnostics_enabled"
+    case mivoClearSessions = "mivo_clear_sessions"
+    case mivoClearDisclosureSeen = "mivo_clear_disclosure_seen"
+    case mivoClearTutorialVersion = "mivo_clear_tutorial_version"
+    case mivoClearAgeConfirmed = "mivo_clear_age_confirmed"
     // AI dataset storage - aggregated inputs for the AI engine
     case aiDataset = "mivo_ai_dataset"
 }
@@ -57,6 +70,20 @@ struct StorageService {
 
     static func remove(forKey key: StorageKey, email: String) {
         UserDefaults.standard.removeObject(forKey: scopedRawKey(for: key, email: email))
+    }
+
+    static func removeAllMivoData() {
+        for key in UserDefaults.standard.dictionaryRepresentation().keys
+        where key.hasPrefix("mivo_") || key.hasPrefix("mivo.") {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
+    static func removeUserScopedMivoData(email: String) {
+        let suffix = "_user_\(simpleHash(email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)))"
+        for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasSuffix(suffix) {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     static func exists(forKey key: StorageKey) -> Bool {

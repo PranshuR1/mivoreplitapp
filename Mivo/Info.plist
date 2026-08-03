@@ -4,8 +4,12 @@
 <dict>
 	<key>AI_API_BASE_URL</key>
 	<string></string>
-	<key>MIVO_AUTH_API_URL</key>
-	<string>http://10.0.0.165:8787</string>
+	<key>MIVO_SUPABASE_ANON_KEY</key>
+	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBnbWJxeGNzaGd2em54ZGJweXJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNTM5NDMsImV4cCI6MjA5NTYyOTk0M30.-Q1t6Ao6xDyuxWkdgofn0br2l0WjVVj9YqIOeH3aLT8</string>
+	<key>MIVO_SUPABASE_URL</key>
+	<string>https://pgmbqxcshgvznxdbpyre.supabase.co</string>
+	<key>MIVO_GOOGLE_CLIENT_ID</key>
+	<string>$(MIVO_GOOGLE_CLIENT_ID)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -34,20 +38,36 @@
 				<string>mivo</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(MIVO_GOOGLE_REVERSED_CLIENT_ID)</string>
+			</array>
+		</dict>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Mivo uses Face ID to protect your data.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Mivo connects to your local account server while you test the app.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Mivo Clear uses the camera only when you choose to take a photo or video in Snapchat.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Mivo Clear uses the microphone only when you choose to record or call in Snapchat.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
+	<key>WKAppBoundDomains</key>
+	<array>
+		<string>instagram.com</string>
+		<string>facebook.com</string>
+		<string>tiktok.com</string>
+		<string>youtube.com</string>
+		<string>youtu.be</string>
+		<string>googlevideo.com</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

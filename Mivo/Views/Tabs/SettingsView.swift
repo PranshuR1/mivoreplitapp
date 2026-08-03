@@ -1,4 +1,6 @@
 import SwiftUI
+import Charts
+import UserNotifications
 
 #if canImport(FamilyControls)
 import FamilyControls
@@ -6,6 +8,7 @@ import FamilyControls
 
 struct SettingsView: View {
     @EnvironmentObject var appVM: AppViewModel
+    @ObservedObject private var expansion = ProductExpansionStore.shared
     @State private var notificationsOn = false
     @State private var showResetAlert = false
     @State private var showLogoutAlert = false
@@ -29,16 +32,19 @@ struct SettingsView: View {
     @State private var cachedScreenTimeAuthorization = FamilyControlsManager.shared.cachedAuthorizationStatus()
     @State private var accountabilityEnabled = false
     @State private var accountabilityShareText = ""
-    @State private var firstScrollStartHour = 14
-    @State private var secondScrollStartHour = 20
-    @State private var adminUsers: [AdminUser] = []
-    @State private var adminLoading = false
-    @State private var adminMessage: String? = nil
-    @State private var adminDeleteCandidate: AdminUser? = nil
+    @State private var lateNightProtectionEnabled = false
+    @State private var lateNightStartHour = 22
+    @State private var lateNightWakeHour = 7
+    @State private var scrollScheduleWindows: [ScreenScrollWindow] = [
+        ScreenScrollWindow(id: "settings-session-1", title: "Your session 1", startHour: 14, endHour: 15, minutes: 15, reason: "You chose this time."),
+        ScreenScrollWindow(id: "settings-session-2", title: "Your session 2", startHour: 20, endHour: 21, minutes: 15, reason: "You chose this time.")
+    ]
     @State private var blockerSelfTestRunning = false
     @State private var blockerSelfTestMessage: String? = nil
     @State private var showBlockerSelfTestAlert = false
     @State private var showBlockerDiagnosticsSheet = false
+    @State private var adminPushStatus = "Checking notification access..."
+    @State private var showPreSignInPreview = false
     #if DEBUG
     @State private var extensionLogs: [String] = []
     #endif
@@ -57,73 +63,205 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     settingsHeader
 
-                    settingsSection("Account") {
+                    NavigationLink {
+                        accountAdvancedSettingsPage
+                    } label: {
                         accountSummaryRow
                     }
+                    .buttonStyle(SettingsRowButtonStyle())
 
-                    if appVM.isAdminUser {
-                        settingsSection("Admin") {
-                            adminPanel
+                    settingsStatusStrip
+
+                    settingsSection("Your plan") {
+                        settingsCategoryRow(
+                            icon: "calendar.badge.clock",
+                            color: MivoColors.accent,
+                            title: "Daily schedule",
+                            subtitle: "Reminders and today’s scroll windows",
+                            destination: { dailyPlanSettingsPage }
+                        )
+                        rowSeparator()
+                        settingsCategoryRow(
+                            icon: "moon.stars.fill",
+                            color: MivoColors.accent,
+                            title: "Late-night protection",
+                            subtitle: "Wake time, longer pauses, and last scroll",
+                            destination: { dailyPlanSettingsPage }
+                        )
+                        rowSeparator()
+                        settingsCategoryRow(
+                            icon: "person.2.fill",
+                            color: MivoColors.orange,
+                            title: "Accountability",
+                            subtitle: "Private weekly summaries and partners",
+                            destination: { dailyPlanSettingsPage }
+                        )
+                    }
+
+                    settingsSection("Protection") {
+                        settingsCategoryRow(
+                            icon: "shield.lefthalf.filled",
+                            color: MivoColors.accent,
+                            title: "Selected apps",
+                            subtitle: interventionSelectionSummaryText,
+                            destination: { protectionSettingsPage }
+                        )
+                        rowSeparator()
+                        settingsCategoryRow(
+                            icon: "slider.horizontal.3",
+                            color: MivoColors.blue,
+                            title: "App-specific rules",
+                            subtitle: "Adaptive friction and intervention behavior",
+                            destination: { protectionSettingsPage }
+                        )
+                        if expansion.isEnabled(.mivoClear) {
+                            rowSeparator()
+                            settingsCategoryRow(
+                                icon: "sparkles.rectangle.stack.fill",
+                                color: MivoColors.accent,
+                                title: "Mivo Clear BETA",
+                                subtitle: "Focused Instagram, TikTok, and YouTube",
+                                destination: { protectionSettingsPage }
+                            )
                         }
+                    }
+
+                    settingsSection("Progress & tools") {
+                        settingsCategoryRow(
+                            icon: "flask.fill",
+                            color: MivoColors.blue,
+                            title: "Experiments",
+                            subtitle: "Start, track, and review seven-day changes",
+                            destination: { toolsSettingsPage }
+                        )
+                        rowSeparator()
+                        settingsCategoryRow(
+                            icon: "calendar.badge.chartbar",
+                            color: MivoColors.accent,
+                            title: "Weekly report",
+                            subtitle: "Swipe through your recap and weekly statistics",
+                            destination: { weeklyReportSettingsPage }
+                        )
+                        rowSeparator()
+                        settingsCategoryRow(
+                            icon: "hand.raised.square.fill",
+                            color: MivoColors.blue,
+                            title: "Privacy Center",
+                            subtitle: "Permissions, synced data, export, and deletion",
+                            destination: { toolsSettingsPage }
+                        )
                     }
 
                     settingsSection("Preferences") {
-                        dailyReminderRow
-                        rowSeparator()
-                        interventionRows
+                        appearancePreferenceRow
                     }
 
-                    settingsSection("Accountability & Rules") {
-                        accountabilityRow
+                    settingsSection("Account") {
+                        settingsCategoryRow(
+                            icon: "bell.fill",
+                            color: MivoColors.accent,
+                            title: "Notifications",
+                            subtitle: notificationsOn ? "Daily reminders are on" : "Manage reminders and alerts",
+                            destination: { dailyPlanSettingsPage }
+                        )
                         rowSeparator()
-                        scrollScheduleRows
+                        settingsCategoryRow(
+                            icon: "arrow.down.to.line",
+                            color: MivoColors.accent,
+                            title: "Data & advanced",
+                            subtitle: "Export, diagnostics, sign out, and reset",
+                            destination: { accountAdvancedSettingsPage }
+                        )
                         rowSeparator()
-                        appRulesRows
+                        settingsCategoryRow(
+                            icon: "questionmark.circle.fill",
+                            color: MivoColors.accent,
+                            title: "Help & feedback",
+                            subtitle: "Report a bug or request a feature",
+                            destination: { toolsSettingsPage }
+                        )
                     }
 
-                    settingsSection("Screen Time") {
-                        screenTimeAccessRow
-                        rowSeparator()
-                        monitoringRow
-                        rowSeparator()
-                        blockerSelfTestRow
-                    }
-
-                    settingsSection("Reports") {
-                        settingsNavigationRow(icon: "calendar", title: "Weekly report", subtitle: "Review your weekly pattern") {
-                            WeeklyReportView()
+                    if appVM.canAccessSuperAdminCenter {
+                        settingsSection("Super Admin") {
+                            settingsNavigationRow(
+                                icon: "rectangle.3.group.fill",
+                                title: "Super Admin Center",
+                                subtitle: "Full access to users, analytics, campaigns, and security"
+                            ) {
+                                MivoAdminCenterView()
+                                    .environmentObject(appVM)
+                            }
+                            rowSeparator()
+                            settingsNavigationRow(
+                                icon: "bell.badge.fill",
+                                title: "Announcement drafts",
+                                subtitle: "Create, review, publish, or archive announcements"
+                            ) {
+                                AnnouncementAdminView()
+                            }
+                            rowSeparator()
+                            settingsNavigationRow(
+                                icon: "person.3.fill",
+                                title: "User database",
+                                subtitle: "Search users, review progress, and manage roles"
+                            ) {
+                                AdminUserDatabaseView()
+                            }
+                            rowSeparator()
+                            settingsActionRow(
+                                icon: "app.badge.fill",
+                                title: "New-account alerts",
+                                subtitle: adminPushStatus
+                            ) {
+                                if let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                            if appVM.canReplayFounderOnboarding {
+                                rowSeparator()
+                                settingsActionRow(
+                                    icon: "person.crop.circle.badge.questionmark",
+                                    title: "Preview before sign-in",
+                                    subtitle: "View the first-open story, sign in, registration, and recovery screens"
+                                ) {
+                                    showPreSignInPreview = true
+                                }
+                                rowSeparator()
+                                settingsActionRow(
+                                    icon: "arrow.counterclockwise.circle.fill",
+                                    title: "Re-run onboarding",
+                                    subtitle: "Experience all 12 steps again without deleting your data"
+                                ) {
+                                    appVM.startFounderOnboardingReplay()
+                                }
+                            }
                         }
-                        rowSeparator()
-                        settingsNavigationRow(icon: "shield", title: "Intervention preview", subtitle: "Practice the 5-second pause") {
-                            InterventionView(intention: nil, duration: nil)
-                        }
-                        rowSeparator()
-                        settingsActionRow(icon: "arrow.down.to.line", title: "Export data", subtitle: "Prepare your local Mivo data") {
-                            Task { await exportDataAsync() }
-                        }
-                    }
-
-                    settingsSection("Advanced") {
-                        deviceReportRow
-                        #if DEBUG
-                        rowSeparator()
-                        extensionLogsRow
-                        #endif
-                        rowSeparator()
-                        diagnosticsRow
-                    }
-
-                    settingsSection("Danger Zone") {
-                        settingsActionRow(icon: "rectangle.portrait.and.arrow.right", title: "Sign out", subtitle: "Return to the login screen", destructive: true) {
-                            showLogoutAlert = true
-                        }
-                        rowSeparator()
-                        settingsActionRow(icon: "trash", title: "Reset all data", subtitle: "Delete local account, sessions, and settings", destructive: true) {
-                            showResetAlert = true
+                    } else if appVM.canManageAnnouncements {
+                        settingsSection("Admin") {
+                            settingsNavigationRow(
+                                icon: "bell.badge.fill",
+                                title: "Announcement drafts",
+                                subtitle: "Prepare drafts for founder approval"
+                            ) {
+                                AnnouncementAdminView()
+                            }
                         }
                     }
 
-                    Text("Mivo · Data stays on your device")
+                    if appVM.isAmbassadorUser {
+                        settingsSection("Ambassador") {
+                            settingsNavigationRow(
+                                icon: "person.2.badge.gearshape.fill",
+                                title: "Your referrals",
+                                subtitle: "People who entered your assigned ambassador name"
+                            ) {
+                                AmbassadorDashboardView()
+                            }
+                        }
+                    }
+
+                    Text("Mivo \(appVersionText) · Data stays on your device")
                         .font(.system(size: 12))
                         .foregroundColor(MivoColors.textMuted)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -131,15 +269,25 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
+                .mivoReadableWidth()
             }
         }
         .navigationBarHidden(true)
+        .fullScreenCover(isPresented: $appVM.onboardingReplayActive) {
+            OnboardingWelcomeView(replayMode: true)
+                .environmentObject(appVM)
+        }
+        .fullScreenCover(isPresented: $showPreSignInPreview) {
+            FounderPreSignInPreviewView()
+                .environmentObject(appVM)
+        }
         .onAppear {
             refreshSettingsSnapshot()
             applyImpulseProtectionAfterRender()
             refreshProtectedAppRecommendation()
-            if appVM.isAdminUser {
-                Task { await refreshAdminUsers() }
+            Task {
+                await appVM.refreshServerAdminRole()
+                await refreshAdminPushStatus()
             }
         }
         #if canImport(FamilyControls)
@@ -166,16 +314,6 @@ struct SettingsView: View {
             Button("Delete all data", role: .destructive) { appVM.resetAllData() }
         } message: {
             Text("This will delete your account, credentials, onboarding, sessions, and local app data permanently.")
-        }
-        .alert(item: $adminDeleteCandidate) { user in
-            Alert(
-                title: Text("Delete user?"),
-                message: Text("Delete \(user.email) from the online Mivo database? This cannot be undone."),
-                primaryButton: .destructive(Text("Delete")) {
-                    Task { await deleteAdminUser(user) }
-                },
-                secondaryButton: .cancel()
-            )
         }
         // Simple status alert for informational messages
         .alert("Family Controls", isPresented: $showFamilyControlsAlert, actions: {
@@ -306,7 +444,7 @@ struct SettingsView: View {
                             .foregroundColor(MivoColors.textPrimary)
                             .padding()
                             .background(MivoColors.card)
-                            .cornerRadius(12)
+                            .cornerRadius(8)
                             .padding(.horizontal, 16)
                     }
                 }
@@ -320,7 +458,7 @@ struct SettingsView: View {
                         .padding(.vertical, 8)
                         .background(MivoColors.accentLight)
                         .foregroundColor(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .padding(.bottom, 16)
                 Button("Close", role: .cancel) {
@@ -333,15 +471,288 @@ struct SettingsView: View {
 
     // MARK: - Helpers
 
-    private var settingsHeader: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("Settings")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
+    private var settingsStatusStrip: some View {
+        HStack(spacing: 8) {
+            settingsStatusCell(
+                title: "Screen Time",
+                value: cachedScreenTimeAuthorization == true ? "Ready" : "Needs access",
+                icon: cachedScreenTimeAuthorization == true ? "checkmark.shield.fill" : "exclamationmark.shield.fill",
+                color: cachedScreenTimeAuthorization == true ? MivoColors.blue : MivoColors.orange
+            )
+            Divider().overlay(MivoColors.border.opacity(0.4)).padding(.vertical, 10)
+            settingsStatusCell(
+                title: "Protection",
+                value: impulseProtectionEnabled ? "On" : "Off",
+                icon: "lock.shield.fill",
+                color: impulseProtectionEnabled ? MivoColors.accent : MivoColors.textMuted
+            )
+            Divider().overlay(MivoColors.border.opacity(0.4)).padding(.vertical, 10)
+            settingsStatusCell(
+                title: "Today",
+                value: appVM.isTodayScrollScheduleLocked ? "Locked" : "Not locked",
+                icon: "calendar.badge.clock",
+                color: appVM.isTodayScrollScheduleLocked ? MivoColors.green : MivoColors.textMuted
+            )
+        }
+        .mivoC3Section(verticalPadding: 8)
+    }
+
+    private func settingsStatusCell(title: String, value: String, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(color)
+            Text(value)
+                .font(.system(size: 13, weight: .bold))
                 .foregroundColor(MivoColors.textPrimary)
-                .tracking(-0.5)
-            Text("Account, protection, and Screen Time settings.")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(MivoColors.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(MivoColors.textMuted)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+        .padding(12)
+    }
+
+    private func settingsCategoryRow(
+        icon: String,
+        color: Color,
+        title: String,
+        subtitle: String,
+        destination: @escaping () -> AnyView
+    ) -> some View {
+        NavigationLink {
+            destination()
+        } label: {
+            HStack(spacing: 13) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(color)
+                    .frame(width: 40, height: 40)
+                    .background(color.opacity(0.11))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                rowText(title: title, subtitle: subtitle)
+                Spacer(minLength: 8)
+                chevron
+            }
+            .padding(.vertical, 13)
+            .padding(.horizontal, 2)
+        }
+        .buttonStyle(SettingsRowButtonStyle())
+    }
+
+    private var dailyPlanSettingsPage: AnyView {
+        AnyView(settingsSubpage(title: "Daily Plan", subtitle: "Shape when Mivo checks in and when scrolling is available.") {
+            settingsSection("Reminders") {
+                dailyReminderRow
+            }
+            settingsSection("Late-Night Protection") {
+                lateNightProtectionRows
+            }
+            settingsSection("Accountability") {
+                accountabilityRow
+            }
+            settingsSection("Scroll Schedule") {
+                scrollScheduleRows
+            }
+        })
+    }
+
+    private var appearancePreferenceRow: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(spacing: 13) {
+                Image(systemName: "circle.lefthalf.filled")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(MivoColors.blue)
+                    .frame(width: 40, height: 40)
+                    .background(MivoColors.blue.opacity(0.11))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                rowText(title: "Appearance", subtitle: "System follows your iPhone automatically")
+            }
+
+            Picker("Appearance", selection: Binding(
+                get: { appVM.appearanceMode },
+                set: { mode in
+                    appVM.setAppearanceMode(mode)
+                    HapticsService.selection()
+                }
+            )) {
+                ForEach(AppAppearanceMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .tint(MivoColors.accent)
+            .accessibilityHint("Choose whether Mivo follows the iPhone appearance or always uses light or dark mode")
+        }
+        .padding(.vertical, 13)
+        .padding(.horizontal, 2)
+    }
+
+    private var protectionSettingsPage: AnyView {
+        AnyView(settingsSubpage(title: "App Protection", subtitle: "Manage protected apps, intervention behavior, and Screen Time access.") {
+            if expansion.isEnabled(.mivoClear) {
+                settingsSection("Focused Social") {
+                    settingsNavigationRow(
+                        icon: "sparkles.rectangle.stack.fill",
+                        title: "Mivo Clear BETA",
+                        subtitle: "Map Instagram, TikTok, and YouTube"
+                    ) {
+                        MivoClearSettingsView().environmentObject(appVM)
+                    }
+                }
+            }
+            settingsSection("Protected Apps") {
+                interventionRows
+            }
+            settingsSection("App Rules") {
+                appRulesRows
+            }
+            settingsSection("Screen Time") {
+                screenTimeAccessRow
+                rowSeparator()
+                monitoringRow
+                rowSeparator()
+                blockerSelfTestRow
+            }
+        })
+    }
+
+    private var toolsSettingsPage: AnyView {
+        AnyView(settingsSubpage(title: "Mivo Tools", subtitle: "Review progress, run experiments, and get support.") {
+            settingsSection("Progress & Change") {
+                if expansion.isEnabled(.monthlyEffectReport) {
+                    settingsNavigationRow(icon: "chart.line.uptrend.xyaxis", title: "Mivo Effect", subtitle: "Your monthly pattern and estimated change") {
+                        MonthlyEffectReportView().environmentObject(appVM)
+                    }
+                }
+                if expansion.isEnabled(.monthlyEffectReport) && expansion.isEnabled(.experimentLibrary) {
+                    rowSeparator()
+                }
+                if expansion.isEnabled(.experimentLibrary) {
+                    settingsNavigationRow(icon: "flask.fill", title: "Experiments", subtitle: "Start, track, and review seven-day experiments") {
+                        ExperimentLibraryView().environmentObject(appVM)
+                    }
+                }
+                if expansion.isEnabled(.experimentLibrary) && expansion.isEnabled(.appPersonalities) {
+                    rowSeparator()
+                }
+                if expansion.isEnabled(.appPersonalities) {
+                    settingsNavigationRow(icon: "slider.horizontal.3", title: "App personalities", subtitle: "Set device-local friction for each app") {
+                        AppPersonalitiesView().environmentObject(appVM)
+                    }
+                }
+            }
+
+            settingsSection("Privacy & Guidance") {
+                if expansion.isEnabled(.accountabilityPartners) {
+                    settingsNavigationRow(icon: "person.2.fill", title: "Accountability partner", subtitle: "Share a private weekly summary") {
+                        AccountabilityPartnersView().environmentObject(appVM)
+                    }
+                    rowSeparator()
+                }
+                settingsNavigationRow(icon: "hand.raised.square.fill", title: "Privacy Center", subtitle: "Permissions, synced data, export, and deletion") {
+                    MivoPrivacyCenterView().environmentObject(appVM)
+                }
+                rowSeparator()
+                settingsActionRow(icon: "play.rectangle.fill", title: "Replay app tour", subtitle: "Practice Mivo’s newest tools again") {
+                    appVM.restartTutorial()
+                }
+            }
+
+            settingsSection("Reports & Support") {
+                settingsNavigationRow(icon: "calendar", title: "Weekly report", subtitle: "Five-page recap with comparisons and charts") {
+                    WeeklyReportView()
+                }
+                rowSeparator()
+                settingsNavigationRow(icon: "shield", title: "Intervention preview", subtitle: "Practice the 5-second pause") {
+                    InterventionView(intention: nil, duration: nil)
+                }
+                rowSeparator()
+                settingsNavigationRow(icon: "bubble.left.fill", title: "Send feedback", subtitle: "Report a bug or request a feature") {
+                    FeedbackSubmissionView()
+                }
+            }
+        })
+    }
+
+    private var weeklyReportSettingsPage: AnyView {
+        AnyView(
+            WeeklyReportView()
+                .environmentObject(appVM)
+        )
+    }
+
+    private var accountAdvancedSettingsPage: AnyView {
+        AnyView(settingsSubpage(title: "Account & Advanced", subtitle: "Manage data, diagnostics, and account access.") {
+            settingsSection("Your Data") {
+                settingsActionRow(icon: "arrow.down.to.line", title: "Export data", subtitle: "Prepare your local Mivo data") {
+                    Task { await exportDataAsync() }
+                }
+            }
+
+            settingsSection("Advanced") {
+                deviceReportRow
+                #if DEBUG
+                rowSeparator()
+                extensionLogsRow
+                #endif
+                rowSeparator()
+                diagnosticsRow
+            }
+
+            settingsSection("Account Actions") {
+                settingsActionRow(icon: "rectangle.portrait.and.arrow.right", title: "Sign out", subtitle: "Return to the login screen", destructive: true) {
+                    showLogoutAlert = true
+                }
+                rowSeparator()
+                settingsActionRow(icon: "trash", title: "Reset all data", subtitle: "Delete local account, sessions, and settings", destructive: true) {
+                    showResetAlert = true
+                }
+            }
+        })
+    }
+
+    private func settingsSubpage<Content: View>(
+        title: String,
+        subtitle: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ZStack {
+            MivoColors.background.ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(subtitle)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.textSecondary)
+                        .lineSpacing(3)
+                    content()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 36)
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { refreshSettingsSnapshot() }
+    }
+
+    private var settingsHeader: some View {
+        HStack(alignment: .top, spacing: 12) {
+            MivoLogo(size: 38)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Settings")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(MivoColors.textPrimary)
+                Text("Your account, plan, and protection.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(MivoColors.textSecondary)
+            }
+            Spacer()
         }
         .padding(.top, 4)
         .padding(.bottom, 4)
@@ -363,12 +774,12 @@ struct SettingsView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(MivoColors.textPrimary)
                 HStack(spacing: 6) {
-                    Text(appVM.user?.email ?? "No email")
+                    Text(maskedAccountEmail)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(MivoColors.textSecondary)
                         .lineLimit(1)
-                    if appVM.isAdminUser {
-                        Text("ADMIN")
+                    if appVM.accountRole != "user" {
+                        Text(roleBadgeText)
                             .font(.system(size: 9, weight: .black))
                             .foregroundColor(MivoColors.heroText)
                             .padding(.horizontal, 6)
@@ -380,112 +791,50 @@ struct SettingsView: View {
             }
 
             Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(MivoColors.textMuted)
         }
-        .padding(15)
-    }
-
-    private var adminPanel: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                settingsIcon("person.3.sequence.fill", color: MivoColors.accent)
-                rowText(
-                    title: "User database",
-                    subtitle: adminLoading ? "Loading online users..." : "\(adminUsers.count) online users loaded"
-                )
-                Spacer()
-                Button {
-                    Task { await refreshAdminUsers() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(MivoColors.accent)
-                        .frame(width: 34, height: 34)
-                        .background(MivoColors.background)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(adminLoading)
-            }
-            .padding(15)
-
-            if let adminMessage {
-                rowSeparator()
-                Text(adminMessage)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(MivoColors.textSecondary)
-                    .lineSpacing(3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(15)
-            }
-
-            if !adminUsers.isEmpty {
-                rowSeparator()
-                VStack(spacing: 0) {
-                    ForEach(adminUsers) { user in
-                        adminUserRow(user)
-                        if user.id != adminUsers.last?.id {
-                            rowSeparator()
-                        }
-                    }
-                }
-            }
+        .padding(.vertical, 14)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
         }
     }
 
-    private func adminUserRow(_ user: AdminUser) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(user.isAdmin == true ? MivoColors.accent : MivoColors.background)
-                    .frame(width: 38, height: 38)
-                Text(String(user.name.prefix(1).uppercased()))
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(user.isAdmin == true ? MivoColors.heroText : MivoColors.textPrimary)
-            }
+    private var maskedAccountEmail: String {
+        guard let email = appVM.user?.email, let at = email.firstIndex(of: "@") else { return "No email" }
+        let local = String(email[..<at])
+        let domain = String(email[at...])
+        return "\(local.prefix(1))***\(domain)"
+    }
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(user.name)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
-                        .lineLimit(1)
-                    if user.isAdmin == true {
-                        Text("ADMIN")
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundColor(MivoColors.accent)
-                    }
-                }
-                Text(user.email)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(MivoColors.textSecondary)
-                    .lineLimit(1)
-                Text(adminUserMeta(user))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(MivoColors.textMuted)
-                    .lineLimit(1)
-            }
+    private var appVersionText: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    }
 
-            Spacer()
-
-            if user.isAdmin == true {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(MivoColors.textMuted)
-            } else {
-                Button {
-                    adminDeleteCandidate = user
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.red)
-                        .frame(width: 34, height: 34)
-                        .background(Color.red.opacity(0.08))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
+    private var roleBadgeText: String {
+        switch appVM.accountRole {
+        case "super_admin": return "SUPER ADMIN"
+        case "admin": return "ADMIN"
+        case "ambassador": return "AMBASSADOR"
+        default: return "USER"
         }
-        .padding(15)
+    }
+
+    @MainActor
+    private func refreshAdminPushStatus() async {
+        guard appVM.isSuperAdminUser else { return }
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            adminPushStatus = "Enabled on this device"
+        case .denied:
+            adminPushStatus = "Disabled - tap to open Settings"
+        case .notDetermined:
+            adminPushStatus = "Not requested yet"
+        @unknown default:
+            adminPushStatus = "Status unavailable"
+        }
     }
 
     private var dailyReminderRow: some View {
@@ -498,6 +847,80 @@ struct SettingsView: View {
                 .labelsHidden()
         }
         .padding(15)
+    }
+
+    @ViewBuilder
+    private var lateNightProtectionRows: some View {
+        HStack(alignment: .top, spacing: 12) {
+            settingsIcon("moon.stars.fill", color: MivoColors.blue)
+            rowText(
+                title: "Protect sleep",
+                subtitle: "Use a calmer screen, a longer pause, and one optional last scroll"
+            )
+            Spacer()
+            Toggle("", isOn: $lateNightProtectionEnabled)
+                .tint(MivoColors.accent)
+                .labelsHidden()
+                .onChange(of: lateNightProtectionEnabled) { _, _ in
+                    saveLateNightProtection()
+                }
+        }
+        .padding(15)
+
+        if lateNightProtectionEnabled {
+            rowSeparator()
+            lateNightTimeRow(
+                icon: "moonrise.fill",
+                title: "Night starts",
+                subtitle: "Selected apps get at least a 15-second pause",
+                selection: $lateNightStartHour,
+                hours: Array(20...23)
+            )
+
+            rowSeparator()
+            lateNightTimeRow(
+                icon: "sunrise.fill",
+                title: "Wake-up time",
+                subtitle: "Mivo shows this before a late-night scroll",
+                selection: $lateNightWakeHour,
+                hours: Array(5...10)
+            )
+        }
+    }
+
+    private func lateNightTimeRow(
+        icon: String,
+        title: String,
+        subtitle: String,
+        selection: Binding<Int>,
+        hours: [Int]
+    ) -> some View {
+        HStack(spacing: 12) {
+            settingsIcon(icon, color: MivoColors.accent)
+            rowText(title: title, subtitle: subtitle)
+            Spacer()
+            Picker(title, selection: selection) {
+                ForEach(hours, id: \.self) { hour in
+                    Text(settingsHourLabel(hour)).tag(hour)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .tint(MivoColors.accent)
+            .onChange(of: selection.wrappedValue) { _, _ in
+                saveLateNightProtection()
+            }
+        }
+        .padding(15)
+    }
+
+    private func saveLateNightProtection() {
+        appVM.updateLateNightProtection(
+            enabled: lateNightProtectionEnabled,
+            startHour: lateNightStartHour,
+            wakeHour: lateNightWakeHour
+        )
+        HapticsService.selection()
     }
 
     @ViewBuilder
@@ -698,9 +1121,10 @@ struct SettingsView: View {
             .padding(15)
 
             rowSeparator()
-            scrollScheduleStepper(title: "Session 1", hour: $firstScrollStartHour)
-            rowSeparator()
-            scrollScheduleStepper(title: "Session 2", hour: $secondScrollStartHour)
+            ForEach(scrollScheduleWindows.indices, id: \.self) { index in
+                if index > 0 { rowSeparator() }
+                scrollScheduleStepper(index: index)
+            }
 
             Button {
                 saveScrollSchedule()
@@ -717,39 +1141,43 @@ struct SettingsView: View {
         }
     }
 
-    private func scrollScheduleStepper(title: String, hour: Binding<Int>) -> some View {
-        HStack(spacing: 12) {
+    private func scrollScheduleStepper(index: Int) -> some View {
+        let window = scrollScheduleWindows[index]
+        let duration = max(1, window.endHour - window.startHour)
+        return HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
+                Text("Session \(index + 1)")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(MivoColors.textPrimary)
-                Text("\(settingsHourLabel(hour.wrappedValue))-\(settingsHourLabel((hour.wrappedValue + 1) % 24))")
+                Text("\(settingsHourLabel(window.startHour))-\(settingsHourLabel(window.endHour)) · \(window.minutes)m allowed · \(duration)h")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(MivoColors.textMuted)
             }
             Spacer()
-            Button { adjustScrollHour(hour, by: -1) } label: {
-                Image(systemName: "minus")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(MivoColors.textPrimary)
-                    .frame(width: 32, height: 32)
-                    .background(MivoColors.background)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(appVM.isTodayScrollScheduleLocked)
-            .opacity(appVM.isTodayScrollScheduleLocked ? 0.45 : 1)
-            Text(settingsHourLabel(hour.wrappedValue))
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+            Menu {
+                ForEach(0...max(0, 24 - duration), id: \.self) { candidate in
+                    Button {
+                        setScrollWindowStart(at: index, to: candidate)
+                    } label: {
+                        if candidate == window.startHour {
+                            Label(settingsHourLabel(candidate), systemImage: "checkmark")
+                        } else {
+                            Text(settingsHourLabel(candidate))
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(settingsHourLabel(window.startHour))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                }
                 .foregroundColor(MivoColors.textPrimary)
-                .frame(width: 62)
-            Button { adjustScrollHour(hour, by: 1) } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(MivoColors.textPrimary)
-                    .frame(width: 32, height: 32)
-                    .background(MivoColors.background)
-                    .clipShape(Circle())
+                .padding(.horizontal, 10)
+                .frame(height: 36)
+                .background(MivoColors.background)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(appVM.isTodayScrollScheduleLocked)
@@ -886,12 +1314,12 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .heavy))
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .bold))
                 .foregroundColor(MivoColors.textMuted)
-                .tracking(0.8)
-                .padding(.horizontal, 6)
+                .textCase(.uppercase)
+                .padding(.horizontal, 2)
             settingsCard {
                 VStack(spacing: 0) {
                     content()
@@ -946,50 +1374,6 @@ struct SettingsView: View {
         }
     }
 
-    private func adminUserMeta(_ user: AdminUser) -> String {
-        if let lastLogin = user.lastLoginAt, let date = ISO8601DateFormatter().date(from: lastLogin) {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
-            return "Last login \(formatter.string(from: date))"
-        }
-        if let created = ISO8601DateFormatter().date(from: user.createdAt) {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .none
-            return "Created \(formatter.string(from: created))"
-        }
-        return "Created \(user.createdAt)"
-    }
-
-    @MainActor
-    private func refreshAdminUsers() async {
-        guard appVM.isAdminUser else { return }
-        adminLoading = true
-        adminMessage = nil
-        do {
-            adminUsers = try await appVM.loadAdminUsers()
-            adminMessage = adminUsers.isEmpty ? "No users found yet." : "Loaded every account from the online Mivo database."
-        } catch {
-            adminUsers = []
-            adminMessage = "Admin tools need the online Mivo backend running and configured in MIVO_AUTH_API_URL. The admin account can sign in, but user management cannot load without that server."
-        }
-        adminLoading = false
-    }
-
-    @MainActor
-    private func deleteAdminUser(_ user: AdminUser) async {
-        adminLoading = true
-        do {
-            try await appVM.deleteAdminUser(email: user.email)
-            adminUsers.removeAll { $0.email == user.email }
-            adminMessage = "Deleted \(user.email)."
-        } catch {
-            adminMessage = error.localizedDescription
-        }
-        adminLoading = false
-    }
-
     private var chevron: some View {
         Image(systemName: "chevron.right")
             .font(.system(size: 13, weight: .bold))
@@ -1011,16 +1395,29 @@ struct SettingsView: View {
     }
 
     private func syncScrollScheduleState() {
-        let windows = appVM.dailyScrollSchedule()?.windows ?? appVM.onboardingProfile.preferredScrollWindows ?? []
-        guard windows.count >= 2 else { return }
-        firstScrollStartHour = windows[0].startHour
-        secondScrollStartHour = windows[1].startHour
+        let windows = appVM.dailyScrollSchedule()?.windows
+            ?? appVM.onboardingProfile.preferredScrollWindows
+            ?? appVM.adaptiveScreenTimePlan().windows
+        guard !windows.isEmpty else { return }
+        scrollScheduleWindows = windows
     }
 
-    private func adjustScrollHour(_ hour: Binding<Int>, by delta: Int) {
+    private func setScrollWindowStart(at index: Int, to requestedStart: Int) {
         guard !appVM.isTodayScrollScheduleLocked else { return }
+        guard scrollScheduleWindows.indices.contains(index) else { return }
         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-            hour.wrappedValue = ((hour.wrappedValue + delta) % 24 + 24) % 24
+            let window = scrollScheduleWindows[index]
+            let duration = max(1, window.endHour - window.startHour)
+            let maxStart = max(0, 24 - duration)
+            let start = min(max(0, requestedStart), maxStart)
+            scrollScheduleWindows[index] = ScreenScrollWindow(
+                id: window.id,
+                title: window.title,
+                startHour: start,
+                endHour: min(24, start + duration),
+                minutes: window.minutes,
+                reason: window.reason
+            )
         }
         HapticsService.selection()
     }
@@ -1031,25 +1428,7 @@ struct SettingsView: View {
             HapticsService.warning()
             return
         }
-        let windows = [
-            ScreenScrollWindow(
-                id: "user-session-1",
-                title: "Your session 1",
-                startHour: firstScrollStartHour,
-                endHour: min(24, firstScrollStartHour + 1),
-                minutes: 15,
-                reason: "You chose this time. Mivo monitors it for 3 days before recommending changes."
-            ),
-            ScreenScrollWindow(
-                id: "user-session-2",
-                title: "Your session 2",
-                startHour: secondScrollStartHour,
-                endHour: min(24, secondScrollStartHour + 1),
-                minutes: 15,
-                reason: "You chose this time. Mivo monitors it for 3 days before recommending changes."
-            )
-        ]
-        appVM.saveDailyScrollScheduleForToday(windows)
+        appVM.saveDailyScrollScheduleForToday(scrollScheduleWindows)
         lastActionLog = "Today’s scroll sessions are locked until tomorrow."
         HapticsService.success()
     }
@@ -1067,6 +1446,9 @@ struct SettingsView: View {
         cachedScreenTimeAuthorization = FamilyControlsManager.shared.cachedAuthorizationStatus()
         accountabilityEnabled = appVM.settings.accountabilityEnabled == true
         accountabilityShareText = appVM.accountabilityShareText()
+        lateNightProtectionEnabled = appVM.lateNightProtectionEnabled
+        lateNightStartHour = appVM.lateNightStartHour
+        lateNightWakeHour = appVM.lateNightWakeHour
         syncScrollScheduleState()
         if #available(iOS 16.0, *) {
             #if canImport(FamilyControls)
@@ -1124,8 +1506,8 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Settings")
                         .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .foregroundColor(MivoColors.heroText)
                         .tracking(-0.6)
+                        .foregroundColor(MivoColors.heroText)
                     Text(appVM.user?.email ?? "Mivo account")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(MivoColors.heroText.opacity(0.74))
@@ -1151,8 +1533,7 @@ struct SettingsView: View {
         }
         .padding(20)
         .background(MivoColors.heroBg)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: MivoColors.textPrimary.opacity(0.11), radius: 18, y: 8)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func profileStat(value: String, label: String) -> some View {
@@ -1169,7 +1550,7 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(MivoColors.background.opacity(0.14))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var interventionAppsSection: some View {
@@ -1284,7 +1665,7 @@ struct SettingsView: View {
             .foregroundColor(color)
             .frame(width: 34, height: 34)
             .background(color.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var totalTimeLabel: String {
@@ -1311,7 +1692,7 @@ struct SettingsView: View {
             } label: {
                 HStack(spacing: 12) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(statusColor(for: collector.authorizationStatus).opacity(0.14))
                             .frame(width: 40, height: 40)
                         
@@ -1394,7 +1775,7 @@ struct SettingsView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 15)
                                 .background(MivoColors.accent)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -1460,10 +1841,12 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             content()
         }
-        .background(MivoColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(MivoColors.border.opacity(0.6), lineWidth: 1))
-        .shadow(color: MivoColors.primary.opacity(0.06), radius: 10, y: 4)
+        .overlay(alignment: .top) {
+            Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
+        }
     }
 
     private func statCell(value: String, label: String) -> some View {
@@ -1481,7 +1864,7 @@ struct SettingsView: View {
     private func rowSeparator() -> some View {
         Divider()
             .background(MivoColors.border)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 2)
     }
 
     private func settingsRow(icon: String, label: String, destructive: Bool = false, action: @escaping () -> Void) -> some View {
@@ -1686,6 +2069,744 @@ struct SettingsView: View {
         lastActionLog = "Data export initiated. Check console for file path."
     }
 
+}
+
+private struct FounderPreSignInPreviewView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appVM: AppViewModel
+    @State private var showingFirstLaunchStory = true
+
+    var body: some View {
+        Group {
+            if showingFirstLaunchStory {
+                MivoFirstLaunchIntroView(
+                    onComplete: {
+                        withAnimation(.easeInOut(duration: 0.24)) {
+                            showingFirstLaunchStory = false
+                        }
+                    },
+                    onExit: { dismiss() }
+                )
+                .transition(.opacity)
+            } else {
+                ZStack(alignment: .top) {
+                    LoginView(previewMode: true)
+                        .environmentObject(appVM)
+
+                    HStack(spacing: 10) {
+                        Text("FOUNDER PREVIEW")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(MivoColors.accent)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(MivoColors.card)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().strokeBorder(MivoColors.border.opacity(0.7), lineWidth: 1))
+
+                        Spacer()
+
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(MivoColors.textPrimary)
+                                .frame(width: 34, height: 34)
+                                .background(MivoColors.card)
+                                .clipShape(Circle())
+                                .overlay(Circle().strokeBorder(MivoColors.border.opacity(0.7), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Close founder preview")
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 8)
+                }
+                .transition(.opacity)
+            }
+        }
+        .interactiveDismissDisabled()
+    }
+}
+
+private enum AdminUserFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case onboarded = "Onboarded"
+    case active = "Active"
+    case ambassador = "Ambassador"
+
+    var id: String { rawValue }
+}
+
+private struct AmbassadorDatabaseFilterOption: Identifiable {
+    let id: String
+    let name: String
+}
+
+struct AdminUserDatabaseView: View {
+    @EnvironmentObject private var appVM: AppViewModel
+    @State private var users: [AdminCampaignUser] = []
+    @State private var searchText = ""
+    @State private var filter: AdminUserFilter = .all
+    @State private var page = 0
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+    @State private var ambassadorAssignmentUser: AdminCampaignUser?
+    @State private var selectedAmbassadorID = "all"
+    @State private var limitsAmbassadorDates = false
+    @State private var ambassadorCreatedFrom = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+    @State private var ambassadorCreatedThrough = Date()
+
+    private let pageSize = 25
+
+    private var filteredUsers: [AdminCampaignUser] {
+        users.filter { user in
+            let matchesSearch = searchText.isEmpty
+                || user.name.localizedCaseInsensitiveContains(searchText)
+                || user.email.localizedCaseInsensitiveContains(searchText)
+                || user.userId.localizedCaseInsensitiveContains(searchText)
+                || (user.ambassadorDisplayName?.localizedCaseInsensitiveContains(searchText) == true)
+            let matchesFilter: Bool
+            switch filter {
+            case .all: matchesFilter = true
+            case .onboarded: matchesFilter = user.onboardingComplete
+            case .active: matchesFilter = user.sessionCount > 0
+            case .ambassador:
+                let matchesAmbassador = user.isAmbassadorReferral
+                    && (selectedAmbassadorID == "all" || user.ambassadorFilterID == selectedAmbassadorID)
+                let matchesDates: Bool
+                if limitsAmbassadorDates {
+                    matchesDates = user.createdAt
+                        .flatMap(parseAdminDate)
+                        .map { created in
+                            let calendar = Calendar.current
+                            let start = calendar.startOfDay(for: ambassadorCreatedFrom)
+                            let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: ambassadorCreatedThrough)) ?? ambassadorCreatedThrough
+                            return created >= start && created < end
+                        } ?? false
+                } else {
+                    matchesDates = true
+                }
+                matchesFilter = matchesAmbassador && matchesDates
+            }
+            return matchesSearch && matchesFilter
+        }
+    }
+
+    private var ambassadorOptions: [AmbassadorDatabaseFilterOption] {
+        var options: [String: AmbassadorDatabaseFilterOption] = [:]
+        users.filter(\.isAmbassadorReferral).forEach { user in
+            guard let id = user.ambassadorFilterID, let name = user.ambassadorDisplayName else { return }
+            options[id] = AmbassadorDatabaseFilterOption(id: id, name: name)
+        }
+        return options.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var pageCount: Int { max(1, Int(ceil(Double(filteredUsers.count) / Double(pageSize)))) }
+    private var visibleUsers: [AdminCampaignUser] {
+        let safePage = min(page, pageCount - 1)
+        let start = safePage * pageSize
+        guard start < filteredUsers.count else { return [] }
+        return Array(filteredUsers[start..<min(start + pageSize, filteredUsers.count)])
+    }
+
+    var body: some View {
+        ZStack {
+            MivoColors.background.ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 14) {
+                    summaryStrip
+
+                    Picker("User filter", selection: $filter) {
+                        ForEach(AdminUserFilter.allCases) { item in
+                            Text(item.rawValue).tag(item)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if filter == .ambassador {
+                        ambassadorFilterPanel
+                    }
+
+                    if let errorMessage {
+                        ContentUnavailableView(
+                            "User database unavailable",
+                            systemImage: "person.3.sequence.fill",
+                            description: Text(errorMessage)
+                        )
+                        Button("Try Again") { Task { await load() } }
+                            .buttonStyle(.borderedProminent)
+                            .tint(MivoColors.accent)
+                    } else if !isLoading {
+                        userResults
+                        pagination
+                    }
+                }
+                .padding(16)
+                .padding(.bottom, 30)
+            }
+
+            if isLoading { MivoLoadingOverlay(message: "Loading users...") }
+        }
+        .navigationTitle("User Database")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { Task { await load() } } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(isLoading)
+                .accessibilityLabel("Refresh users")
+            }
+        }
+        .searchable(text: $searchText, prompt: "Search name, email, or user ID")
+        .onChange(of: searchText) { _, _ in page = 0 }
+        .onChange(of: filter) { _, _ in page = 0 }
+        .onChange(of: selectedAmbassadorID) { _, _ in page = 0 }
+        .onChange(of: limitsAmbassadorDates) { _, _ in page = 0 }
+        .onChange(of: ambassadorCreatedFrom) { _, newValue in
+            if newValue > ambassadorCreatedThrough { ambassadorCreatedThrough = newValue }
+            page = 0
+        }
+        .onChange(of: ambassadorCreatedThrough) { _, newValue in
+            if newValue < ambassadorCreatedFrom { ambassadorCreatedFrom = newValue }
+            page = 0
+        }
+        .task { await load() }
+        .sheet(item: $ambassadorAssignmentUser) { user in
+            AmbassadorAssignmentView(user: user) {
+                ambassadorAssignmentUser = nil
+                await load()
+            }
+            .environmentObject(appVM)
+        }
+    }
+
+    private var summaryStrip: some View {
+        HStack(spacing: 8) {
+            databaseStat("Total", value: users.count, icon: "person.3.fill")
+            databaseStat("Onboarded", value: users.filter(\.onboardingComplete).count, icon: "checkmark.circle.fill")
+            databaseStat("Active", value: users.filter { $0.sessionCount > 0 }.count, icon: "waveform.path.ecg")
+        }
+    }
+
+    private var ambassadorFilterPanel: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(MivoColors.accent)
+                    .frame(width: 36, height: 36)
+                    .background(MivoColors.accent.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Referred by ambassador")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(MivoColors.textPrimary)
+                    Text("Based on the ambassador name entered during onboarding")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(MivoColors.textMuted)
+                }
+                Spacer(minLength: 8)
+                Picker("Ambassador", selection: $selectedAmbassadorID) {
+                    Text("All ambassadors").tag("all")
+                    ForEach(ambassadorOptions) { option in
+                        Text(option.name).tag(option.id)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .tint(MivoColors.accent)
+            }
+            .padding(13)
+
+            Divider().overlay(MivoColors.border).padding(.leading, 61)
+
+            Toggle(isOn: $limitsAmbassadorDates) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Account creation dates")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(MivoColors.textPrimary)
+                    Text(limitsAmbassadorDates ? "Only show accounts created in this range" : "Showing all creation dates")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(MivoColors.textMuted)
+                }
+            }
+            .tint(MivoColors.accent)
+            .padding(13)
+
+            if limitsAmbassadorDates {
+                Divider().overlay(MivoColors.border).padding(.leading, 13)
+                HStack(spacing: 14) {
+                    DatePicker("From", selection: $ambassadorCreatedFrom, in: ...ambassadorCreatedThrough, displayedComponents: .date)
+                    DatePicker("To", selection: $ambassadorCreatedThrough, in: ambassadorCreatedFrom...Date(), displayedComponents: .date)
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .padding(13)
+            }
+        }
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border.opacity(0.65), lineWidth: 1))
+    }
+
+    private func databaseStat(_ title: String, value: Int, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(MivoColors.accent)
+            Text("\(value)")
+                .font(.system(size: 21, weight: .bold, design: .rounded))
+                .foregroundColor(MivoColors.textPrimary)
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(MivoColors.textMuted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border.opacity(0.65), lineWidth: 1))
+    }
+
+    private var userResults: some View {
+        LazyVStack(spacing: 0) {
+            HStack {
+                Text("\(filteredUsers.count) result\(filteredUsers.count == 1 ? "" : "s")")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+                Spacer()
+                Text("25 per page")
+                    .font(.system(size: 11))
+                    .foregroundColor(MivoColors.textMuted)
+            }
+            .padding(14)
+
+            if visibleUsers.isEmpty {
+                Divider().overlay(MivoColors.border)
+                Text("No users match this search.")
+                    .font(.system(size: 13))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(28)
+            } else {
+                ForEach(Array(visibleUsers.enumerated()), id: \.element.id) { index, user in
+                    if index > 0 { Divider().overlay(MivoColors.border).padding(.leading, 62) }
+                    NavigationLink {
+                        AdminUserProgressView(user: user)
+                    } label: {
+                        databaseUserRow(user)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border.opacity(0.65), lineWidth: 1))
+    }
+
+    private func databaseUserRow(_ user: AdminCampaignUser) -> some View {
+        HStack(spacing: 12) {
+            Text(String(user.name.prefix(1)).uppercased())
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(MivoColors.textPrimary)
+                .frame(width: 36, height: 36)
+                .background(MivoColors.background)
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(user.name)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.textPrimary)
+                        .lineLimit(1)
+                    if user.email.lowercased() == appVM.user?.email.lowercased() {
+                        Text(appVM.isSuperAdminUser ? "SUPER ADMIN" : "ADMIN")
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundColor(MivoColors.accent)
+                    }
+                }
+                Text(user.email)
+                    .font(.system(size: 11))
+                    .foregroundColor(MivoColors.textSecondary)
+                    .lineLimit(1)
+                Text("\(user.sessionCount) sessions · \(user.truthCheckCount ?? 0) truth checks · \(user.reflectionCount) reflections")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(MivoColors.textMuted)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(user.calibrationComplete == true ? "Calibrated" : "Not calibrated")
+                    if let last = user.lastActiveAt { Text("· Active \(shortAdminDate(last))") }
+                    else if let created = user.createdAt { Text("· Joined \(shortAdminDate(created))") }
+                }
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(MivoColors.textMuted)
+                .lineLimit(1)
+
+                if user.isAmbassadorReferral, let ambassador = user.ambassadorAttributionLabel {
+                    Text("Referred by \(ambassador) · Account created \(shortAdminDate(user.ambassadorReferredAt ?? user.createdAt ?? ""))")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(MivoColors.accent)
+                        .lineLimit(2)
+                }
+            }
+            Spacer()
+            if user.onboardingComplete {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(MivoColors.blue)
+                    .accessibilityLabel("Onboarding complete")
+            }
+            if user.email.lowercased() != appVM.user?.email.lowercased() {
+                Menu {
+                    ForEach(["user", "admin", "ambassador"], id: \.self) { role in
+                        Button {
+                            Task { await setRole(user, role: role) }
+                        } label: {
+                            Label(role.capitalized, systemImage: user.accountRole == role ? "checkmark" : "person.badge.key")
+                        }
+                    }
+                } label: {
+                    Text((user.accountRole ?? "user").capitalized)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(MivoColors.accent)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 5)
+                        .background(MivoColors.background)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+            }
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(MivoColors.textMuted)
+        }
+        .padding(13)
+    }
+
+    @ViewBuilder
+    private var pagination: some View {
+        if pageCount > 1 {
+            HStack(spacing: 16) {
+                Button { page = max(0, page - 1) } label: {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 38, height: 34)
+                }
+                .buttonStyle(.bordered)
+                .disabled(page == 0)
+
+                Text("Page \(page + 1) of \(pageCount)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
+
+                Button { page = min(pageCount - 1, page + 1) } label: {
+                    Image(systemName: "chevron.right")
+                        .frame(width: 38, height: 34)
+                }
+                .buttonStyle(.bordered)
+                .disabled(page >= pageCount - 1)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    @MainActor
+    private func load() async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            try await appVM.prepareAuthenticatedCampaignSession()
+            let dashboard = try await ReferralCampaignService.loadAdminDashboard()
+            users = dashboard.users
+            page = min(page, max(0, pageCount - 1))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    private func setRole(_ user: AdminCampaignUser, role: String) async {
+        do {
+            try await appVM.prepareAuthenticatedCampaignSession()
+            try await ReferralCampaignService.setUserRole(userID: user.userId, role: role)
+            await load()
+            if role == "ambassador" {
+                ambassadorAssignmentUser = users.first(where: { $0.userId == user.userId }) ?? user
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct AdminAnalyticsView: View {
+    @EnvironmentObject private var appVM: AppViewModel
+    @State private var dashboard: AdminProductDashboard?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+
+    private let columns = [GridItem(.flexible()), GridItem(.flexible())]
+
+    var body: some View {
+        ZStack {
+            MivoColors.background.ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                if let dashboard {
+                    VStack(spacing: 14) {
+                        overview(dashboard)
+                        growthChart(dashboard)
+                        retention(dashboard)
+                        behavior(dashboard)
+                        funnel(dashboard)
+                        sources(dashboard)
+                        versions(dashboard)
+                    }
+                    .padding(16).padding(.bottom, 30)
+                } else if let errorMessage, !isLoading {
+                    VStack(spacing: 14) {
+                        ContentUnavailableView("Analytics unavailable", systemImage: "chart.xyaxis.line", description: Text(errorMessage))
+                        Button("Try Again") { Task { await load() } }
+                            .buttonStyle(.borderedProminent)
+                            .tint(MivoColors.accent)
+                    }
+                    .padding(20)
+                }
+            }
+            if isLoading { MivoLoadingOverlay(message: "Calculating Mivo analytics...") }
+        }
+        .navigationTitle("Admin Overview")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") } } }
+        .task { await load() }
+        .refreshable { await load() }
+    }
+
+    private func overview(_ data: AdminProductDashboard) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Main dashboard", icon: "gauge.with.dots.needle.67percent")
+            LazyVGrid(columns: columns, spacing: 8) {
+                metric("Registered users", "\(data.overview.totalUsers)", "person.3.fill")
+                metric("Daily active", "\(data.overview.dau)", "sun.max.fill")
+                metric("Monthly active", "\(data.overview.mau)", "calendar")
+                metric("New today", "\(data.overview.newToday)", "person.badge.plus")
+                metric("New this week", "\(data.overview.newWeek)", "calendar.badge.plus")
+                metric("New this month", "\(data.overview.newMonth)", "calendar.badge.clock")
+                metric("Sessions / user", decimal(data.overview.avgSessions), "timer")
+                metric("Truth checks / user", decimal(data.overview.avgTruth), "checkmark.bubble")
+            }
+            Label("App Store views, true downloads, uninstall estimates, and crash data require App Store Connect or a crash-reporting integration.", systemImage: "info.circle")
+                .font(.system(size: 11)).foregroundColor(MivoColors.textSecondary)
+        }.analyticsPanel()
+    }
+
+    private func growthChart(_ data: AdminProductDashboard) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Last 30 days", icon: "chart.line.uptrend.xyaxis")
+            Chart(data.timeseries) { point in
+                LineMark(x: .value("Date", point.date), y: .value("Active users", point.activeUsers))
+                    .foregroundStyle(MivoColors.blue).interpolationMethod(.catmullRom)
+                PointMark(x: .value("Date", point.date), y: .value("Active users", point.activeUsers))
+                    .foregroundStyle(MivoColors.blue).symbolSize(18)
+            }
+            .chartXAxis(.hidden)
+            .frame(height: 170)
+            HStack { Label("Active users", systemImage: "circle.fill").foregroundColor(MivoColors.blue); Spacer(); Text("Downloads appear after App Store connection") }
+                .font(.system(size: 10, weight: .semibold)).foregroundColor(MivoColors.textMuted)
+        }.analyticsPanel()
+    }
+
+    private func retention(_ data: AdminProductDashboard) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Retention", icon: "arrow.triangle.2.circlepath")
+            HStack(spacing: 8) {
+                percentCell("Day 1", data.retention.d1)
+                percentCell("Day 7", data.retention.d7)
+                percentCell("Day 30", data.retention.d30)
+            }
+        }.analyticsPanel()
+    }
+
+    private func behavior(_ data: AdminProductDashboard) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Mivo behavior", icon: "brain.head.profile")
+            HStack(spacing: 8) {
+                percentCell("Onboarding", data.overview.onboardingPct ?? 0)
+                percentCell("Reflections", data.overview.reflectionPct ?? 0)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(decimal(data.overview.avgTruthGap) + "m").font(.system(size: 19, weight: .bold))
+                    Text("Truth gap").font(.system(size: 10)).foregroundColor(MivoColors.textMuted)
+                }.frame(maxWidth: .infinity).padding(10).background(MivoColors.background).clipShape(RoundedRectangle(cornerRadius: 7))
+            }
+            ForEach(data.triggers.prefix(5)) { item in
+                HStack { Text(item.trigger.replacingOccurrences(of: "_", with: " ").capitalized); Spacer(); Text("\(item.count)") }
+                    .font(.system(size: 12, weight: .semibold)).foregroundColor(MivoColors.textSecondary)
+            }
+        }.analyticsPanel()
+    }
+
+    private func funnel(_ data: AdminProductDashboard) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Activation funnel", icon: "line.3.horizontal.decrease")
+            ForEach(Array(data.funnel.enumerated()), id: \.element.id) { index, item in
+                let previous = index == 0 ? item.count : data.funnel[index - 1].count
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack { Text(item.stage); Spacer(); Text("\(item.count) · \(conversion(item.count, from: previous))") }
+                        .font(.system(size: 12, weight: .semibold))
+                    ProgressView(value: Double(item.count), total: Double(max(1, data.overview.totalUsers)))
+                        .tint(MivoColors.accent)
+                }
+            }
+        }.analyticsPanel()
+    }
+
+    private func sources(_ data: AdminProductDashboard) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Campaign sources", icon: "megaphone.fill")
+            if data.sources.isEmpty { Text("No source attribution yet.").font(.system(size: 12)).foregroundColor(MivoColors.textMuted) }
+            ForEach(data.sources) { source in
+                HStack { Text(source.source.capitalized); Spacer(); Text("\(source.signups) sign-ups · \(source.onboarded) activated") }
+                    .font(.system(size: 12, weight: .semibold)).foregroundColor(MivoColors.textSecondary)
+            }
+        }.analyticsPanel()
+    }
+
+    private func versions(_ data: AdminProductDashboard) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("App versions", icon: "square.stack.3d.up.fill")
+            if data.versions.isEmpty { Text("Version distribution begins with this build.").font(.system(size: 12)).foregroundColor(MivoColors.textMuted) }
+            ForEach(data.versions) { item in
+                HStack { Text(item.version ?? "Unknown"); Spacer(); Text("\(item.users) users") }.font(.system(size: 12, weight: .semibold))
+            }
+        }.analyticsPanel()
+    }
+
+    private func metric(_ label: String, _ value: String, _ icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: icon).foregroundColor(MivoColors.accent)
+            Text(value).font(.system(size: 22, weight: .bold, design: .rounded))
+            Text(label).font(.system(size: 10, weight: .semibold)).foregroundColor(MivoColors.textMuted)
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(11).background(MivoColors.background).clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+
+    private func percentCell(_ title: String, _ value: Double) -> some View {
+        VStack(alignment: .leading, spacing: 4) { Text("\(value, specifier: "%.1f")%").font(.system(size: 19, weight: .bold)); Text(title).font(.system(size: 10)).foregroundColor(MivoColors.textMuted) }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(10).background(MivoColors.background).clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+    private func sectionTitle(_ title: String, icon: String) -> some View { Label(title, systemImage: icon).font(.system(size: 16, weight: .bold)).foregroundColor(MivoColors.textPrimary) }
+    private func decimal(_ value: Double?) -> String { String(format: "%.1f", value ?? 0) }
+    private func conversion(_ value: Int, from previous: Int) -> String { previous == 0 ? "—" : String(format: "%.0f%%", 100.0 * Double(value) / Double(previous)) }
+    private func load() async { isLoading = true; do { try await appVM.prepareAuthenticatedCampaignSession(); dashboard = try await ReferralCampaignService.loadProductDashboard() } catch { errorMessage = error.localizedDescription }; isLoading = false }
+}
+
+private struct FeedbackSubmissionView: View {
+    @EnvironmentObject private var appVM: AppViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var type = "feedback"
+    @State private var subject = ""
+    @State private var message = ""
+    @State private var isSending = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Form {
+            Picker("Type", selection: $type) { Text("Feedback").tag("feedback"); Text("Bug").tag("bug"); Text("Feature request").tag("feature"); Text("Support").tag("support"); Text("Delete my account").tag("deletion") }
+            TextField("Subject", text: $subject)
+            TextField("What happened?", text: $message, axis: .vertical).lineLimit(6...12)
+            Button(isSending ? "Sending..." : "Send to Mivo") { Task { await submit() } }
+                .disabled(isSending || subject.isEmpty || message.isEmpty)
+        }
+        .scrollContentBackground(.hidden).background(MivoColors.background)
+        .navigationTitle("Send Feedback").navigationBarTitleDisplayMode(.inline)
+        .alert("Feedback", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage=nil } })) { Button("OK") {} } message: { Text(errorMessage ?? "") }
+    }
+    private func submit() async { isSending=true; do { try await appVM.prepareAuthenticatedCampaignSession(); try await ReferralCampaignService.submitFeedback(type:type,subject:subject,message:message); dismiss() } catch { errorMessage=error.localizedDescription }; isSending=false }
+}
+
+struct AdminFeedbackView: View {
+    @EnvironmentObject private var appVM: AppViewModel
+    @State private var items: [AdminFeedbackItem] = []
+    @State private var loading = true
+    @State private var errorMessage: String?
+    var body: some View {
+        ZStack {
+            MivoColors.background.ignoresSafeArea()
+            ScrollView { LazyVStack(spacing: 10) {
+                ForEach(items) { item in NavigationLink { AdminFeedbackDetailView(item:item) { await load() } } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: item.type == "bug" ? "ladybug.fill" : "bubble.left.fill").foregroundColor(MivoColors.accent).frame(width:34,height:34).background(MivoColors.card).clipShape(RoundedRectangle(cornerRadius:7))
+                        VStack(alignment:.leading,spacing:3) { Text(item.subject).font(.system(size:14,weight:.bold)); Text(item.message).font(.system(size:11)).foregroundColor(MivoColors.textSecondary).lineLimit(2) }
+                        Spacer(); Text(item.status.capitalized).font(.system(size:10,weight:.bold)).foregroundColor(MivoColors.blue); Image(systemName:"chevron.right").foregroundColor(MivoColors.textMuted)
+                    }.padding(13).background(MivoColors.card).clipShape(RoundedRectangle(cornerRadius:8))
+                }.buttonStyle(.plain) }
+                if items.isEmpty && !loading { ContentUnavailableView("No feedback",systemImage:"checkmark.bubble",description:Text("New reports will appear here.")) }
+            }.padding(16) }
+            if loading { MivoLoadingOverlay(message:"Loading feedback...") }
+        }.navigationTitle("Feedback & Bugs").navigationBarTitleDisplayMode(.inline).task { await load() }.refreshable { await load() }
+          .alert("Feedback",isPresented:Binding(get:{errorMessage != nil},set:{if !$0{errorMessage=nil}})){Button("OK") {}} message:{Text(errorMessage ?? "")}
+    }
+    private func load() async { loading=true; do { try await appVM.prepareAuthenticatedCampaignSession(); items=try await ReferralCampaignService.adminFeedback() } catch { errorMessage=error.localizedDescription }; loading=false }
+}
+
+private struct AdminFeedbackDetailView: View {
+    let item: AdminFeedbackItem
+    let didSave: () async -> Void
+    @State private var status: String; @State private var assigned: String; @State private var notes: String; @State private var message: String?
+    init(item:AdminFeedbackItem,didSave:@escaping()async->Void){self.item=item;self.didSave=didSave;_status=State(initialValue:item.status);_assigned=State(initialValue:item.assignedTo ?? "");_notes=State(initialValue:item.internalNotes ?? "")}
+    var body: some View { Form { Section("Report") { Text(item.subject).font(.headline); Text(item.message); LabeledContent("Type",value:item.type.capitalized); LabeledContent("Version",value:item.appVersion ?? "Unknown"); LabeledContent("Device",value:item.deviceInfo ?? "Unknown") }; Section("Team") { Picker("Status",selection:$status){ForEach(["new","investigating","fixed","closed"],id:\.self){Text($0.capitalized).tag($0)}};TextField("Assigned team member",text:$assigned);TextField("Internal notes",text:$notes,axis:.vertical).lineLimit(4...8);Button("Save changes"){Task{await save()}} } }.navigationTitle("Feedback").navigationBarTitleDisplayMode(.inline).alert("Feedback",isPresented:Binding(get:{message != nil},set:{if !$0{message=nil}})){Button("OK") {}} message:{Text(message ?? "")} }
+    private func save() async { do { try await ReferralCampaignService.updateFeedback(id:item.id,status:status,assignedTo:assigned,notes:notes);await didSave();message="Feedback updated." } catch { message=error.localizedDescription } }
+}
+
+private extension View {
+    func analyticsPanel() -> some View { padding(14).frame(maxWidth:.infinity,alignment:.leading).background(MivoColors.card).clipShape(RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(MivoColors.border.opacity(0.65),lineWidth:1)) }
+}
+
+private extension AdminCampaignUser {
+    var isAmbassadorReferral: Bool {
+        referralSource?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ambassador"
+            && !(referralAmbassadorName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
+
+    var ambassadorFilterID: String? {
+        guard isAmbassadorReferral else { return nil }
+        if let ambassadorUserId, !ambassadorUserId.isEmpty {
+            return "user:\(ambassadorUserId)"
+        }
+        guard let entered = referralAmbassadorName?.trimmingCharacters(in: .whitespacesAndNewlines), !entered.isEmpty else { return nil }
+        return "name:\(entered.lowercased())"
+    }
+
+    var ambassadorDisplayName: String? {
+        guard let entered = referralAmbassadorName?.trimmingCharacters(in: .whitespacesAndNewlines), !entered.isEmpty else { return nil }
+        guard let account = ambassadorAccountName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !account.isEmpty,
+              account.caseInsensitiveCompare(entered) != .orderedSame else {
+            return ambassadorUserId == nil ? "\(entered) (unassigned)" : entered
+        }
+        return "\(account) · entered as \(entered)"
+    }
+
+    var ambassadorAttributionLabel: String? {
+        guard let entered = referralAmbassadorName?.trimmingCharacters(in: .whitespacesAndNewlines), !entered.isEmpty else { return nil }
+        guard let account = ambassadorAccountName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !account.isEmpty,
+              account.caseInsensitiveCompare(entered) != .orderedSame else {
+            return entered
+        }
+        return "\(entered) (assigned to \(account))"
+    }
+}
+
+private func parseAdminDate(_ iso: String) -> Date? {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return fractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+}
+
+private func shortAdminDate(_ iso: String) -> String {
+    guard let date = parseAdminDate(iso) else { return iso }
+    let formatter = DateFormatter(); formatter.dateStyle = .short; return formatter.string(from: date)
 }
 
 extension Int {

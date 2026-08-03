@@ -8,23 +8,29 @@ struct LoginView: View {
     @State private var rememberMe = true
     @State private var loading = false
     @State private var error = ""
+    @State private var accountRecoveryMessage: String?
     @State private var goToRegister = false
     @State private var goToForgotPassword = false
+    let previewMode: Bool
+
+    init(previewMode: Bool = false) {
+        self.previewMode = previewMode
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 MivoColors.background.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    Spacer(minLength: 0).frame(maxHeight: 80)
+                    Spacer(minLength: 0)
+                        .frame(maxHeight: 80)
 
                     VStack(spacing: 28) {
-                        // Header
                         HStack(spacing: 14) {
                             MivoLogo(size: 64)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Mivo")
-                                    .font(.system(size: 28, weight: .bold))
+                                    .font(.system(size: 28, weight: .bold, design: .rounded))
                                     .foregroundColor(MivoColors.brand)
                                     .tracking(-0.8)
                                 Text("See the Pattern. Break the Loop.")
@@ -39,7 +45,7 @@ struct LoginView: View {
                             .font(.system(size: 15).italic())
                             .foregroundColor(MivoColors.textSecondary)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 28)
+                        .padding(.horizontal, 28)
 
                         // Form
                         VStack(spacing: 16) {
@@ -64,10 +70,10 @@ struct LoginView: View {
                                         .padding(.vertical, 16)
                                         .background(Color.clear)
                                 }
-                                .background(MivoColors.card)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .background(MivoColors.surfaceRaised.opacity(0.56))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
+                                    RoundedRectangle(cornerRadius: 8)
                                         .strokeBorder(MivoColors.border, lineWidth: 1)
                                 )
                             }
@@ -99,10 +105,10 @@ struct LoginView: View {
                                         .padding(.vertical, 16)
                                         .padding(.trailing, 44)
                                     }
-                                    .background(MivoColors.card)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                                    .background(MivoColors.surfaceRaised.opacity(0.56))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 16)
+                                        RoundedRectangle(cornerRadius: 8)
                                             .strokeBorder(MivoColors.border, lineWidth: 1)
                                     )
 
@@ -146,10 +152,10 @@ struct LoginView: View {
                                     }
                                     Spacer()
                                 }
-                                .padding(14)
-                                .background(MivoColors.card.opacity(0.72))
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(MivoColors.border.opacity(0.7), lineWidth: 1))
+                                .padding(.vertical, 12)
+                                .overlay(alignment: .bottom) {
+                                    Rectangle().fill(MivoColors.border.opacity(0.34)).frame(height: 1)
+                                }
                             }
                             .buttonStyle(.plain)
 
@@ -168,32 +174,34 @@ struct LoginView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 18)
                                     .background(MivoColors.accent)
-                                    .clipShape(Capsule())
-                                    .shadow(color: MivoColors.accent.opacity(0.25), radius: 10, y: 4)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                             .disabled(loading)
                             .opacity(loading ? 0.7 : 1)
                             .padding(.top, 4)
 
-                            HStack(spacing: 0) {
-                                Text("New to Mivo? ")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(MivoColors.textSecondary)
-                                Button("Create an account") {
-                                    goToRegister = true
+                            if previewMode || DeviceBindingService.boundEmail == nil {
+                                HStack(spacing: 0) {
+                                    Text("New to Mivo? ")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(MivoColors.textSecondary)
+                                    Button("Create an account") {
+                                        goToRegister = true
+                                    }
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(MivoColors.accent)
                                 }
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(MivoColors.accent)
                             }
                         }
                         .padding(.horizontal, 28)
                     }
+                    .mivoReadableWidth(620)
 
                     Spacer()
 
                     HStack {
                         Spacer()
-                        Image(systemName: "feather")
+                        Image("feather")
                             .font(.system(size: 26))
                             .foregroundColor(MivoColors.accentLight.opacity(0.7))
                     }
@@ -206,13 +214,30 @@ struct LoginView: View {
                 }
             }
             .navigationDestination(isPresented: $goToRegister) {
-                RegisterView()
+                RegisterView(previewMode: previewMode)
             }
             .navigationDestination(isPresented: $goToForgotPassword) {
-                ForgotPasswordView()
+                ForgotPasswordView(previewMode: previewMode)
+            }
+            .alert("Account already on this device", isPresented: Binding(
+                get: { accountRecoveryMessage != nil },
+                set: { if !$0 { accountRecoveryMessage = nil } }
+            )) {
+                Button("Sign In", role: .cancel) {
+                    accountRecoveryMessage = nil
+                }
+            } message: {
+                Text(accountRecoveryMessage ?? "")
             }
             .onAppear {
-                if let remembered = StorageService.load(String.self, forKey: .rememberedEmail), !remembered.isEmpty {
+                if previewMode {
+                    email = ""
+                    password = ""
+                    rememberMe = true
+                } else if DeviceBindingService.boundEmail != nil {
+                    email = ""
+                    rememberMe = true
+                } else if let remembered = StorageService.load(String.self, forKey: .rememberedEmail), !remembered.isEmpty {
                     email = remembered
                     rememberMe = true
                 }
@@ -221,6 +246,11 @@ struct LoginView: View {
     }
 
     func handleLogin() {
+        if previewMode {
+            HapticsService.selection()
+            error = "Founder preview only. Your signed-in account was not changed."
+            return
+        }
         guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
             error = "Please enter your email."
             return
@@ -240,7 +270,12 @@ struct LoginView: View {
                 )
             } catch {
                 await MainActor.run {
-                    self.error = error.localizedDescription
+                    if case AppError.deviceBoundToAnotherAccount(_) = error {
+                        self.accountRecoveryMessage = error.localizedDescription
+                        self.error = ""
+                    } else {
+                        self.error = error.localizedDescription
+                    }
                 }
             }
             await MainActor.run {

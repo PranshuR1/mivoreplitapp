@@ -16,6 +16,7 @@ struct ReflectionView: View {
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.dismiss) var dismiss
 
+    let sessionID: String
     let intention: Intention
     let plannedDuration: Int
     let actualDuration: Int
@@ -32,8 +33,15 @@ struct ReflectionView: View {
     @State private var outcomeScore: SessionOutcomeScore? = nil
     @State private var note = ""
     @State private var saving = false
+    @State private var recordedBaseSession = false
 
     var overBy: Int { actualDuration - plannedDuration }
+    private var sessionDateKey: String {
+        // Keyed off the start time so a session that ends after midnight still
+        // counts toward the day it began.
+        let startedAt = ISO8601DateFormatter().date(from: startTime) ?? Date()
+        return MivoDay.key(startedAt)
+    }
 
     var body: some View {
         ZStack {
@@ -41,164 +49,15 @@ struct ReflectionView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Session complete")
-                        .font(.system(size: 26, weight: .bold))
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
                         .foregroundColor(MivoColors.textPrimary)
                         .tracking(-0.8)
                         .padding(.bottom, 20)
-
-                    // Summary card
-                    VStack(spacing: 12) {
-                        summaryRow("Time scrolled", value: formatDuration(actualDuration))
-                        summaryRow("Planned", value: formatDuration(plannedDuration))
-                        if overBy > 0 {
-                            summaryRow("Over by", value: formatDuration(overBy), valueColor: MivoColors.timerOrange)
-                        }
-                        summaryRow("Reason", value: intention.rawValue)
-                        if let urgeReason {
-                            summaryRow("Opened because", value: urgeReason.rawValue)
-                        }
-                        if emergencyUnlockUsed {
-                            summaryRow("Emergency unlock", value: "Used", valueColor: MivoColors.timerOrange)
-                        }
-                        if extendedOnce {
-                            HStack(spacing: 4) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(MivoColors.timerOrange)
-                                Text("Extended once")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(MivoColors.timerOrange)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(MivoColors.timerOrange.opacity(0.1))
-                            .clipShape(Capsule())
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    .padding(18)
-                    .background(MivoColors.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MivoColors.border, lineWidth: 1))
-                    .padding(.bottom, 28)
-
-                    // Reflection
-                    Text("Did you get what you came for?")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(MivoColors.textPrimary)
-                        .padding(.bottom, 14)
-
-                    VStack(spacing: 10) {
-                        ForEach(reflectionOptions, id: \.label.rawValue) { opt in
-                            Button {
-                                reflection = opt.label
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(opt.label.rawValue)
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(reflection == opt.label ? MivoColors.accent : MivoColors.textPrimary)
-                                    Text(opt.desc)
-                                        .font(.system(size: 13))
-                                        .foregroundColor(MivoColors.textSecondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(16)
-                                .background(reflection == opt.label ? MivoColors.accentMuted : MivoColors.card)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .strokeBorder(reflection == opt.label ? MivoColors.accent : MivoColors.border, lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.bottom, 24)
-
-                    Text("Was this worth it?")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(MivoColors.textPrimary)
-                        .padding(.bottom, 14)
-
-                    VStack(spacing: 10) {
-                        ForEach(outcomeOptions, id: \.label.rawValue) { opt in
-                            Button {
-                                outcomeScore = opt.label
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(opt.label.rawValue)
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(outcomeScore == opt.label ? MivoColors.accent : MivoColors.textPrimary)
-                                    Text(opt.desc)
-                                        .font(.system(size: 13))
-                                        .foregroundColor(MivoColors.textSecondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(16)
-                                .background(outcomeScore == opt.label ? MivoColors.accentMuted : MivoColors.card)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .strokeBorder(outcomeScore == opt.label ? MivoColors.accent : MivoColors.border, lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.bottom, 24)
-
-                    // Note
-                    Text("Anything else? (optional)")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(MivoColors.textSecondary)
-                        .padding(.bottom, 10)
-
-                    ZStack(alignment: .topLeading) {
-                        if note.isEmpty {
-                            Text("What were you actually doing...")
-                                .font(.system(size: 15))
-                                .foregroundColor(MivoColors.textMuted)
-                                .padding(.horizontal, 14)
-                                .padding(.top, 12)
-                        }
-                        TextEditor(text: $note)
-                            .font(.system(size: 15))
-                            .foregroundColor(MivoColors.textPrimary)
-                            .scrollContentBackground(.hidden)
-                            .background(Color.clear)
-                            .padding(.horizontal, 10)
-                            .frame(minHeight: 90)
-                    }
-                    .background(MivoColors.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(MivoColors.border, lineWidth: 1))
-                    .padding(.bottom, 24)
-
-                    // Buttons
-                    VStack(spacing: 10) {
-                        Button {
-                            saveSession(withReflection: true)
-                        } label: {
-                            Text("Save session")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(MivoColors.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(MivoColors.accent)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                        }
-                        .disabled(saving)
-
-                        Button {
-                            saveSession(withReflection: false)
-                        } label: {
-                            Text("Skip reflection")
-                                .font(.system(size: 15))
-                                .foregroundColor(MivoColors.textMuted)
-                                .padding(.vertical, 14)
-                        }
-                        .disabled(saving)
-                    }
+                    summarySection
+                    reflectionSection
+                    outcomeSection
+                    noteSection
+                    actionSection
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 32)
@@ -206,6 +65,160 @@ struct ReflectionView: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            recordBaseSessionIfNeeded()
+        }
+    }
+
+    private var summarySection: some View {
+        VStack(spacing: 12) {
+            summaryRow("Time scrolled", value: formatDuration(actualDuration))
+            summaryRow("Planned", value: formatDuration(plannedDuration))
+            if overBy > 0 {
+                summaryRow("Over by", value: formatDuration(overBy), valueColor: MivoColors.timerOrange)
+            }
+            summaryRow("Reason", value: intention.rawValue)
+            if let urgeReason {
+                summaryRow("Opened because", value: urgeReason.rawValue)
+            }
+            if emergencyUnlockUsed {
+                summaryRow("Emergency unlock", value: "Used", valueColor: MivoColors.timerOrange)
+            }
+            if extendedOnce {
+                Label("Extended once", systemImage: "plus")
+                    .font(.system(size: 12))
+                    .foregroundColor(MivoColors.timerOrange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(MivoColors.timerOrange.opacity(0.1))
+                    .clipShape(Capsule())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(18)
+        .background(MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MivoColors.border, lineWidth: 1))
+        .padding(.bottom, 28)
+    }
+
+    private var reflectionSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Did you get what you came for?")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(MivoColors.textPrimary)
+                .padding(.bottom, 14)
+
+            VStack(spacing: 10) {
+                ForEach(reflectionOptions, id: \.label.rawValue) { option in
+                    reflectionOptionButton(option)
+                }
+            }
+        }
+        .padding(.bottom, 24)
+    }
+
+    private func reflectionOptionButton(_ option: (label: ReflectionChoice, desc: String)) -> some View {
+        Button {
+            reflection = option.label
+        } label: {
+            optionRow(
+                title: option.label.rawValue,
+                description: option.desc,
+                selected: reflection == option.label
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var outcomeSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Was this worth it?")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(MivoColors.textPrimary)
+                .padding(.bottom, 14)
+
+            VStack(spacing: 10) {
+                ForEach(outcomeOptions, id: \.label.rawValue) { option in
+                    Button {
+                        outcomeScore = option.label
+                    } label: {
+                        optionRow(
+                            title: option.label.rawValue,
+                            description: option.desc,
+                            selected: outcomeScore == option.label
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.bottom, 24)
+    }
+
+    private func optionRow(title: String, description: String, selected: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(selected ? MivoColors.accent : MivoColors.textPrimary)
+            Text(description)
+                .font(.system(size: 13))
+                .foregroundColor(MivoColors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(selected ? MivoColors.accentMuted : MivoColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(selected ? MivoColors.accent : MivoColors.border, lineWidth: 1)
+        )
+    }
+
+    private var noteSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Anything else? (optional)")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(MivoColors.textSecondary)
+            ZStack(alignment: .topLeading) {
+                if note.isEmpty {
+                    Text("What were you actually doing...")
+                        .font(.system(size: 15))
+                        .foregroundColor(MivoColors.textMuted)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 12)
+                }
+                TextEditor(text: $note)
+                    .font(.system(size: 15))
+                    .foregroundColor(MivoColors.textPrimary)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 90)
+            }
+            .background(MivoColors.card)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(MivoColors.border, lineWidth: 1))
+        }
+        .padding(.bottom, 24)
+    }
+
+    private var actionSection: some View {
+        VStack(spacing: 10) {
+            Button("Save session") { saveSession(withReflection: true) }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(MivoColors.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(MivoColors.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .disabled(saving)
+            Button("Skip reflection") { saveSession(withReflection: false) }
+                .font(.system(size: 15))
+                .foregroundColor(MivoColors.textMuted)
+                .padding(.vertical, 14)
+                .disabled(saving)
+        }
     }
 
     @ViewBuilder
@@ -223,10 +236,31 @@ struct ReflectionView: View {
 
     func saveSession(withReflection: Bool) {
         saving = true
-        let today = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date()) }()
-        let session = Session(
-            id: UUID().uuidString,
-            date: today,
+        let session = makeSession(withReflection: withReflection)
+        let inserted = appVM.upsertSession(session)
+        if inserted {
+            appVM.appendAISummary(sessionAISummary(session))
+        }
+        appVM.finishMivoSession()
+        // Pop back to the tab root via the onSaved callback
+        onSaved?()
+        dismiss()
+    }
+
+    private func recordBaseSessionIfNeeded() {
+        guard !recordedBaseSession else { return }
+        recordedBaseSession = true
+        let session = makeSession(withReflection: false)
+        let inserted = appVM.upsertSession(session)
+        if inserted {
+            appVM.appendAISummary(sessionAISummary(session))
+        }
+    }
+
+    private func makeSession(withReflection: Bool) -> Session {
+        Session(
+            id: sessionID,
+            date: sessionDateKey,
             startTime: startTime,
             endTime: endTime,
             plannedDuration: plannedDuration,
@@ -241,12 +275,6 @@ struct ReflectionView: View {
             emergencyUnlockUsed: emergencyUnlockUsed,
             emergencyUnlockReason: emergencyUnlockReason
         )
-        appVM.addSession(session)
-        appVM.appendAISummary(sessionAISummary(session))
-        appVM.finishMivoSession()
-        // Pop back to the tab root via the onSaved callback
-        dismiss()
-        onSaved?()
     }
 
     private func sessionAISummary(_ session: Session) -> String {

@@ -10,22 +10,29 @@ struct RegisterView: View {
     @State private var showPassword = false
     @State private var loading = false
     @State private var error = ""
+    @State private var accountRecoveryMessage: String?
+    @State private var ageGateCleared = false
+    let previewMode: Bool
+
+    init(previewMode: Bool = false) {
+        self.previewMode = previewMode
+    }
 
     var body: some View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 28) {
-                    // Header
                     VStack(alignment: .leading, spacing: 12) {
                         MivoLogo(size: 52)
                         Text("Create account")
-                            .font(.system(size: 28, weight: .bold))
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundColor(MivoColors.textPrimary)
                             .tracking(-0.8)
                         Text("Create your account and save your progress across devices.")
                             .font(.system(size: 15))
                             .foregroundColor(MivoColors.textSecondary)
+                            .lineSpacing(3)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -53,7 +60,7 @@ struct RegisterView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 18)
                             .background(MivoColors.accent)
-                            .clipShape(Capsule())
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .disabled(loading)
                     .opacity(loading ? 0.7 : 1)
@@ -69,12 +76,19 @@ struct RegisterView: View {
                 .padding(.horizontal, 28)
                 .padding(.top, 60)
                 .padding(.bottom, 40)
+                .mivoReadableWidth(620)
             }
             .scrollContentBackground(.hidden)
 
             if loading {
                 MivoLoadingOverlay(message: "Creating your account...")
                     .transition(.opacity)
+            }
+
+            if !ageGateCleared {
+                RegistrationAgeGateView(isCleared: $ageGateCleared, previewMode: previewMode)
+                    .transition(.opacity)
+                    .zIndex(10)
             }
         }
         .navigationBarBackButtonHidden()
@@ -92,6 +106,20 @@ struct RegisterView: View {
         .navigationBarTitleDisplayMode(.inline)
         .tint(MivoColors.textSecondary)
         .toolbarColorScheme(.light, for: .navigationBar)
+        .alert("Account already on this device", isPresented: Binding(
+            get: { accountRecoveryMessage != nil },
+            set: { if !$0 { accountRecoveryMessage = nil } }
+        )) {
+            Button("Go to Sign In") {
+                accountRecoveryMessage = nil
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {
+                accountRecoveryMessage = nil
+            }
+        } message: {
+            Text(accountRecoveryMessage ?? "")
+        }
     }
 
     @ViewBuilder
@@ -117,8 +145,8 @@ struct RegisterView: View {
                     .padding(.vertical, 16)
             }
             .background(MivoColors.card)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MivoColors.border, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border, lineWidth: 1))
         }
     }
 
@@ -152,8 +180,8 @@ struct RegisterView: View {
                     .padding(.trailing, 44)
                 }
                 .background(MivoColors.card)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MivoColors.border, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border, lineWidth: 1))
                 Button { showPassword.toggle() } label: {
                     Image(systemName: showPassword ? "eye.slash" : "eye")
                         .foregroundColor(MivoColors.accentLight)
@@ -164,6 +192,11 @@ struct RegisterView: View {
     }
 
     func handleRegister() {
+        if previewMode {
+            HapticsService.selection()
+            error = "Founder preview only. No account was created."
+            return
+        }
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { error = "Please enter your name."; return }
         guard !email.trimmingCharacters(in: .whitespaces).isEmpty else { error = "Please enter your email."; return }
         guard !password.isEmpty else { error = "Please enter a password."; return }
@@ -181,12 +214,21 @@ struct RegisterView: View {
                     password: password,
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
+                if let ticket = ParentalConsentTicketStore.load() {
+                    try await ReferralCampaignService.claimApprovedParentalConsent(ticket: ticket)
+                    ParentalConsentTicketStore.clear()
+                }
                 await MainActor.run {
                     loading = false
                 }
             } catch {
                 await MainActor.run {
-                    self.error = error.localizedDescription
+                    if case AppError.deviceBoundToAnotherAccount(_) = error {
+                        self.accountRecoveryMessage = error.localizedDescription
+                        self.error = ""
+                    } else {
+                        self.error = error.localizedDescription
+                    }
                     loading = false
                 }
             }
@@ -277,9 +319,9 @@ struct PasswordStrengthView: View {
             }
         }
         .padding(14)
-        .background(MivoColors.white.opacity(0.52))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(MivoColors.border.opacity(0.6), lineWidth: 1))
+        .background(MivoColors.surfaceRaised.opacity(0.52))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border.opacity(0.6), lineWidth: 1))
     }
 
     private func requirementRow(_ text: String, met: Bool, optional: Bool = false) -> some View {

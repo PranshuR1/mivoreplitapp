@@ -80,6 +80,7 @@ private struct MivoTotalActivityReportScene: DeviceActivityReportScene {
         guard let defaults = UserDefaults(suiteName: "group.com.mivo.mivoapp") else { return }
 
         let totalSeconds = max(0, Int(totalDuration.rounded()))
+        let reportDate = dayKey(Date())
 
         // Don't overwrite a previously good value with empty data.  iOS sometimes
         // hands the report extension an empty `DeviceActivityResults` (e.g. during
@@ -91,6 +92,7 @@ private struct MivoTotalActivityReportScene: DeviceActivityReportScene {
             if let cachedJSON = defaults.string(forKey: "mivo.lastDeviceActivityReport"),
                let cachedData = cachedJSON.data(using: .utf8),
                let cached = try? JSONSerialization.jsonObject(with: cachedData) as? [String: Any],
+               cachedReportIsForToday(cached, reportDate: reportDate),
                let cachedTotal = (cached["totalSeconds"] as? Int) ?? (cached["totalSeconds"] as? Double).map({ Int($0) }),
                cachedTotal > 0 {
                 // Just bump the freshness timestamp so the UI knows we tried.
@@ -105,6 +107,7 @@ private struct MivoTotalActivityReportScene: DeviceActivityReportScene {
         }
         let payload: [String: Any] = [
             "generatedAt": ISO8601DateFormatter().string(from: generatedAt),
+            "reportDate": reportDate,
             "totalSeconds": totalSeconds,
             "perAppSeconds": perAppSeconds,
             "source": "mivo-device-activity-extension"
@@ -117,6 +120,26 @@ private struct MivoTotalActivityReportScene: DeviceActivityReportScene {
         defaults.set(json, forKey: "mivo.lastDeviceActivityReport")
         defaults.set(Date().timeIntervalSince1970, forKey: "mivo.lastReportTimestamp")
         defaults.synchronize()
+    }
+
+    private static func cachedReportIsForToday(_ cached: [String: Any], reportDate: String) -> Bool {
+        if let cachedDate = cached["reportDate"] as? String { return cachedDate == reportDate }
+        guard let generated = cached["generatedAt"] as? String,
+              let date = ISO8601DateFormatter().date(from: generated) else { return false }
+        return dayKey(date) == reportDate
+    }
+
+    private static func dayKey(_ date: Date) -> String {
+        // Must match MivoDay in the app target: a Gregorian calendar, so the
+        // key still reads 2026-08-03 on a device set to a non-Gregorian calendar.
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = .current
+        let formatter = DateFormatter()
+        formatter.calendar = gregorian
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = gregorian.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 }
 
@@ -135,13 +158,12 @@ private struct MivoActivityItem: Identifiable, Equatable {
 }
 
 private enum MivoReportPalette {
-    static let backgroundTop = Color(red: 0.98, green: 0.95, blue: 0.91)
-    static let backgroundBottom = Color(red: 0.94, green: 0.89, blue: 0.80)
-    static let card = Color(red: 1.0, green: 0.985, blue: 0.955)
-    static let primary = Color(red: 0.09, green: 0.06, blue: 0.035)
-    static let secondary = Color(red: 0.22, green: 0.14, blue: 0.075)
-    static let muted = Color(red: 0.36, green: 0.24, blue: 0.14)
-    static let border = Color(red: 0.70, green: 0.55, blue: 0.36).opacity(0.56)
+    static let background = Color(red: 0.992, green: 0.976, blue: 0.949)
+    static let card = Color(red: 0.941, green: 0.894, blue: 0.80).opacity(0.48)
+    static let primary = Color(red: 0.086, green: 0.063, blue: 0.031)
+    static let secondary = Color(red: 0.545, green: 0.306, blue: 0.157)
+    static let muted = Color(red: 0.635, green: 0.459, blue: 0.329)
+    static let border = Color(red: 0.784, green: 0.659, blue: 0.51).opacity(0.58)
     static let accent = Color(red: 0.83, green: 0.53, blue: 0.16)
     static let blue = Color(red: 0.29, green: 0.44, blue: 0.65)
 }
@@ -174,14 +196,24 @@ private struct MivoScreenTimeReportView: View {
             .environment(\.colorScheme, .light)
             .preferredColorScheme(.light)
             .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .strokeBorder(MivoReportPalette.border, lineWidth: 1)
             )
         }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("TOTAL SCREEN TIME")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(MivoReportPalette.secondary)
+                Spacer()
+                Label("APPLE", systemImage: "checkmark.seal.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(MivoReportPalette.secondary)
+            }
+
             Text(formattedDuration(configuration.totalDuration))
                 .font(.system(size: configuration.totalDuration >= 36_000 ? 38 : 46, weight: .bold, design: .rounded))
                 .monospacedDigit()
@@ -189,9 +221,9 @@ private struct MivoScreenTimeReportView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
 
-            Text("real iOS Screen Time today")
+            Text("Across this device today")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(MivoReportPalette.secondary)
+                .foregroundColor(MivoReportPalette.primary)
                 .lineLimit(1)
         }
     }
@@ -237,7 +269,7 @@ private struct MivoScreenTimeReportView: View {
                         Text(formattedDuration(item.duration))
                             .font(.system(size: 11, weight: .bold))
                             .monospacedDigit()
-                            .foregroundColor(MivoReportPalette.secondary)
+                            .foregroundColor(MivoReportPalette.primary)
                     }
 
                     GeometryReader { barProxy in
@@ -272,14 +304,7 @@ private struct MivoScreenTimeReportView: View {
     }
 
     private var reportBackground: some View {
-        LinearGradient(
-            colors: [
-                MivoReportPalette.backgroundTop,
-                MivoReportPalette.backgroundBottom
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        MivoReportPalette.background
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {

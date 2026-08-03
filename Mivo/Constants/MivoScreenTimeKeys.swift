@@ -52,6 +52,18 @@ enum MivoScreenTimeKeys {
     static let checkInIntervalMinutes = "mivo.checkInIntervalMinutes"
     /// How many seconds the "Start" pause lasts before the glimpse. Default 5. Range 3–30.
     static let shieldPauseDuration = "mivo.shieldPauseDuration"
+    static let experimentEnforced = "mivo.experiment.enforced"
+    static let experimentType = "mivo.experiment.type"
+    static let experimentTitle = "mivo.experiment.title"
+    static let experimentEndsAt = "mivo.experiment.endsAt"
+    static let experimentStartHour = "mivo.experiment.startHour"
+    static let experimentEndHour = "mivo.experiment.endHour"
+    static let experimentBlocksExtensions = "mivo.experiment.blocksExtensions"
+    static let experimentStrongerFriction = "mivo.experiment.strongerFriction"
+    static let mivoClearMappingPrefix = "mivo.clear.mapping."
+    static let mivoClearEnabledPrefix = "mivo.clear.enabled."
+    static let pendingMivoClearPlatform = "mivo.clear.pendingPlatform"
+    static let pendingMivoClearEntryPoint = "mivo.clear.pendingEntryPoint"
 
     static let sessionExpiredAt = "mivo.sessionExpiredAt"
     static let sessionExpiredSource = "mivo.sessionExpiredSource"

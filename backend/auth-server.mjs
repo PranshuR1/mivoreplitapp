@@ -7,8 +7,8 @@ const port = Number(process.env.PORT || 8787);
 const dataDir = process.env.MIVO_DATA_DIR || path.join(process.cwd(), "backend-data");
 const usersPath = path.join(dataDir, "users.json");
 const passwordIterations = 180_000;
-const adminEmail = normalizeEmail(process.env.MIVO_ADMIN_EMAIL || "useparkez@gmail.com");
-const adminPassword = process.env.MIVO_ADMIN_PASSWORD || "Pranshu@123";
+const adminEmail = normalizeEmail(process.env.MIVO_ADMIN_EMAIL || "");
+const adminPassword = process.env.MIVO_ADMIN_PASSWORD || "";
 
 function jsonResponse(res, status, payload) {
   res.writeHead(status, {

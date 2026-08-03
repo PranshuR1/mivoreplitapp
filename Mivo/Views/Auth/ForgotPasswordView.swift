@@ -10,6 +10,11 @@ struct ForgotPasswordView: View {
     @State private var loading = false
     @State private var message = ""
     @State private var resetComplete = false
+    let previewMode: Bool
+
+    init(previewMode: Bool = false) {
+        self.previewMode = previewMode
+    }
 
     var body: some View {
         ZStack {
@@ -47,7 +52,7 @@ struct ForgotPasswordView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 18)
                             .background(MivoColors.accent)
-                            .clipShape(Capsule())
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .disabled(loading)
                     .opacity(loading ? 0.7 : 1)
@@ -66,6 +71,7 @@ struct ForgotPasswordView: View {
                 .padding(.horizontal, 28)
                 .padding(.top, 60)
                 .padding(.bottom, 40)
+                .mivoReadableWidth(620)
             }
 
             if loading {
@@ -93,6 +99,11 @@ struct ForgotPasswordView: View {
     }
 
     private func resetPassword() {
+        if previewMode {
+            HapticsService.selection()
+            message = "Founder preview only. No password was changed."
+            return
+        }
         let normalizedEmail = email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedEmail.isEmpty else {
             message = "Enter the email for your Mivo account."
@@ -139,8 +150,8 @@ struct ForgotPasswordView: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
                 .background(MivoColors.card)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MivoColors.border, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border, lineWidth: 1))
         }
     }
 
@@ -155,8 +166,8 @@ struct ForgotPasswordView: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
                 .background(MivoColors.card)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MivoColors.border, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border, lineWidth: 1))
         }
     }
 }

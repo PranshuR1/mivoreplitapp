@@ -29,8 +29,8 @@ struct OnboardingCalibrationView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 2,
-                            total: 10,
+                            step: 3,
+                            total: 12,
                             eyebrow: "Baseline",
                             title: "How much time disappears?",
                             subtitle: "A rough estimate is enough. This gives Mivo a starting line for your first report."
@@ -96,15 +96,7 @@ struct OnboardingCalibrationView: View {
                 }
             }
         }
-        .navigationBarBackButtonHidden()
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "arrow.left")
-                        .foregroundColor(MivoColors.textSecondary)
-                }
-            }
-        }
+        .onboardingNavigationChromeHidden()
         .onAppear { appear = true }
     }
 
@@ -132,7 +124,13 @@ struct OnboardingCalibrationView: View {
                     Capsule()
                         .fill(MivoColors.accentMuted)
                     Capsule()
-                        .fill(LinearGradient(colors: [MivoColors.accentLight, MivoColors.accent], startPoint: .leading, endPoint: .trailing))
+                        .fill(
+                            LinearGradient(
+                                colors: [MivoColors.accentLight, MivoColors.accent],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                         .frame(width: max(12, proxy.size.width * progress))
                         .animation(.spring(response: 0.46, dampingFraction: 0.86), value: progress)
                 }
@@ -144,9 +142,9 @@ struct OnboardingCalibrationView: View {
                 .foregroundColor(MivoColors.textSecondary)
         }
         .padding(18)
-        .background(MivoColors.white.opacity(0.64))
+        .background(Color.white.opacity(0.64))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(MivoColors.white.opacity(0.6), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.6), lineWidth: 1))
         .shadow(color: Color.black.opacity(0.04), radius: 14, y: 7)
     }
 }
@@ -166,8 +164,8 @@ private struct OnboardingScrollWindowsView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 4,
-                            total: 10,
+                            step: 5,
+                            total: 12,
                             eyebrow: "Schedule",
                             title: "When do you want to scroll?",
                             subtitle: "You choose the first two daily scroll sessions. Mivo will follow these for 3 days, then recommend better times from your real pattern."
@@ -202,9 +200,9 @@ private struct OnboardingScrollWindowsView: View {
                                 .lineSpacing(4)
                         }
                         .padding(16)
-                        .background(MivoColors.white.opacity(0.62))
+                        .background(Color.white.opacity(0.62))
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.white.opacity(0.58), lineWidth: 1))
                         .onboardingEntrance(appear, delay: 0.2)
                     }
                     .padding(.horizontal, 24)
@@ -236,15 +234,7 @@ private struct OnboardingScrollWindowsView: View {
                 }
             }
         }
-        .navigationBarBackButtonHidden()
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "arrow.left")
-                        .foregroundColor(MivoColors.textSecondary)
-                }
-            }
-        }
+        .onboardingNavigationChromeHidden()
         .onAppear {
             let windows = appVM.onboardingProfile.preferredScrollWindows ?? []
             if windows.count >= 2 {
@@ -263,7 +253,7 @@ private struct OnboardingScrollWindowsView: View {
                     .foregroundColor(MivoColors.white)
                     .frame(width: 42, height: 42)
                     .background(MivoColors.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
@@ -277,16 +267,6 @@ private struct OnboardingScrollWindowsView: View {
             }
 
             HStack(spacing: 12) {
-                Button { adjust(hour, by: -1) } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
-                        .frame(width: 42, height: 42)
-                        .background(MivoColors.white.opacity(0.7))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-
                 VStack(spacing: 3) {
                     Text(hourLabel(hour.wrappedValue))
                         .font(.system(size: 30, weight: .bold, design: .rounded))
@@ -298,28 +278,41 @@ private struct OnboardingScrollWindowsView: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                Button { adjust(hour, by: 1) } label: {
-                    Image(systemName: "plus")
+                Menu {
+                    ForEach(0..<24, id: \.self) { candidate in
+                        Button {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                hour.wrappedValue = candidate
+                            }
+                            HapticsService.selection()
+                        } label: {
+                            if hour.wrappedValue == candidate {
+                                Label(hourLabel(candidate), systemImage: "checkmark")
+                            } else {
+                                Text(hourLabel(candidate))
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Pick time", systemImage: "clock.fill")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
-                        .frame(width: 42, height: 42)
-                        .background(MivoColors.white.opacity(0.7))
-                        .clipShape(Circle())
+                        .foregroundColor(OnboardingTheme.textPrimary)
+                        .padding(.horizontal, 14)
+                        .frame(height: 42)
+                        .background(Color.white.opacity(0.7))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.58), lineWidth: 1)
+                        }
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(16)
-        .background(MivoColors.white.opacity(0.62))
+        .background(Color.white.opacity(0.62))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
-    }
-
-    private func adjust(_ hour: Binding<Int>, by delta: Int) {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-            hour.wrappedValue = ((hour.wrappedValue + delta) % 24 + 24) % 24
-        }
-        HapticsService.selection()
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.white.opacity(0.58), lineWidth: 1))
     }
 
     private func saveWindows() {
@@ -379,8 +372,8 @@ struct OnboardingGoalView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         OnboardingStepHeader(
-                            step: 3,
-                            total: 10,
+                            step: 4,
+                            total: 12,
                             eyebrow: "Goal",
                             title: "How much do you want to scroll each day?",
                             subtitle: "Pick a daily target. Mivo will work toward this number from your real 3-day average — gently, over weeks, not overnight."
@@ -427,15 +420,7 @@ struct OnboardingGoalView: View {
                 }
             }
         }
-        .navigationBarBackButtonHidden()
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "arrow.left")
-                        .foregroundColor(MivoColors.textSecondary)
-                }
-            }
-        }
+        .onboardingNavigationChromeHidden()
         .onAppear {
             // Pre-fill from saved value (if any), otherwise default to 60.
             if let saved = appVM.onboardingProfile.dailyScrollGoalMinutes, goalOptions.contains(saved) {
@@ -468,9 +453,9 @@ struct OnboardingGoalView: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MivoColors.white.opacity(0.64))
+        .background(Color.white.opacity(0.64))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(MivoColors.white.opacity(0.6), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.6), lineWidth: 1))
         .shadow(color: Color.black.opacity(0.04), radius: 14, y: 7)
     }
 
@@ -499,9 +484,9 @@ struct OnboardingGoalView: View {
             .onChange(of: selectedMinutes) { _, _ in HapticsService.selection() }
         }
         .padding(16)
-        .background(MivoColors.white.opacity(0.58))
+        .background(Color.white.opacity(0.58))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.white.opacity(0.58), lineWidth: 1))
     }
 
     private var rationaleCard: some View {
@@ -515,9 +500,9 @@ struct OnboardingGoalView: View {
                 .lineSpacing(4)
         }
         .padding(16)
-        .background(MivoColors.white.opacity(0.62))
+        .background(Color.white.opacity(0.62))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MivoColors.white.opacity(0.58), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.white.opacity(0.58), lineWidth: 1))
     }
 
     private var goalDescription: String {

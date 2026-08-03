@@ -75,8 +75,8 @@ struct FocusTimerView: View {
                                 .foregroundColor(MivoColors.textMuted)
                             Text(mode == .open ? formatSeconds(elapsed) : formatSeconds(remaining))
                                 .font(.system(size: 52, weight: .bold).monospacedDigit())
-                                .foregroundColor(phaseColor)
                                 .tracking(-2)
+                                .foregroundColor(phaseColor)
                             if mode != .open {
                                 Text("remaining")
                                     .font(.system(size: 12))
@@ -122,7 +122,7 @@ struct FocusTimerView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(MivoColors.accent)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                 }
             }

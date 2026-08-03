@@ -3,6 +3,7 @@ import FamilyControls
 import Foundation
 import ManagedSettings
 import os
+import UserNotifications
 
 @available(iOS 16.0, *)
 final class MivoSessionRelockMonitor: DeviceActivityMonitor {
@@ -123,6 +124,7 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
 
         apply(selection: selection, to: store)
         apply(selection: selection, to: legacyStore)
+        clearSessionEndNudgesAfterRelock()
         logger.info("Shield re-applied in extension: apps=\(selection.applicationTokens.count) categories=\(selection.categoryTokens.count) domains=\(selection.webDomainTokens.count)")
     }
 
@@ -175,6 +177,17 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
     private func clearAllShields() {
         clear(store: store)
         clear(store: legacyStore)
+    }
+
+    private func clearSessionEndNudgesAfterRelock() {
+        let identifiers = [
+            "mivo.session.ended.nudge1",
+            "mivo.session.ended.nudge2"
+        ]
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        logger.info("Session-end follow-up notifications cleared after shield re-lock")
     }
 
     private func apply(selection: FamilyActivitySelection, to target: ManagedSettingsStore) {

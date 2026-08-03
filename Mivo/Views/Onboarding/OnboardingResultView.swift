@@ -29,7 +29,13 @@ struct OnboardingResultView: View {
 
                     Circle()
                         .trim(from: 0, to: CGFloat(min(Double(estimate ?? 0) / 120.0, 1.0)))
-                        .stroke(AngularGradient(gradient: Gradient(colors: [MivoColors.accent, MivoColors.accentLight]), center: .center), style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                        .stroke(
+                            AngularGradient(
+                                colors: [MivoColors.accent, MivoColors.accentLight],
+                                center: .center
+                            ),
+                            style: StrokeStyle(lineWidth: 14, lineCap: .round)
+                        )
                         .rotationEffect(.degrees(-90))
                         .frame(width: 220, height: 220)
                         .animation(.spring(response: 0.9, dampingFraction: 0.7), value: estimate)
@@ -71,8 +77,9 @@ struct OnboardingResultView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(MivoColors.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .background(MivoColors.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
                 }
                 .padding(.horizontal, 28)
                 .padding(.bottom, 40)
@@ -83,7 +90,7 @@ struct OnboardingResultView: View {
                 computeEstimate()
             }
         }
-        .navigationBarBackButtonHidden(true)
+        .onboardingNavigationChromeHidden()
     }
 
     func computeEstimate() {

@@ -71,7 +71,12 @@ class ScreenTimeDataCollector {
                     clearCachedReport()
                     return nil
                 }
-                return ScreenTimeReport(from: json)
+                guard let report = ScreenTimeReport(from: json),
+                      report.reportDate == Self.todayKey() else {
+                    clearCachedReport()
+                    return nil
+                }
+                return report
             }
         } catch {
             print("[ScreenTimeDataCollector] Failed to parse cached report: \(error)")
@@ -122,6 +127,11 @@ class ScreenTimeDataCollector {
         }
         UserDefaults.standard.removeObject(forKey: "mivo.lastDeviceActivityReport")
     }
+
+    private static func todayKey(_ date: Date = Date()) -> String {
+        let formatter = MivoDay.formatter
+        return formatter.string(from: date)
+    }
 }
 
 enum MivoScreenTimeAuthorizationStatus {
@@ -136,12 +146,14 @@ enum MivoScreenTimeAuthorizationStatus {
 @available(iOS 16.0, *)
 struct ScreenTimeReport {
     let generatedAt: Date
+    let reportDate: String
     let totalSeconds: Int
     let perAppSeconds: [String: Int]
     let topApps: [(bundleID: String, seconds: Int)]
     
-    init(generatedAt: Date = Date(), totalSeconds: Int = 0, perAppSeconds: [String: Int] = [:]) {
+    init(generatedAt: Date = Date(), reportDate: String? = nil, totalSeconds: Int = 0, perAppSeconds: [String: Int] = [:]) {
         self.generatedAt = generatedAt
+        self.reportDate = reportDate ?? Self.dateKey(generatedAt)
         self.totalSeconds = totalSeconds
         self.perAppSeconds = perAppSeconds
         
@@ -157,6 +169,7 @@ struct ScreenTimeReport {
         }
         
         self.generatedAt = generatedAt
+        self.reportDate = (json["reportDate"] as? String) ?? Self.dateKey(generatedAt)
         
         // Try to get total seconds
         if let total = json["totalSeconds"] as? Int {
@@ -190,6 +203,7 @@ struct ScreenTimeReport {
     func toJSON() -> [String: Any] {
         return [
             "generatedAt": ISO8601DateFormatter().string(from: generatedAt),
+            "reportDate": reportDate,
             "totalSeconds": totalSeconds,
             "perAppSeconds": perAppSeconds,
             "source": "mivo-device-activity-extension"
@@ -198,6 +212,11 @@ struct ScreenTimeReport {
     
     var totalMinutes: Int {
         return totalSeconds / 60
+    }
+
+    private static func dateKey(_ date: Date) -> String {
+        let formatter = MivoDay.formatter
+        return formatter.string(from: date)
     }
     
     var totalHours: Double {

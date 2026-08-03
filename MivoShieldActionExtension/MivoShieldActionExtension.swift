@@ -1,4 +1,4 @@
-import FamilyControls
+  import FamilyControls
 import Foundation
 import ManagedSettings
 import os
@@ -21,6 +21,8 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     private let sessionExpiredSourceKey = "mivo.sessionExpiredSource"
     private let countdownUntilKey = "mivo.shieldCountdownUntil"
     private let countdownRemainingKey = "mivo.shieldCountdownRemaining"
+    private let lastOpenMivoNotificationAtKey = "mivo.lastOpenMivoNotificationAt"
+    private let openMivoNotificationPrefix = "mivo.shield.openmivo"
     private let checkInIntervalMinutesKey = "mivo.checkInIntervalMinutes"
     private let sessionLeaseStartedAtKey = "mivo.sessionLeaseStartedAt"
     private let sessionLeaseEndsAtKey = "mivo.sessionLeaseEndsAt"
@@ -31,6 +33,11 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     private let lastScheduleErrorKey = "mivo.lastScheduleError"
     private let lastShieldSourceKey = "mivo.lastShieldSource"
     private let shieldPauseDurationKey = "mivo.shieldPauseDuration"
+    private let mivoClearMappingPrefix = "mivo.clear.mapping."
+    private let mivoClearEnabledPrefix = "mivo.clear.enabled."
+    private let pendingMivoClearPlatformKey = "mivo.clear.pendingPlatform"
+    private let pendingMivoClearEntryPointKey = "mivo.clear.pendingEntryPoint"
+    private let mivoClearNotificationPrefix = "mivo.clear.open"
 
     /// Pause duration in seconds, reading the value the user set in Mivo settings.
     private var countdownDuration: TimeInterval {
@@ -49,7 +56,7 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         for application: ApplicationToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
-        handleShieldAction(action: action, completionHandler: completionHandler)
+        handleShieldAction(action: action, application: application, completionHandler: completionHandler)
     }
 
     override func handle(
@@ -57,7 +64,7 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         for category: ActivityCategoryToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
-        handleShieldAction(action: action, completionHandler: completionHandler)
+        handleShieldAction(action: action, application: nil, completionHandler: completionHandler)
     }
 
     override func handle(
@@ -65,13 +72,14 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         for webDomain: WebDomainToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
-        handleShieldAction(action: action, completionHandler: completionHandler)
+        handleShieldAction(action: action, application: nil, completionHandler: completionHandler)
     }
 
     // MARK: - Shared action handler
 
     private func handleShieldAction(
         action: ShieldAction,
+        application: ApplicationToken?,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
         switch action {
@@ -82,9 +90,9 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
                 logger.info("ShieldAction primary: countdown in progress → .defer")
                 completionHandler(.defer)
 
-            } else if isPendingSetupWithoutSession() {
-                // "Open Mivo" state — user needs to go to Mivo to set their intention
-                logger.info("ShieldAction primary: pending setup → opening Mivo")
+            } else if isExpiredSessionAwaitingMivo() || isPendingSetupWithoutSession() {
+                // "Open Mivo" state — user needs to go to Mivo to handle the session.
+                logger.info("ShieldAction primary: open Mivo state → showing launch notification")
                 openMivoForIntervention()
                 completionHandler(.defer)
 
@@ -95,21 +103,33 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
                 beginCountdownForActiveSession(completionHandler: completionHandler)
                 // DO NOT call completionHandler here — the countdown does it.
 
+            } else if let application, let platform = mappedMivoClearPlatform(for: application) {
+                logger.info("ShieldAction primary: mapped app → Mivo Clear \(platform.rawValue)")
+                requestMivoClear(platform)
+                completionHandler(.defer)
+
             } else {
-                // Default "Start" — begin user-configured pause, then glimpse + re-lock.
-                // We pass the completionHandler in and call it only after the countdown
-                // finishes. This keeps the extension process alive for the full duration
-                // so every asyncAfter tick fires reliably.
-                logger.info("ShieldAction primary: no session → starting intervention countdown (\(self.countdownDuration)s)")
-                beginCountdownForNewIntervention(completionHandler: completionHandler)
-                // DO NOT call completionHandler here — it will be called from inside the countdown
+                // The intention and adaptive pause now happen inside Mivo. Keep the
+                // selected app shielded and route there immediately.
+                logger.info("ShieldAction primary: no session → Open Mivo")
+                openMivoForIntervention()
+                completionHandler(.defer)
             }
 
         case .secondaryButtonPressed:
-            // The active-session check-in shield no longer offers a "Not now" option.
-            // Treat any secondary press as a dismissal.
-            logger.info("ShieldAction secondary: dismiss → .close")
-            completionHandler(.close)
+            if let application,
+               mappedMivoClearPlatform(for: application) != nil,
+               !isCountingDownActive(),
+               !isExpiredSessionAwaitingMivo(),
+               !isPendingSetupWithoutSession(),
+               !isSessionActive() {
+                logger.info("ShieldAction secondary: mapped app → timed session setup")
+                openMivoForIntervention()
+                completionHandler(.defer)
+            } else {
+                logger.info("ShieldAction secondary: dismiss → .close")
+                completionHandler(.close)
+            }
 
         @unknown default:
             completionHandler(.close)
@@ -117,6 +137,52 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     }
 
     // MARK: - Countdown helpers
+
+    private func requestMivoClear(_ platform: ClearPlatform) {
+        let defaults = UserDefaults(suiteName: appGroup)
+        defaults?.set(platform.rawValue, forKey: pendingMivoClearPlatformKey)
+        defaults?.set("shield", forKey: pendingMivoClearEntryPointKey)
+        defaults?.synchronize()
+
+        let content = UNMutableNotificationContent()
+        content.title = "Open Mivo Clear"
+        content.body = "Use \(platform.title) without the endless short-form feed."
+        content.sound = .default
+        content.categoryIdentifier = "MIVO_CLEAR"
+        content.userInfo = ["mivoRoute": "mivoClear", "platform": platform.rawValue]
+        if #available(iOS 15.0, *) { content.interruptionLevel = .timeSensitive }
+
+        let request = UNNotificationRequest(
+            identifier: "\(mivoClearNotificationPrefix).\(platform.rawValue).\(Int(Date().timeIntervalSince1970 * 1000))",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    private func mappedMivoClearPlatform(for token: ApplicationToken) -> ClearPlatform? {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return nil }
+        for platform in ClearPlatform.allCases {
+            guard defaults.bool(forKey: mivoClearEnabledPrefix + platform.rawValue) else { continue }
+            guard let data = defaults.data(forKey: mivoClearMappingPrefix + platform.rawValue),
+                  let mapped = try? JSONDecoder().decode(ApplicationToken.self, from: data) else { continue }
+            if mapped == token { return platform }
+        }
+        return nil
+    }
+
+    private enum ClearPlatform: String, CaseIterable {
+        case instagram, tiktok, youtube, snapchat
+
+        var title: String {
+            switch self {
+            case .instagram: return "Instagram"
+            case .tiktok: return "TikTok"
+            case .youtube: return "YouTube"
+            case .snapchat: return "Snapchat"
+            }
+        }
+    }
 
     /// Session-active countdown (used by "Continue session" secondary button).
     /// The completion handler is intentionally called only after the countdown finishes;
@@ -143,66 +209,7 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + countdownDuration) {
             self.unlockActiveSessionShield()
-            completionHandler(.defer)
-        }
-    }
-
-    /// New-intervention countdown (used by "Start" primary button, no active session).
-    /// Flow: N-second hold → immediately transition to "Open Mivo" shield that
-    /// persists until the user taps it.  No app glimpse — going from pause to
-    /// "Open Mivo" directly avoids leaking even a moment of access to the
-    /// blocked app.
-    ///
-    /// `completionHandler` is called only AFTER the re-lock retries.  This keeps
-    /// the extension process alive so every `asyncAfter` tick fires reliably.
-    /// Calling the handler signals iOS the action is handled; `.defer` keeps the
-    /// shield visible.
-    private func beginCountdownForNewIntervention(completionHandler: @escaping (ShieldActionResponse) -> Void) {
-        let duration = countdownDuration
-        let endTime = Date().addingTimeInterval(duration).timeIntervalSince1970
-        updateCountdownDisplay(remaining: Int(duration), endTime: endTime)
-
-        // Tick twice per second so iOS has more chances to repaint the shield.
-        // The shown remaining-seconds value still steps once per real second.
-        let totalSec = Int(duration)
-        let ticksPerSecond = 2
-        let totalTicks = totalSec * ticksPerSecond
-        for tick in 1..<totalTicks {
-            let delay = TimeInterval(tick) / TimeInterval(ticksPerSecond)
-            let remaining = max(1, totalSec - tick / ticksPerSecond)
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                self.updateCountdownDisplay(remaining: remaining, endTime: endTime)
-                self.apply(selection: self.loadSelection())
-            }
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-            // Clear countdown keys, then flip directly to the "Open Mivo" state.
-            // No glimpse: we re-apply the shield in the same tick so the user
-            // never sees the blocked app between the pause and the Open Mivo screen.
-            let defaults = UserDefaults(suiteName: self.appGroup)
-            defaults?.removeObject(forKey: self.countdownUntilKey)
-            defaults?.removeObject(forKey: self.countdownRemainingKey)
-            defaults?.synchronize()
-
-            self.requestInterventionSetup()
-            self.apply(selection: self.loadSelection())
-
-            // Belt-and-suspenders re-lock retries: 0.2 / 0.6 / 1.2 / 2.0 / 3.5
-            // seconds after the countdown ends.  Each pass re-marks
-            // pendingInterventionSetup and re-applies the shield in case the
-            // prior call was suppressed.
-            let retryOffsets: [TimeInterval] = [0.2, 0.6, 1.2, 2.0, 3.5]
-            for offset in retryOffsets {
-                DispatchQueue.main.asyncAfter(deadline: .now() + offset) {
-                    self.requestInterventionSetup()
-                    self.apply(selection: self.loadSelection())
-                }
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
-                completionHandler(.defer)
-            }
+            completionHandler(.close)
         }
     }
 
@@ -226,10 +233,17 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     // onOpenURL before it fires.
     private func openMivoForIntervention() {
         let defaults = UserDefaults(suiteName: appGroup)
+        let now = Date().timeIntervalSince1970
         defaults?.set(true, forKey: "mivo.openInterventionOnLaunch")
+        defaults?.set(true, forKey: pendingInterventionSetupKey)
+        defaults?.set(now, forKey: pendingInterventionSetupAtKey)
+        defaults?.removeObject(forKey: countdownUntilKey)
+        defaults?.removeObject(forKey: countdownRemainingKey)
         defaults?.synchronize()
 
         guard let url = URL(string: "mivo://intervention") else { return }
+
+        openWithExtensionContextIfAvailable(url)
 
         // ── Best-effort: UIApplication ObjC tricks ────────────────────────────────
         // These succeed only when UIApplication.shared exists in this process (it
@@ -261,16 +275,36 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         }
 
         // ── Reliable fallback: immediate local notification ───────────────────────
-        // Fires in 0.1 s — appears as a time-sensitive banner while the shield is
-        // still visible.  Tapping "Open Mivo" action or the body launches the main
-        // app; MivoAppDelegate applies shields and routes to the Interventions tab.
-        // If the ObjC trick above actually worked, the main app cancels this
-        // notification in its onOpenURL handler before it fires.
-        fireOpenMivoNotification()
+        // Tapping "Open Mivo" action or the body launches the main app; MivoAppDelegate
+        // applies shields and routes to the Interventions tab.
+        fireOpenMivoNotification(force: true)
     }
 
-    private func fireOpenMivoNotification() {
+    private func openWithExtensionContextIfAvailable(_ url: URL) {
+        let selector = NSSelectorFromString("extensionContext")
+        guard responds(to: selector),
+              let unmanagedContext = perform(selector),
+              let context = unmanagedContext.takeUnretainedValue() as? NSExtensionContext else {
+            logger.warning("openMivoForIntervention: NSExtensionContext opener unavailable")
+            return
+        }
+
+        context.open(url) { [weak self] success in
+            self?.logger.info("openMivoForIntervention: NSExtensionContext.open success=\(success)")
+        }
+    }
+
+    private func fireOpenMivoNotification(force: Bool) {
         let center = UNUserNotificationCenter.current()
+        let defaults = UserDefaults(suiteName: appGroup)
+        let now = Date().timeIntervalSince1970
+
+        if !force {
+            let lastSent = defaults?.double(forKey: lastOpenMivoNotificationAtKey) ?? 0
+            guard now - lastSent > 20 else { return }
+        }
+        defaults?.set(now, forKey: lastOpenMivoNotificationAtKey)
+        defaults?.synchronize()
 
         let content = UNMutableNotificationContent()
         content.title = "Open Mivo to set your intention"
@@ -282,19 +316,18 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
             content.interruptionLevel = .timeSensitive
         }
 
-        // 0.1 s — fires almost instantly; feels like a direct response to the button tap.
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+        // No trigger means iOS delivers the local notification immediately.
         let request = UNNotificationRequest(
-            identifier: "mivo.shield.openmivo",
+            identifier: "\(openMivoNotificationPrefix).\(Int(now * 1000))",
             content: content,
-            trigger: trigger
+            trigger: nil
         )
         center.add(request) { [weak self] error in
             if let error {
                 self?.logger.warning("fireOpenMivoNotification: failed to schedule — \(error.localizedDescription)")
             }
         }
-        logger.info("openMivoForIntervention: immediate notification scheduled (0.1 s)")
+        logger.info("openMivoForIntervention: immediate notification scheduled")
     }
 
     // MARK: - State checks
@@ -314,6 +347,34 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
             return false
         }
         return !isSessionActive()
+    }
+
+    private func isExpiredSessionAwaitingMivo() -> Bool {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return false }
+
+        let now = Date().timeIntervalSince1970
+        if defaults.double(forKey: sessionExpiredAtKey) > 0 {
+            defaults.set(true, forKey: pendingInterventionSetupKey)
+            defaults.set(now, forKey: pendingInterventionSetupAtKey)
+            defaults.removeObject(forKey: countdownUntilKey)
+            defaults.removeObject(forKey: countdownRemainingKey)
+            defaults.synchronize()
+            return true
+        }
+
+        let endsAt = defaults.double(forKey: sessionEndsAtKey)
+        guard endsAt > 0 && endsAt < now else { return false }
+
+        defaults.set(false, forKey: sessionActiveKey)
+        defaults.removeObject(forKey: sessionEndsAtKey)
+        defaults.set(true, forKey: pendingInterventionSetupKey)
+        defaults.set(now, forKey: pendingInterventionSetupAtKey)
+        defaults.set(now, forKey: sessionExpiredAtKey)
+        defaults.set("session-end", forKey: sessionExpiredSourceKey)
+        defaults.removeObject(forKey: countdownUntilKey)
+        defaults.removeObject(forKey: countdownRemainingKey)
+        defaults.synchronize()
+        return true
     }
 
     private func updateCountdownDisplay(remaining: Int, endTime: TimeInterval) {

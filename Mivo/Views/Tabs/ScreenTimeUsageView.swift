@@ -44,8 +44,8 @@ struct ScreenTimeUsageView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Live Screen Time")
                 .font(.system(size: 28, weight: .bold))
-                .foregroundColor(MivoColors.textPrimary)
                 .tracking(-0.8)
+                .foregroundColor(MivoColors.textPrimary)
 
             Text("Mivo shows Apple's Screen Time report directly. It will not use session history or test values as a substitute.")
                 .font(.system(size: 15, weight: .medium))
@@ -71,10 +71,10 @@ struct ScreenTimeUsageView: View {
             MivoReadableScreenTimeSummaryCard(compact: false)
         }
         .padding(16)
-        .background(MivoColors.white.opacity(0.48))
-        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .background(MivoColors.surfaceRaised.opacity(0.48))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
-            RoundedRectangle(cornerRadius: 22)
+            RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(MivoColors.border.opacity(0.75), lineWidth: 1)
         )
     }
@@ -104,9 +104,9 @@ struct ScreenTimeUsageView: View {
         }
         .padding(16)
         .background(MivoColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(MivoColors.border, lineWidth: 1)
         )
     }
@@ -152,7 +152,7 @@ struct MivoReadableScreenTimeSummaryCard: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(totalText)
                             .font(.system(size: compact ? 44 : 54, weight: .bold, design: .rounded))
-                            .foregroundColor(MivoColors.textPrimary)
+                            .foregroundColor(MivoColors.screenTimeInk)
                             .monospacedDigit()
                             .lineLimit(1)
                             .minimumScaleFactor(0.72)
@@ -170,7 +170,7 @@ struct MivoReadableScreenTimeSummaryCard: View {
                         .foregroundColor(MivoColors.heroText)
                         .frame(width: compact ? 38 : 44, height: compact ? 38 : 44)
                         .background(MivoColors.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
 
                 if topApps.isEmpty {
@@ -195,19 +195,10 @@ struct MivoReadableScreenTimeSummaryCard: View {
             }
             .padding(compact ? 16 : 18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color(hex: "#FFF9F1"),
-                        Color(hex: "#F5E9DA")
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(MivoColors.surfaceRaised.opacity(0.92))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(MivoColors.border.opacity(0.42), lineWidth: 1)
             )
 
@@ -234,23 +225,14 @@ struct MivoReadableScreenTimeSummaryCard: View {
 
             reportSyncSurface
                 .frame(maxWidth: .infinity, minHeight: compact ? 132 : 194)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .padding(compact ? 14 : 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(hex: "#FFF9F1"),
-                    Color(hex: "#F5E9DA")
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(MivoColors.surfaceRaised.opacity(0.92))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(MivoColors.border.opacity(0.42), lineWidth: 1)
         )
     }
@@ -267,9 +249,9 @@ struct MivoReadableScreenTimeSummaryCard: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MivoColors.white.opacity(0.58))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(MivoColors.border.opacity(0.22), lineWidth: 1))
+        .background(MivoColors.surfaceRaised.opacity(0.58))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(MivoColors.border.opacity(0.22), lineWidth: 1))
     }
 
     private func readableAppRow(name: String, seconds: Int) -> some View {
@@ -301,8 +283,8 @@ struct MivoReadableScreenTimeSummaryCard: View {
             .frame(height: 7)
         }
         .padding(12)
-        .background(MivoColors.white.opacity(0.52))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(MivoColors.surfaceRaised.opacity(0.52))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     @ViewBuilder
@@ -314,14 +296,16 @@ struct MivoReadableScreenTimeSummaryCard: View {
         #endif
     }
 
+    /// An em dash rather than "0m": with no report in hand Mivo does not know
+    /// the user scrolled for zero minutes, only that it cannot see.
     private var totalText: String {
-        guard let minutes = appVM.deviceActivityMinutesToday else { return "0m" }
+        guard let minutes = appVM.screenTimeToday.minutes else { return "—" }
         return formatMinutes(minutes)
     }
 
     private var subtitleText: String {
-        if appVM.deviceActivityMinutesToday != nil {
-            return "real iOS Screen Time today"
+        if let reason = appVM.screenTimeToday.reason {
+            return "\(reason.title) · \(reason.detail)"
         }
         return "real iOS Screen Time today"
     }

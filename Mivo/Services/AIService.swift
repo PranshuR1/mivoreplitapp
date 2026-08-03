@@ -2,10 +2,14 @@ import Foundation
 
 // MARK: - OpenRouter Service
 enum OpenRouterService {
-    private static let apiKey = "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"
     private static let endpoint = URL(string: "https://openrouter.ai/api/v1/chat/completions")!
     // Two models: primary Claude Haiku, fallback Llama (free tier)
     private static let models = ["anthropic/claude-3-haiku", "meta-llama/llama-3-8b-instruct:free"]
+
+    private static var apiKey: String {
+        (Bundle.main.object(forInfoDictionaryKey: "MIVO_OPENROUTER_API_KEY") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
 
     struct PlanPayload: Decodable {
         let targetMinutes: Int?
@@ -21,6 +25,11 @@ enum OpenRouterService {
             let minutes: Int?
             let reason: String?
         }
+    }
+
+    private struct EmergencyUnlockPayload: Decodable {
+        let approved: Bool
+        let message: String?
     }
 
     static func makePersonalizedPlan(
@@ -58,7 +67,7 @@ User profile:
 - Self-reported daily scroll estimate: \(scrollEst) min
 - Apps they use most: \(apps)
 - Plan day (day 1 = first day after 3-day observation): \(dayIndex)
-- 3-day observation average (the user's actual daily screen time): \(baseline) min
+- Blended baseline after observation: \(baseline) min
 - User's daily scroll goal (end target, set during onboarding): \(goal) min
 - Rule-based target today: \(localTarget) min
 
@@ -66,7 +75,7 @@ Recent sessions (last 10):
 \(recentSessions.isEmpty ? "None yet." : recentSessions)
 
 Generate a PERSONALIZED screen time plan that follows this philosophy:
-- Day 1 of the plan equals the observation average (\(baseline) min) — start where
+- Day 1 of the plan equals the blended baseline (\(baseline) min) — start where
   the user actually is, never below.
 - The plan ramps DOWN smoothly toward the user's goal (\(goal) min) over weeks,
   never below the goal. NEVER drop more than 5 min from one day to the next.
@@ -74,7 +83,10 @@ Generate a PERSONALIZED screen time plan that follows this philosophy:
 - Week 2+ tightens slightly faster: the per-day decrement grows by ~1 min per
   week. "Harder every week, slowly but surely."
 - Once the plan reaches the goal, it stays there — don't go lower.
-- Suggest exactly 2 scroll windows that fit the user's session patterns.
+- Suggest 2-4 scroll windows that fit the user's session patterns:
+  2 windows if target is <=90 min, 3 windows if 91-180 min, 4 windows if >180 min.
+  Prefer 1-hour windows; use 2-hour windows only when a single window has more
+  than 60 allowed minutes.
 - Be warm and personalized in summary/decisionReason (mention their main app or
   intention, and frame it as a gentle build-up, not a crash diet).
 
@@ -85,7 +97,6 @@ Respond ONLY with valid JSON, no markdown, no commentary:
   "summary": "<1-2 sentences, personalized>",
   "decisionReason": "<1-2 sentences explaining the plan>",
   "windows": [
-    {"title": "<label>", "startHour": <0-23>, "endHour": <1-24>, "minutes": <int>, "reason": "<why>"},
     {"title": "<label>", "startHour": <0-23>, "endHour": <1-24>, "minutes": <int>, "reason": "<why>"}
   ]
 }
@@ -93,11 +104,14 @@ Respond ONLY with valid JSON, no markdown, no commentary:
     }
 
     private static func callModel(model: String, prompt: String, localPlan: ScreenTimeReductionPlan) async -> ScreenTimeReductionPlan? {
+        let key = apiKey
+        guard !key.isEmpty else { return nil }
+
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("https://mivo.app", forHTTPHeaderField: "HTTP-Referer")
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.setValue("https://usemivo.app", forHTTPHeaderField: "HTTP-Referer")
         request.timeoutInterval = 14
 
         let body: [String: Any] = [
@@ -133,7 +147,7 @@ Respond ONLY with valid JSON, no markdown, no commentary:
             guard let start = w.startHour, let end = w.endHour, let mins = w.minutes else { return nil }
             return ScreenScrollWindow(
                 id: "ai-window-\(idx)-\(model.prefix(6))",
-                title: w.title ?? (idx == 0 ? "Scroll session 1" : "Scroll session 2"),
+                title: w.title ?? "Scroll session \(idx + 1)",
                 startHour: min(max(start, 0), 23),
                 endHour: min(24, max(end, start + 1)),
                 minutes: max(5, mins),
@@ -159,6 +173,94 @@ Respond ONLY with valid JSON, no markdown, no commentary:
             summary: summary,
             decisionReason: reason,
             windows: windows
+        )
+    }
+
+    static func verifyEmergencyUnlock(
+        reason: String,
+        profile: OnboardingProfile?,
+        recentSessions: [Session]
+    ) async -> EmergencyUnlockReview? {
+        let key = apiKey
+        guard !key.isEmpty else { return nil }
+
+        let prompt = emergencyUnlockPrompt(reason: reason, profile: profile, recentSessions: recentSessions)
+        for model in models {
+            if let review = await callEmergencyUnlockModel(model: model, prompt: prompt, key: key) {
+                return review
+            }
+        }
+        return nil
+    }
+
+    private static func emergencyUnlockPrompt(
+        reason: String,
+        profile: OnboardingProfile?,
+        recentSessions: [Session]
+    ) -> String {
+        let apps = profile?.preferredApps.prefix(6).joined(separator: ", ") ?? "none listed"
+        let recent = recentSessions.suffix(6).map {
+            "- \($0.date): \($0.actualDuration)m, intention: \($0.intention.rawValue), emergency: \($0.emergencyUnlockUsed == true ? "yes" : "no")"
+        }.joined(separator: "\n")
+
+        return """
+You are Mivo's emergency-unlock verifier. The user is asking for 5 extra minutes after their scrolling timer ended.
+
+Approve only if the reason is concrete, time-sensitive, and hard to postpone, such as replying to a specific person, handling work/school, travel, directions, tickets, banking, health, safety, or another real-world task.
+
+Reject if the reason is vague, recreational, habit-based, boredom-based, or simply wants more scrolling, such as "just because", "bored", "I want to scroll", "TikTok", "Instagram", "relax", "idk", or "more time".
+
+User's protected apps: \(apps)
+Recent sessions:
+\(recent.isEmpty ? "None." : recent)
+
+Emergency reason:
+"\(reason)"
+
+Respond ONLY with valid JSON:
+{
+  "approved": true | false,
+  "message": "<short user-facing reason, max 18 words>"
+}
+"""
+    }
+
+    private static func callEmergencyUnlockModel(model: String, prompt: String, key: String) async -> EmergencyUnlockReview? {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.setValue("https://usemivo.app", forHTTPHeaderField: "HTTP-Referer")
+        request.timeoutInterval = 8
+
+        let body: [String: Any] = [
+            "model": model,
+            "messages": [["role": "user", "content": prompt]],
+            "max_tokens": 120,
+            "temperature": 0.1
+        ]
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+        request.httpBody = bodyData
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let content = message["content"] as? String else { return nil }
+
+        let cleaned = content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "^```json\\s*", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\\s*```$", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let payloadData = cleaned.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(EmergencyUnlockPayload.self, from: payloadData) else { return nil }
+
+        return EmergencyUnlockReview(
+            approved: payload.approved,
+            message: payload.message ?? (payload.approved ? "Approved for a concrete urgent task." : "Mivo needs a more specific urgent reason.")
         )
     }
 }
@@ -200,6 +302,25 @@ enum AIServiceError: Error {
 }
 
 class AIService {
+    /// A local adaptive decision so the pause is immediate and still works offline.
+    /// Repeated openings inside the friction tracker's 30-minute window receive
+    /// a slightly longer pause without escalating into a punitive cooldown.
+    static func adaptiveInterventionPauseSeconds(
+        attemptCount: Int,
+        recentAttempts: [InterventionAttemptRecord],
+        now: Date = Date()
+    ) -> Int {
+        let recentCutoff = now.addingTimeInterval(-30 * 60)
+        let recentRecordedCount = recentAttempts.reduce(into: 0) { count, attempt in
+            guard let date = ISO8601DateFormatter().date(from: attempt.occurredAt),
+                  date >= recentCutoff,
+                  date <= now else { return }
+            count += 1
+        }
+        let effectiveCount = max(attemptCount, recentRecordedCount + 1)
+        return effectiveCount >= 2 ? 10 : 5
+    }
+
     // Replace with your deployed API URL when available
     // For local development with a running API server, use http://localhost:PORT/api
     static let apiBaseURL: String = {
@@ -214,6 +335,76 @@ class AIService {
         }
         return ""
     }()
+
+    static func verifyEmergencyUnlock(
+        reason: String,
+        sessions: [Session],
+        profile: OnboardingProfile?
+    ) async -> EmergencyUnlockReview {
+        let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let aiReview = await OpenRouterService.verifyEmergencyUnlock(
+            reason: trimmed,
+            profile: profile,
+            recentSessions: sessions
+        ) {
+            return aiReview
+        }
+
+        return localEmergencyUnlockReview(reason: trimmed)
+    }
+
+    private static func localEmergencyUnlockReview(reason: String) -> EmergencyUnlockReview {
+        let lower = reason.lowercased()
+        let words = lower.split { !$0.isLetter && !$0.isNumber }
+        guard reason.count >= 12, words.count >= 3 else {
+            return EmergencyUnlockReview(
+                approved: false,
+                message: "Write a specific urgent reason, not just a short phrase."
+            )
+        }
+
+        let urgentTerms = [
+            "work", "boss", "client", "meeting", "school", "class", "teacher", "homework",
+            "assignment", "parent", "family", "friend", "reply", "message", "call", "email",
+            "doctor", "health", "medicine", "medication", "appointment", "bank", "payment",
+            "ticket", "travel", "uber", "lyft", "map", "maps", "directions", "safety",
+            "emergency", "code", "login", "verification", "two factor", "2fa"
+        ]
+        let driftTerms = [
+            "bored", "scroll", "tiktok", "instagram", "youtube", "reddit", "relax",
+            "fun", "idk", "don't know", "dont know", "more time", "just because",
+            "habit", "nothing"
+        ]
+
+        let hasUrgentTerm = urgentTerms.contains { lower.contains($0) }
+        let hasDriftTerm = driftTerms.contains { lower.contains($0) }
+
+        if hasUrgentTerm {
+            return EmergencyUnlockReview(
+                approved: true,
+                message: "Approved for a specific time-sensitive task."
+            )
+        }
+
+        if hasDriftTerm {
+            return EmergencyUnlockReview(
+                approved: false,
+                message: "That sounds like scrolling drift, not an emergency."
+            )
+        }
+
+        if words.count >= 7 {
+            return EmergencyUnlockReview(
+                approved: true,
+                message: "Approved because the reason is specific enough to review."
+            )
+        }
+
+        return EmergencyUnlockReview(
+            approved: false,
+            message: "Be more specific about why this cannot wait."
+        )
+    }
 
     static func recommendFocus(
         focusLevel: Int,
@@ -439,13 +630,15 @@ class AIService {
         sessions: [Session],
         truthChecks: [TruthCheckGuess],
         todayScreenTimeMinutes: Int?,
-        profile: OnboardingProfile?
+        profile: OnboardingProfile?,
+        dailyObservations: [DailyScreenTimeObservation] = []
     ) -> ScreenTimeReductionPlan {
         // Plan structure:
         //   • Days 1–3: 3-day observation period. No enforced cap — Mivo just
         //     records the user's actual usage so it can build a personalized
         //     starting target from real data.
-        //   • Plan day 1 (overall day 4): target equals the observation average.
+        //   • Plan day 1 (overall day 4): target equals the average of the
+        //     user's onboarding report and the 3 observed daily totals.
         //   • Week 1 of plan (days 1–7): a "lenient week" — every day is a bit
         //     harder by 3 min/day.
         //   • Week 2+: the per-day decrement grows by 1 min per week (week 2 is
@@ -455,17 +648,20 @@ class AIService {
         //     min if no goal is on file.
         let daysNeeded = 3
         let floorMinutes = max(15, profile?.dailyScrollGoalMinutes ?? 30)
-        let dailyTotals = Dictionary(grouping: sessions, by: \.date)
-            .mapValues { daySessions in
-                daySessions.reduce(0) { $0 + $1.actualDuration }
-            }
-        let observedDays = Set(Array(dailyTotals.keys) + truthChecks.map(\.date))
-        let daysCollected = observedDays.count
-        let fallbackEstimate = max(profile?.scrollEstimateMinutes ?? 90, todayScreenTimeMinutes ?? 0, 45)
-        let baseline = max(
-            dailyTotals.isEmpty ? fallbackEstimate : dailyTotals.values.reduce(0, +) / max(dailyTotals.count, 1),
-            20
+        let observedDailyTotals = observedDailyScrollTotals(
+            sessions: sessions,
+            truthChecks: truthChecks,
+            dailyObservations: dailyObservations
         )
+        let totalsByDate = Dictionary(uniqueKeysWithValues: observedDailyTotals.map { ($0.date, $0.minutes) })
+        let observationStart = observationStartDate(profile: profile, observedDailyTotals: observedDailyTotals)
+        let completedCalendarDays = completedObservationDays(since: observationStart)
+        let daysCollected = min(daysNeeded, completedCalendarDays)
+        let observedSamples = observationDateKeys(from: observationStart, count: daysCollected)
+            .compactMap { totalsByDate[$0] }
+        let fallbackEstimate = max(profile?.scrollEstimateMinutes ?? 90, todayScreenTimeMinutes ?? 0, 45)
+        let partialObservedAverage = averageMinutes(observedSamples)
+        let baseline = max(partialObservedAverage ?? fallbackEstimate, 20)
 
         guard daysCollected >= daysNeeded else {
             // Observation period: no cap, just track usage.  Windows are
@@ -491,37 +687,42 @@ class AIService {
                 baselineMinutes: baseline,
                 targetMinutes: 0,
                 strictnessPercent: 0,
-                summary: "Day \(dayLabel) of \(daysNeeded) — observation mode. \(remaining) day\(remaining == 1 ? "" : "s") left, then your week-1 lenient plan begins at the average of these 3 days.",
-                decisionReason: "Mivo observes freely for 3 days — no cap, no restrictions. Plan day 1 starts at the average of these 3 days. Week 1 is lenient with small daily trims; each week after that the daily trim grows a little, slowly but surely.",
+                summary: "Day \(dayLabel) of \(daysNeeded) — observation mode. \(remaining) day\(remaining == 1 ? "" : "s") left, then your week-1 lenient plan begins from your self-report plus these 3 observed days.",
+                decisionReason: "Mivo observes freely for 3 days — no cap, no restrictions. Plan day 1 starts at the average of your onboarding report and the 3 observed daily totals.",
                 windows: observationWindows
             )
         }
 
-        // Past-3-day average — the 3 most-recent observed daily totals.
-        let recentTotals = dailyTotals
-            .sorted { $0.key > $1.key }
-            .prefix(3)
-            .map(\.value)
-        let pastThreeDayAverage: Int = {
-            guard !recentTotals.isEmpty else { return baseline }
-            return max(floorMinutes, recentTotals.reduce(0, +) / recentTotals.count)
+        // Baseline after observation: onboarding self-report + the first 3
+        // observed daily totals, averaged as separate inputs. Keeping the first
+        // 3 days anchors the plan to the observation window instead of letting
+        // the baseline drift after the plan starts.
+        let missingDayFallback = max(profile?.scrollEstimateMinutes ?? 45, 20)
+        let observationTotals = observationDateKeys(from: observationStart, count: daysNeeded)
+            .map { totalsByDate[$0] ?? missingDayFallback }
+        let blendedBaseline: Int = {
+            var samples = observationTotals
+            if let reported = profile?.scrollEstimateMinutes, reported > 0 {
+                samples.append(reported)
+            }
+            return max(floorMinutes, averageMinutes(samples) ?? baseline)
         }()
 
         // dayIndex = 1 on the first plan day (overall day 4).
-        let dayIndex = max(1, daysCollected - daysNeeded + 1)
-        let target = personalizedTargetMinutes(dayIndex: dayIndex, baseline: pastThreeDayAverage, floor: floorMinutes)
-        let strictness = max(0, min(95, Int(((Double(pastThreeDayAverage) - Double(target)) / Double(max(pastThreeDayAverage, 1)) * 100).rounded())))
+        let dayIndex = max(1, completedCalendarDays - daysNeeded + 1)
+        let target = personalizedTargetMinutes(dayIndex: dayIndex, baseline: blendedBaseline, floor: floorMinutes)
+        let strictness = max(0, min(95, Int(((Double(blendedBaseline) - Double(target)) / Double(max(blendedBaseline, 1)) * 100).rounded())))
         let activeWindows = recommendedScrollWindows(from: sessions, targetMinutes: target)
 
         let weekNum = (dayIndex - 1) / 7 + 1
         let perDayDecrement = 3 + (weekNum - 1)  // 3 for week 1, 4 for week 2, …
         let summaryLine: String
         if dayIndex == 1 {
-            summaryLine = "Plan day 1 — week 1 starts at your 3-day average of \(pastThreeDayAverage) min. This week is lenient: each day trims about \(perDayDecrement) min."
+            summaryLine = "Plan day 1 — week 1 starts at your blended baseline of \(blendedBaseline) min. This averages your self-report with the 3 observed days."
         } else if weekNum == 1 {
-            summaryLine = "Plan day \(dayIndex) — lenient week 1. Today's target is \(target) min, \(pastThreeDayAverage - target) min below your observation average."
+            summaryLine = "Plan day \(dayIndex) — lenient week 1. Today's target is \(target) min, \(blendedBaseline - target) min below your blended baseline."
         } else {
-            summaryLine = "Plan day \(dayIndex) — week \(weekNum). Today's target is \(target) min (-\(perDayDecrement) min/day this week, \(strictness)% below your observation average)."
+            summaryLine = "Plan day \(dayIndex) — week \(weekNum). Today's target is \(target) min (-\(perDayDecrement) min/day this week, \(strictness)% below your blended baseline)."
         }
 
         return ScreenTimeReductionPlan(
@@ -530,18 +731,85 @@ class AIService {
             daysCollected: daysCollected,
             daysNeeded: daysNeeded,
             dayIndex: dayIndex,
-            baselineMinutes: pastThreeDayAverage,
+            baselineMinutes: blendedBaseline,
             targetMinutes: target,
             strictnessPercent: strictness,
             summary: summaryLine,
-            decisionReason: "Plan day 1 = your observation average. Week 1 trims 3 min/day; each week after that the daily trim grows by 1 min, with a \(floorMinutes)-min floor. The two scroll windows split today's target where your sessions cluster.",
+            decisionReason: "Plan day 1 = the average of your onboarding report and the 3 observed daily totals. Week 1 trims 3 min/day; each week after that the daily trim grows by 1 min, with a \(floorMinutes)-min floor.",
             windows: activeWindows
         )
     }
 
+    private static func observedDailyScrollTotals(
+        sessions: [Session],
+        truthChecks: [TruthCheckGuess],
+        dailyObservations: [DailyScreenTimeObservation]
+    ) -> [(date: String, minutes: Int)] {
+        var totals = Dictionary(grouping: sessions, by: \.date)
+            .mapValues { daySessions in
+                daySessions.reduce(0) { $0 + max(0, $1.actualDuration) }
+            }
+
+        for observation in dailyObservations {
+            totals[observation.date] = max(totals[observation.date, default: 0], max(0, observation.minutes))
+        }
+
+        for check in truthChecks {
+            totals[check.date] = max(totals[check.date, default: 0], max(0, check.actual))
+        }
+
+        return totals
+            .map { (date: $0.key, minutes: $0.value) }
+    }
+
+    private static func observationStartDate(
+        profile: OnboardingProfile?,
+        observedDailyTotals: [(date: String, minutes: Int)]
+    ) -> Date {
+        let calendar = Calendar.current
+        let iso = ISO8601DateFormatter()
+        if let startedAt = profile?.observationStartedAt,
+           let date = iso.date(from: startedAt) {
+            return calendar.startOfDay(for: date)
+        }
+
+        let dayFormatter = MivoDay.formatter
+        if let firstObservedKey = observedDailyTotals.map(\.date).min(),
+           let firstObservedDate = dayFormatter.date(from: firstObservedKey) {
+            return calendar.startOfDay(for: firstObservedDate)
+        }
+
+        return calendar.startOfDay(for: Date())
+    }
+
+    private static func completedObservationDays(since startDate: Date, now: Date = Date()) -> Int {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: startDate)
+        let today = calendar.startOfDay(for: now)
+        return max(0, calendar.dateComponents([.day], from: start, to: today).day ?? 0)
+    }
+
+    private static func observationDateKeys(from startDate: Date, count: Int) -> [String] {
+        guard count > 0 else { return [] }
+
+        let calendar = Calendar.current
+        let formatter = MivoDay.formatter
+        let start = calendar.startOfDay(for: startDate)
+
+        return (0..<count).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset, to: start).map { formatter.string(from: $0) }
+        }
+    }
+
+    private static func averageMinutes(_ samples: [Int]) -> Int? {
+        guard !samples.isEmpty else { return nil }
+        let total = samples.reduce(0, +)
+        return Int((Double(total) / Double(samples.count)).rounded())
+    }
+
     /// Computes the personalized daily target for plan day `dayIndex`.
     ///
-    /// - Day 1: equals `baseline` (the 3-day observation average).
+    /// - Day 1: equals `baseline` (self-report plus 3 observed days averaged).
     /// - Week 1 (days 1–7): per-day decrement of 3 min.
     /// - Week 2+: per-day decrement grows by 1 min per week (week 2 = -4/day,
     ///   week 3 = -5/day, …).
@@ -577,35 +845,54 @@ class AIService {
         sessions: [Session],
         truthChecks: [TruthCheckGuess],
         todayScreenTimeMinutes: Int?,
-        profile: OnboardingProfile?
+        profile: OnboardingProfile?,
+        dailyObservations: [DailyScreenTimeObservation] = []
     ) async -> ScreenTimeReductionPlan {
         let local = makeScreenTimeReductionPlan(
             sessions: sessions,
             truthChecks: truthChecks,
             todayScreenTimeMinutes: todayScreenTimeMinutes,
-            profile: profile
+            profile: profile,
+            dailyObservations: dailyObservations
         )
         guard !local.collecting else { return local }
         if let ai = await OpenRouterService.makePersonalizedPlan(
             sessions: sessions,
             profile: profile,
             localPlan: local
-        ) { return ai }
+        ) {
+            // AI personalizes the explanation only. Targets and windows stay on
+            // the deterministic engine shared by Home, Settings, and enforcement.
+            return ScreenTimeReductionPlan(
+                id: "\(local.id)-narrative",
+                collecting: local.collecting,
+                daysCollected: local.daysCollected,
+                daysNeeded: local.daysNeeded,
+                dayIndex: local.dayIndex,
+                baselineMinutes: local.baselineMinutes,
+                targetMinutes: local.targetMinutes,
+                strictnessPercent: local.strictnessPercent,
+                summary: ai.summary,
+                decisionReason: ai.decisionReason,
+                windows: local.windows
+            )
+        }
         return local
     }
 
     private static func userPreferredScrollWindows(from profile: OnboardingProfile?, targetMinutes: Int) -> [ScreenScrollWindow] {
         guard let windows = profile?.preferredScrollWindows, !windows.isEmpty else { return [] }
-        let firstMinutes = max(8, Int((Double(targetMinutes) * 0.55).rounded()))
-        let secondMinutes = max(7, targetMinutes - firstMinutes)
+        let allocations = evenMinuteAllocations(total: max(0, targetMinutes), count: windows.count)
 
-        return windows.prefix(2).enumerated().map { index, window in
-            let minutes = index == 0 ? firstMinutes : secondMinutes
+        return windows.enumerated().map { index, window in
+            let minutes = allocations.indices.contains(index) ? allocations[index] : 0
+            let start = min(max(window.startHour, 0), 23)
+            let duration = max(1, min(2, window.endHour - window.startHour))
             return ScreenScrollWindow(
                 id: "user-window-\(index + 1)-\(window.startHour)",
-                title: index == 0 ? "Your session 1" : "Your session 2",
-                startHour: min(max(window.startHour, 0), 23),
-                endHour: min(24, max(window.startHour + 1, window.endHour)),
+                title: "Your session \(index + 1)",
+                startHour: start,
+                endHour: min(24, start + duration),
                 minutes: minutes,
                 reason: "You chose this time. Mivo will monitor for 3 days before recommending changes."
             )
@@ -639,6 +926,7 @@ class AIService {
             }
         }
 
+        let windowCount = adaptiveWindowCount(for: targetMinutes)
         let rankedKeys = scores
             .sorted { lhs, rhs in
                 if lhs.value == rhs.value { return lhs.key < rhs.key }
@@ -646,30 +934,84 @@ class AIService {
             }
             .map(\.key)
 
-        var chosen = Array(rankedKeys.prefix(2))
+        var chosen = Array(rankedKeys.prefix(windowCount))
         if chosen.allSatisfy({ scores[$0, default: 0] == 0 }) {
-            chosen = ["afternoon", "evening"]
+            chosen = Array(defaultWindowKeys(count: windowCount))
         }
 
-        let firstMinutes = max(8, Int((Double(targetMinutes) * 0.55).rounded()))
-        let secondMinutes = max(7, targetMinutes - firstMinutes)
+        let allocations = weightedMinuteAllocations(
+            keys: chosen,
+            scores: scores,
+            targetMinutes: targetMinutes
+        )
 
         return chosen.enumerated().compactMap { index, key in
             guard let info = bucketInfo.first(where: { $0.key == key }) else { return nil }
-            let minutes = index == 0 ? firstMinutes : secondMinutes
+            let minutes = allocations.indices.contains(index) ? allocations[index] : 0
             let reason = scores[key, default: 0] > 0
                 ? "Chosen because your collected sessions cluster here."
                 : info.fallbackReason
-            let windowSpanHours = minutes >= 20 ? 2 : 1
+            let windowSpanHours = targetMinutes > 180 && minutes > 60 ? 2 : 1
             return ScreenScrollWindow(
                 id: "\(key)-\(index)",
-                title: index == 0 ? "Scroll session 1" : "Scroll session 2",
+                title: "Scroll session \(index + 1)",
                 startHour: info.start,
                 endHour: min(24, info.start + windowSpanHours),
                 minutes: minutes,
                 reason: reason
             )
         }
+    }
+
+    private static func adaptiveWindowCount(for targetMinutes: Int) -> Int {
+        if targetMinutes > 180 { return 4 }
+        if targetMinutes > 90 { return 3 }
+        return 2
+    }
+
+    private static func defaultWindowKeys(count: Int) -> [String] {
+        Array(["morning", "afternoon", "evening", "night"].prefix(max(2, min(4, count))))
+    }
+
+    private static func evenMinuteAllocations(total: Int, count: Int) -> [Int] {
+        guard count > 0 else { return [] }
+        guard total > 0 else { return Array(repeating: 0, count: count) }
+        let base = total / count
+        let remainder = total % count
+        return (0..<count).map { base + ($0 < remainder ? 1 : 0) }
+    }
+
+    private static func weightedMinuteAllocations(keys: [String], scores: [String: Int], targetMinutes: Int) -> [Int] {
+        guard !keys.isEmpty else { return [] }
+        guard targetMinutes > 0 else { return Array(repeating: 0, count: keys.count) }
+
+        let rawWeights = keys.map { max(scores[$0, default: 0], 0) }
+        let totalRaw = rawWeights.reduce(0, +)
+        if totalRaw == 0 {
+            return evenMinuteAllocations(total: targetMinutes, count: keys.count)
+        }
+
+        let smoothing = max(1, totalRaw / max(1, keys.count * 3))
+        let weights = rawWeights.map { $0 + smoothing }
+        let totalWeight = weights.reduce(0, +)
+        var allocations = weights.map { weight in
+            max(5, Int((Double(targetMinutes) * Double(weight) / Double(max(totalWeight, 1))).rounded()))
+        }
+
+        var delta = targetMinutes - allocations.reduce(0, +)
+        var index = 0
+        while delta != 0 && !allocations.isEmpty {
+            if delta > 0 {
+                allocations[index % allocations.count] += 1
+                delta -= 1
+            } else if allocations[index % allocations.count] > 5 {
+                allocations[index % allocations.count] -= 1
+                delta += 1
+            }
+            index += 1
+            if index > 500 { break }
+        }
+        return allocations
     }
 
     // New: estimate saved minutes per day for a user (tries remote AI then falls back to offline heuristic)

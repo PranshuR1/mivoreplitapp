@@ -29,8 +29,8 @@ struct OnboardingAgeView: View {
                         .keyboardType(.numberPad)
                         .padding(.horizontal, 18)
                         .padding(.vertical, 14)
-                        .background(MivoColors.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .background(Color.white.opacity(0.62))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .foregroundColor(MivoColors.textPrimary)
                         .onChange(of: ageText) { _, _ in HapticsService.selection() }
 
@@ -50,7 +50,7 @@ struct OnboardingAgeView: View {
                                     .padding(.vertical, 10)
                                     .background(selectedRange == r ? MivoColors.accentMuted : MivoColors.card)
                                     .foregroundColor(selectedRange == r ? MivoColors.accent : MivoColors.textPrimary)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }
@@ -69,8 +69,9 @@ struct OnboardingAgeView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(MivoColors.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .background(MivoColors.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: MivoColors.textPrimary.opacity(0.18), radius: 16, y: 8)
                 }
                 .simultaneousGesture(TapGesture().onEnded {
                     // Save age info
@@ -89,6 +90,6 @@ struct OnboardingAgeView: View {
             .animation(.easeOut(duration: 0.45), value: appear)
             .onAppear { appear = true }
         }
-        .navigationBarBackButtonHidden()
+        .onboardingNavigationChromeHidden()
     }
 }

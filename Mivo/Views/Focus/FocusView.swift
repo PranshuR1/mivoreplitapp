@@ -48,7 +48,7 @@ struct FocusView: View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 22) {
                     // Header
                     HStack {
                         Button { dismiss() } label: {
@@ -60,6 +60,7 @@ struct FocusView: View {
                         Spacer()
                         Text("Enter Focus")
                             .font(.system(size: 17, weight: .semibold))
+                            .tracking(0.3)
                             .foregroundColor(MivoColors.textPrimary)
                         Spacer()
                         Color.clear.frame(width: 44, height: 44)
@@ -98,17 +99,19 @@ struct FocusView: View {
                                     }
                                     Spacer()
                                 }
-                                .padding(14)
-                                .background(selectedMode == mode ? MivoColors.accentMuted : MivoColors.background)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .padding(.vertical, 13)
+                                .padding(.horizontal, 2)
+                                .background(selectedMode == mode ? MivoColors.accent.opacity(0.07) : Color.clear)
+                                .overlay(alignment: .bottom) {
+                                    Rectangle()
+                                        .fill(selectedMode == mode ? MivoColors.accent : MivoColors.border.opacity(0.34))
+                                        .frame(height: 1)
+                                }
                             }
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(18)
-                    .background(MivoColors.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .shadow(color: MivoColors.textPrimary.opacity(0.06), radius: 8, y: 2)
+                    .mivoSectionSurface()
 
                     // Mode options
                     modeOptionsCard
@@ -124,12 +127,9 @@ struct FocusView: View {
                             .padding(.horizontal, 14)
                             .padding(.vertical, 12)
                             .background(MivoColors.background)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
-                    .padding(18)
-                    .background(MivoColors.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .shadow(color: MivoColors.textPrimary.opacity(0.06), radius: 8, y: 2)
+                    .mivoSectionSurface()
 
                     // AI Coach card
                     aiCoachCard
@@ -148,18 +148,17 @@ struct FocusView: View {
                             Image(systemName: "arrow.right")
                         }
                         .foregroundColor(MivoColors.white)
-                        .tracking(0.3)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 18)
                         .background(MivoColors.accent)
-                        .clipShape(Capsule())
-                        .shadow(color: MivoColors.accent.opacity(0.3), radius: 12, y: 4)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .padding(.bottom, 8)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
                 .padding(.bottom, 40)
+                .mivoReadableWidth()
             }
         }
         .navigationBarHidden(true)
@@ -211,7 +210,7 @@ struct FocusView: View {
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
                             .background(workMinutes == w ? MivoColors.accent : MivoColors.background)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
                     }
@@ -234,7 +233,7 @@ struct FocusView: View {
                                     .foregroundColor(cycleCount == n ? .white : MivoColors.textSecondary)
                                     .frame(width: 40, height: 36)
                                     .background(cycleCount == n ? MivoColors.accent : MivoColors.background)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                             .buttonStyle(.plain)
                         }
@@ -254,7 +253,7 @@ struct FocusView: View {
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
                                 .background(adaptiveStartMin == n ? MivoColors.accent : MivoColors.background)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
                     }
@@ -271,7 +270,7 @@ struct FocusView: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
                                 .background(adaptiveMaxCap == n ? MivoColors.accent : MivoColors.background)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
                     }
@@ -290,7 +289,7 @@ struct FocusView: View {
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
                                 .background(microDuration == n ? MivoColors.accent : MivoColors.background)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
                     }
@@ -337,10 +336,7 @@ struct FocusView: View {
                     .lineSpacing(4)
             }
         }
-        .padding(18)
-        .background(MivoColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .shadow(color: MivoColors.textPrimary.opacity(0.06), radius: 8, y: 2)
+        .mivoSectionSurface()
     }
 
     @ViewBuilder
@@ -404,14 +400,11 @@ struct FocusView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(MivoColors.accent)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .disabled(aiLoading)
         }
-        .padding(18)
-        .background(MivoColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .shadow(color: MivoColors.textPrimary.opacity(0.06), radius: 8, y: 2)
+        .mivoSectionSurface()
     }
 
     func getRecommendation() async {
@@ -487,13 +480,13 @@ struct AIPlanSheet: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Recommended session")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(MivoColors.textMuted)
                         .tracking(0.4)
+                        .foregroundColor(MivoColors.textMuted)
                         .textCase(.uppercase)
                     Text(plan.mode.displayName)
                         .font(.system(size: 26, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
                         .tracking(-0.8)
+                        .foregroundColor(MivoColors.textPrimary)
                 }
 
                 HStack(spacing: 16) {
@@ -520,7 +513,7 @@ struct AIPlanSheet: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(MivoColors.accent)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     Button(action: onEdit) {
                         Text("Apply & adjust")
@@ -556,7 +549,7 @@ struct AIPlanSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(MivoColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(MivoColors.border, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border, lineWidth: 1))
     }
 }
