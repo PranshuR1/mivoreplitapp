@@ -7,13 +7,40 @@ const port = Number(process.env.PORT || 8787);
 const dataDir = process.env.MIVO_DATA_DIR || path.join(process.cwd(), "backend-data");
 const usersPath = path.join(dataDir, "users.json");
 const passwordIterations = 180_000;
-const adminEmail = normalizeEmail(process.env.MIVO_ADMIN_EMAIL || "useparkez@gmail.com");
-const adminPassword = process.env.MIVO_ADMIN_PASSWORD || "Pranshu@123";
+const adminEmail = normalizeEmail(process.env.MIVO_ADMIN_EMAIL || "");
+const adminPassword = process.env.MIVO_ADMIN_PASSWORD || "";
+const rateLimitWindowMs = boundedNumber(process.env.MIVO_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000, 60 * 1000, 60 * 60 * 1000);
+const globalRateLimitMax = boundedNumber(process.env.MIVO_GLOBAL_RATE_LIMIT_MAX, 120, 10, 10_000);
+const loginRateLimitMax = boundedNumber(process.env.MIVO_LOGIN_RATE_LIMIT_MAX, 5, 1, 100);
+const maxBodyBytes = boundedNumber(process.env.MIVO_MAX_BODY_BYTES, 20_000, 1_000, 250_000);
+const allowedOrigin = process.env.MIVO_ALLOWED_ORIGIN || "*";
+const allowUnverifiedPasswordReset = process.env.MIVO_ALLOW_UNVERIFIED_PASSWORD_RESET === "true";
+const googleClientIds = (process.env.MIVO_GOOGLE_CLIENT_IDS || "").split(",").map((v) => v.trim()).filter(Boolean);
+const appleClientIds = (process.env.MIVO_APPLE_CLIENT_IDS || "app.mivo.com").split(",").map((v) => v.trim()).filter(Boolean);
+const jwksCache = new Map();
+const rateLimitBuckets = new Map();
+const loginRateLimitedRoutes = new Set(["/auth/login", "/auth/register", "/auth/reset-password", "/auth/social"]);
+
+class HttpError extends Error {
+  constructor(status, code) {
+    super(code);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+function boundedNumber(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return clamp(Math.floor(parsed), min, max);
+}
 
 function jsonResponse(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   });
@@ -22,6 +49,137 @@ function jsonResponse(res, status, payload) {
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function parseRoute(req) {
+  if (!req.url || req.url.length > 2048) throw new HttpError(414, "urlTooLong");
+  try {
+    return new URL(req.url, "http://mivo.local").pathname;
+  } catch {
+    throw new HttpError(400, "malformedUrl");
+  }
+}
+
+function clientIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || req.socket.remoteAddress || "unknown";
+}
+
+function hitRateLimit(key, maxAttempts, windowMs) {
+  const now = Date.now();
+  const current = rateLimitBuckets.get(key);
+  if (!current || current.resetAt <= now) {
+    rateLimitBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return null;
+  }
+
+  current.count += 1;
+  if (current.count > maxAttempts) {
+    return Math.ceil((current.resetAt - now) / 1000);
+  }
+  return null;
+}
+
+function enforceRateLimit(req, routePath) {
+  const ip = clientIp(req);
+  const globalRetryAfter = hitRateLimit(`global:${ip}`, globalRateLimitMax, rateLimitWindowMs);
+  if (globalRetryAfter) {
+    throw new HttpError(429, `rateLimited:${globalRetryAfter}`);
+  }
+
+  if (loginRateLimitedRoutes.has(routePath)) {
+    const retryAfter = hitRateLimit(`login:${routePath}:${ip}`, loginRateLimitMax, rateLimitWindowMs);
+    if (retryAfter) {
+      throw new HttpError(429, `loginRateLimited:${retryAfter}`);
+    }
+  }
+}
+
+function pruneRateLimits() {
+  const now = Date.now();
+  for (const [key, value] of rateLimitBuckets) {
+    if (value.resetAt <= now) rateLimitBuckets.delete(key);
+  }
+}
+
+function requireJsonPost(req) {
+  const contentType = String(req.headers["content-type"] || "").toLowerCase();
+  if (!contentType.includes("application/json")) {
+    throw new HttpError(415, "unsupportedContentType");
+  }
+}
+
+function ensurePlainObject(value, field = "payload") {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new HttpError(400, `${field}Malformed`);
+  }
+  return value;
+}
+
+function cleanString(value, field, { required = false, max = 500, min = 0 } = {}) {
+  if (value === undefined || value === null) {
+    if (required) throw new HttpError(400, `${field}Required`);
+    return "";
+  }
+  if (typeof value !== "string") throw new HttpError(400, `${field}Malformed`);
+  const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  if (cleaned.length < min) throw new HttpError(400, `${field}TooShort`);
+  if (cleaned.length > max) throw new HttpError(413, `${field}TooLong`);
+  return cleaned;
+}
+
+function cleanEmail(value, { required = true, field = "email" } = {}) {
+  const email = normalizeEmail(cleanString(value, field, { required, max: 254 }));
+  if (!email && !required) return "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpError(400, "invalidEmail");
+  }
+  return email;
+}
+
+function cleanPassword(value) {
+  return cleanString(value, "password", { required: true, min: 8, max: 256 });
+}
+
+function cleanJsonValue(value, field = "payload", depth = 0) {
+  if (depth > 6) throw new HttpError(413, `${field}TooDeep`);
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "string") return cleanString(value, field, { max: 1_000 });
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new HttpError(400, `${field}Malformed`);
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 80) throw new HttpError(413, `${field}TooLarge`);
+    return value.map((item) => cleanJsonValue(item, field, depth + 1));
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value);
+    if (entries.length > 80) throw new HttpError(413, `${field}TooLarge`);
+    return Object.fromEntries(entries.map(([key, nested]) => {
+      const cleanKey = cleanString(key, field, { required: true, max: 80 });
+      return [cleanKey, cleanJsonValue(nested, cleanKey, depth + 1)];
+    }));
+  }
+  throw new HttpError(400, `${field}Malformed`);
+}
+
+function sanitizeAuthPayload(payload) {
+  ensurePlainObject(payload);
+  return {
+    email: payload.email === undefined ? "" : cleanEmail(payload.email, { required: false }),
+    password: payload.password === undefined || payload.password === null ? "" : cleanPassword(payload.password),
+    name: cleanString(payload.name, "name", { max: 80 }),
+    targetEmail: payload.targetEmail === undefined ? "" : cleanEmail(payload.targetEmail, { required: false, field: "targetEmail" }),
+    adminToken: cleanString(payload.adminToken, "adminToken", { max: 128 }),
+    onboardingProfile: payload.onboardingProfile === undefined ? null : cleanJsonValue(payload.onboardingProfile, "onboardingProfile"),
+    profile: payload.profile === undefined ? null : cleanJsonValue(payload.profile, "profile"),
+  };
+}
+
+function sanitizeAIPayload(payload) {
+  ensurePlainObject(payload);
+  return cleanJsonValue(payload, "payload");
 }
 
 function publicUser(record) {
@@ -73,7 +231,11 @@ function hashPassword(password, saltHex = crypto.randomBytes(32).toString("hex")
 }
 
 function ensureAdminUser(db) {
-  if (!adminEmail || !adminPassword) return false;
+  if (!adminEmail && !adminPassword) return false;
+  if (!adminEmail || !validatePassword(adminPassword)) {
+    console.warn("[Mivo auth server] Admin seed skipped: set MIVO_ADMIN_EMAIL and a valid MIVO_ADMIN_PASSWORD.");
+    return false;
+  }
   const existing = db.users[adminEmail];
   const password = hashPassword(adminPassword, existing?.passwordSalt);
   const adminRecord = {
@@ -116,6 +278,7 @@ function requireAdmin(db, payload) {
 }
 
 function verifyPassword(password, record) {
+  if (!record.passwordHash || !record.passwordSalt || !record.passwordIterations) return false;
   const computed = crypto.pbkdf2Sync(
     String(password),
     Buffer.from(record.passwordSalt, "hex"),
@@ -128,7 +291,7 @@ function verifyPassword(password, record) {
 }
 
 function validatePassword(password) {
-  return typeof password === "string" && password.length >= 8;
+  return typeof password === "string" && password.length >= 8 && password.length <= 256;
 }
 
 function clamp(value, min, max) {
@@ -367,27 +530,27 @@ function screenTimeReductionPlan(payload) {
   };
 }
 
-async function handleAI(req, res) {
-  const body = await readBody(req);
-  const payload = JSON.parse(body || "{}");
+async function handleAI(req, res, routePath) {
+  requireJsonPost(req);
+  const payload = sanitizeAIPayload(await readJsonBody(req));
 
-  if (req.url === "/api/ai/recommend-focus") {
+  if (routePath === "/api/ai/recommend-focus") {
     jsonResponse(res, 200, offlineRecommendFocus(payload));
     return;
   }
-  if (req.url === "/api/ai/recommend-protected-apps") {
+  if (routePath === "/api/ai/recommend-protected-apps") {
     jsonResponse(res, 200, offlineProtectedApps(payload));
     return;
   }
-  if (req.url === "/api/ai/estimate-saved") {
+  if (routePath === "/api/ai/estimate-saved") {
     jsonResponse(res, 200, { estimatedSavedMinutes: estimateSavedMinutes(payload) });
     return;
   }
-  if (req.url === "/api/ai/estimate-life-breakdown") {
+  if (routePath === "/api/ai/estimate-life-breakdown") {
     jsonResponse(res, 200, estimateLifeBreakdown(payload));
     return;
   }
-  if (req.url === "/api/ai/screen-time-plan") {
+  if (routePath === "/api/ai/screen-time-plan") {
     jsonResponse(res, 200, screenTimeReductionPlan(payload));
     return;
   }
@@ -395,28 +558,118 @@ async function handleAI(req, res) {
   jsonResponse(res, 404, { error: "Not found" });
 }
 
-async function handleAuth(req, res) {
-  const body = await readBody(req);
-  const payload = JSON.parse(body || "{}");
-  const email = normalizeEmail(payload.email);
+async function loadJwks(url) {
+  const cached = jwksCache.get(url);
+  if (cached && cached.expiresAt > Date.now()) return cached.keys;
+  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!response.ok) throw new HttpError(502, "socialProviderUnavailable");
+  const { keys } = await response.json();
+  jwksCache.set(url, { keys, expiresAt: Date.now() + 60 * 60 * 1000 });
+  return keys;
+}
+
+async function verifyIdToken(idToken, { jwksUrl, issuers, audiences }) {
+  if (typeof idToken !== "string" || idToken.length > 8192) throw new HttpError(401, "invalidSocialToken");
+  const parts = idToken.split(".");
+  if (parts.length !== 3) throw new HttpError(401, "invalidSocialToken");
+  let header;
+  let claims;
+  try {
+    header = JSON.parse(Buffer.from(parts[0], "base64url").toString());
+    claims = JSON.parse(Buffer.from(parts[1], "base64url").toString());
+  } catch {
+    throw new HttpError(401, "invalidSocialToken");
+  }
+  if (header.alg !== "RS256") throw new HttpError(401, "invalidSocialToken");
+  const jwk = (await loadJwks(jwksUrl)).find((key) => key.kid === header.kid);
+  if (!jwk) throw new HttpError(401, "invalidSocialToken");
+  const valid = crypto.verify(
+    "RSA-SHA256",
+    Buffer.from(`${parts[0]}.${parts[1]}`),
+    crypto.createPublicKey({ key: jwk, format: "jwk" }),
+    Buffer.from(parts[2], "base64url")
+  );
+  const now = Math.floor(Date.now() / 1000);
+  if (!valid || !issuers.includes(claims.iss) || !audiences.includes(claims.aud) || !(claims.exp > now)) {
+    throw new HttpError(401, "invalidSocialToken");
+  }
+  return claims;
+}
+
+async function handleSocialAuth(req, res) {
+  requireJsonPost(req);
+  const body = await readJsonBody(req);
+  ensurePlainObject(body);
+  const provider = cleanString(body.provider, "provider", { required: true, max: 16 });
+  const idToken = cleanString(body.idToken, "idToken", { required: true, max: 8192 });
+  const suppliedName = cleanString(body.name, "name", { max: 80 });
+
+  let claims;
+  if (provider === "google") {
+    if (!googleClientIds.length) throw new HttpError(503, "socialNotConfigured");
+    claims = await verifyIdToken(idToken, {
+      jwksUrl: "https://www.googleapis.com/oauth2/v3/certs",
+      issuers: ["https://accounts.google.com", "accounts.google.com"],
+      audiences: googleClientIds,
+    });
+  } else if (provider === "apple") {
+    claims = await verifyIdToken(idToken, {
+      jwksUrl: "https://appleid.apple.com/auth/keys",
+      issuers: ["https://appleid.apple.com"],
+      audiences: appleClientIds,
+    });
+  } else {
+    throw new HttpError(400, "providerUnsupported");
+  }
+
+  const email = normalizeEmail(claims.email);
+  const emailVerified = claims.email_verified === true || claims.email_verified === "true";
+  if (!email || !emailVerified) throw new HttpError(401, "emailNotVerified");
+
+  const db = await readUsers();
+  ensureAdminUser(db);
+  let record = db.users[email];
+  let created = false;
+  if (!record) {
+    created = true;
+    record = {
+      email,
+      name: suppliedName || String(claims.name || "").trim().slice(0, 80) || email.split("@")[0],
+      createdAt: new Date().toISOString(),
+      onboardingProfile: null,
+      role: "user",
+    };
+    db.users[email] = record;
+  }
+  record.lastLoginAt = new Date().toISOString();
+  record.socialProviders = Array.from(new Set([...(record.socialProviders || []), provider]));
+  const adminToken = record.role === "admin" ? issueAdminToken(db, record.email) : null;
+  await writeUsers(db);
+  jsonResponse(res, created ? 201 : 200, { ok: true, user: publicUser(record), adminToken });
+}
+
+async function handleAuth(req, res, routePath) {
+  requireJsonPost(req);
+  const payload = sanitizeAuthPayload(await readJsonBody(req));
+  const email = payload.email;
   const db = await readUsers();
   const adminSeeded = ensureAdminUser(db);
   const existing = db.users[email];
 
-  const isAdminRoute = req.url.startsWith("/auth/admin/");
+  const isAdminRoute = routePath.startsWith("/auth/admin/");
 
-  if (!isAdminRoute && (!email || !email.includes("@"))) {
+  if (!isAdminRoute && !email) {
     jsonResponse(res, 400, { error: "invalidEmail" });
     return;
   }
 
-  if (req.url === "/auth/exists") {
+  if (routePath === "/auth/exists") {
     if (adminSeeded) await writeUsers(db);
     jsonResponse(res, 200, { ok: true, exists: Boolean(existing) });
     return;
   }
 
-  if (req.url === "/auth/register") {
+  if (routePath === "/auth/register") {
     if (existing) {
       jsonResponse(res, 409, { error: "emailAlreadyExists" });
       return;
@@ -443,7 +696,7 @@ async function handleAuth(req, res) {
     return;
   }
 
-  if (req.url === "/auth/login") {
+  if (routePath === "/auth/login") {
     if (!existing || !validatePassword(payload.password) || !verifyPassword(payload.password, existing)) {
       jsonResponse(res, 401, { error: "invalidCredentials" });
       return;
@@ -455,7 +708,11 @@ async function handleAuth(req, res) {
     return;
   }
 
-  if (req.url === "/auth/reset-password") {
+  if (routePath === "/auth/reset-password") {
+    if (!allowUnverifiedPasswordReset) {
+      jsonResponse(res, 403, { error: "passwordResetUnavailable" });
+      return;
+    }
     if (!existing) {
       jsonResponse(res, 404, { error: "noAccount" });
       return;
@@ -473,7 +730,7 @@ async function handleAuth(req, res) {
     return;
   }
 
-  if (req.url === "/auth/profile") {
+  if (routePath === "/auth/profile") {
     if (!existing) {
       jsonResponse(res, 404, { error: "noAccount" });
       return;
@@ -485,7 +742,7 @@ async function handleAuth(req, res) {
     return;
   }
 
-  if (req.url === "/auth/admin/users") {
+  if (routePath === "/auth/admin/users") {
     const admin = requireAdmin(db, payload);
     if (!admin) {
       await writeUsers(db);
@@ -500,14 +757,14 @@ async function handleAuth(req, res) {
     return;
   }
 
-  if (req.url === "/auth/admin/user") {
+  if (routePath === "/auth/admin/user") {
     const admin = requireAdmin(db, payload);
     if (!admin) {
       await writeUsers(db);
       jsonResponse(res, 403, { error: "adminRequired" });
       return;
     }
-    const target = db.users[normalizeEmail(payload.targetEmail)];
+    const target = db.users[payload.targetEmail];
     if (!target) {
       if (adminSeeded) await writeUsers(db);
       jsonResponse(res, 404, { error: "noAccount" });
@@ -518,14 +775,14 @@ async function handleAuth(req, res) {
     return;
   }
 
-  if (req.url === "/auth/admin/delete-user") {
+  if (routePath === "/auth/admin/delete-user") {
     const admin = requireAdmin(db, payload);
     if (!admin) {
       await writeUsers(db);
       jsonResponse(res, 403, { error: "adminRequired" });
       return;
     }
-    const targetEmail = normalizeEmail(payload.targetEmail);
+    const targetEmail = payload.targetEmail;
     if (targetEmail === admin.email || targetEmail === adminEmail) {
       jsonResponse(res, 400, { error: "cannotDeleteAdmin" });
       return;
@@ -545,57 +802,86 @@ async function handleAuth(req, res) {
   jsonResponse(res, 404, { error: "Not found" });
 }
 
+async function readJsonBody(req) {
+  const body = await readBody(req);
+  if (!body.trim()) return {};
+  try {
+    return ensurePlainObject(JSON.parse(body));
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(400, "malformedJson");
+  }
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let body = "";
+    const chunks = [];
+    let received = 0;
     req.on("data", (chunk) => {
-      body += chunk;
-      if (body.length > 20_000) {
-        reject(new Error("Request body too large"));
+      received += chunk.length;
+      if (received > maxBodyBytes) {
+        reject(new HttpError(413, "payloadTooLarge"));
         req.destroy();
+        return;
       }
+      chunks.push(chunk);
     });
-    req.on("end", () => resolve(body));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
 }
 
+function handleError(res, label, error) {
+  if (error instanceof HttpError) {
+    const [code, retryAfter] = String(error.code).split(":");
+    const payload = retryAfter ? { error: code, retryAfter: Number(retryAfter) } : { error: code };
+    jsonResponse(res, error.status, payload);
+    return;
+  }
+  console.error(label, error.message);
+  jsonResponse(res, 500, { error: "internalServerError" });
+}
+
 const server = http.createServer(async (req, res) => {
-  if (req.method === "OPTIONS") {
-    jsonResponse(res, 204, {});
-    return;
-  }
+  try {
+    const routePath = parseRoute(req);
+    pruneRateLimits();
 
-  if (req.method === "GET" && req.url === "/health") {
-    jsonResponse(res, 200, {
-      ok: true,
-      service: "mivo-backend",
-      authDatabase: usersPath,
-    });
-    return;
-  }
-
-  if (req.method === "POST" && req.url.startsWith("/auth/")) {
-    try {
-      await handleAuth(req, res);
-    } catch (error) {
-      console.error("[Mivo auth server]", error.message);
-      jsonResponse(res, 500, { error: "Auth failed" });
+    if (req.method === "OPTIONS") {
+      jsonResponse(res, 204, {});
+      return;
     }
-    return;
-  }
 
-  if (req.method === "POST" && req.url.startsWith("/api/ai/")) {
-    try {
-      await handleAI(req, res);
-    } catch (error) {
-      console.error("[Mivo AI server]", error.message);
-      jsonResponse(res, 500, { error: "AI request failed" });
+    enforceRateLimit(req, routePath);
+
+    if (req.method === "GET" && routePath === "/health") {
+      jsonResponse(res, 200, {
+        ok: true,
+        service: "mivo-backend",
+        authDatabase: usersPath,
+      });
+      return;
     }
-    return;
-  }
 
-  jsonResponse(res, 404, { error: "Not found" });
+    if (req.method === "POST" && routePath === "/auth/social") {
+      await handleSocialAuth(req, res);
+      return;
+    }
+
+    if (req.method === "POST" && routePath.startsWith("/auth/")) {
+      await handleAuth(req, res, routePath);
+      return;
+    }
+
+    if (req.method === "POST" && routePath.startsWith("/api/ai/")) {
+      await handleAI(req, res, routePath);
+      return;
+    }
+
+    jsonResponse(res, 404, { error: "Not found" });
+  } catch (error) {
+    handleError(res, "[Mivo backend]", error);
+  }
 });
 
 server.listen(port, () => {

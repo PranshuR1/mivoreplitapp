@@ -3,9 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>AI_API_BASE_URL</key>
-	<string></string>
+	<string>$(AI_API_BASE_URL)</string>
+	<key>MIVO_GOOGLE_CLIENT_ID</key>
+	<string>$(MIVO_GOOGLE_CLIENT_ID)</string>
 	<key>MIVO_AUTH_API_URL</key>
-	<string>http://10.0.0.165:8787</string>
+	<string>$(MIVO_AUTH_API_URL)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

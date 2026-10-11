@@ -175,6 +175,23 @@ struct LoginView: View {
                             .opacity(loading ? 0.7 : 1)
                             .padding(.top, 4)
 
+                            HStack(spacing: 12) {
+                                Rectangle().fill(MivoColors.border).frame(height: 1)
+                                Text("or")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(MivoColors.textMuted)
+                                Rectangle().fill(MivoColors.border).frame(height: 1)
+                            }
+
+                            VStack(spacing: 12) {
+                                socialButton(title: "Continue with Apple", systemImage: "apple.logo") {
+                                    handleSocial { try await SocialAuthService.shared.signInWithApple() }
+                                }
+                                socialButton(title: "Continue with Google", systemImage: "g.circle.fill") {
+                                    handleSocial { try await SocialAuthService.shared.signInWithGoogle() }
+                                }
+                            }
+
                             HStack(spacing: 0) {
                                 Text("New to Mivo? ")
                                     .font(.system(size: 14))
@@ -246,6 +263,37 @@ struct LoginView: View {
             await MainActor.run {
                 loading = false
             }
+        }
+    }
+
+    private func socialButton(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage).font(.system(size: 18, weight: .semibold))
+                Text(title).font(.system(size: 16, weight: .semibold))
+            }
+            .foregroundColor(MivoColors.textPrimary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(MivoColors.card)
+            .clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(MivoColors.border, lineWidth: 1))
+        }
+        .disabled(loading)
+    }
+
+    func handleSocial(_ obtain: @escaping () async throws -> SocialCredential) {
+        error = ""
+        Task {
+            do {
+                let credential = try await obtain()
+                await MainActor.run { loading = true }
+                try await appVM.socialLogin(credential)
+            } catch SocialAuthError.cancelled {
+            } catch {
+                await MainActor.run { self.error = error.localizedDescription }
+            }
+            await MainActor.run { loading = false }
         }
     }
 }

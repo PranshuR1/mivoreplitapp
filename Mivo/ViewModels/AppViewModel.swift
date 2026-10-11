@@ -16,9 +16,6 @@ class AppViewModel: ObservableObject {
     @Published var onboardingProfile: OnboardingProfile = OnboardingProfile()
     @Published var isLoading: Bool = true
     @Published var adminToken: String? = nil
-    private let builtInAdminEmail = "useparkez@gmail.com"
-    private let builtInTestingEmail = "pranshuraithatha@gmail.com"
-    private let builtInTestingPassword = "Pranshu@123"
 
     // Navigation state
     @Published var showOnboarding: Bool = false
@@ -33,17 +30,17 @@ class AppViewModel: ObservableObject {
     @Published var pendingSessionFeedback: PendingSessionFeedback? = nil
     @Published var pendingTimeTruthPrompt: TimeTruthPrompt? = nil
 
+    private var deviceActivityObserver: NSObjectProtocol?
+    private var deviceActivityPollTimer: Timer?
+
     init() {
         loadData()
         // Begin observing device activity updates from the Device Activity extension or Screen Time API
         startObservingDeviceActivityUpdates()
-        
-        // Start Screen Time monitoring if authorized (iOS 16+)
-        if #available(iOS 16.0, *) {
-            let collector = ScreenTimeDataCollector.shared
-            if collector.authorizationStatus == .authorized {
-                collector.startMonitoring()
-            }
+
+        Task { @MainActor in
+            startScreenTimeMonitoringIfAuthorized()
+            recoverExpiredRunningSessionIfNeeded()
         }
     }
 
@@ -66,8 +63,17 @@ class AppViewModel: ObservableObject {
             resetUserScopedState()
             FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
         }
-        recoverExpiredRunningSessionIfNeeded()
         isLoading = false
+    }
+
+    private func startScreenTimeMonitoringIfAuthorized() {
+        // Keep Screen Time scheduling off the synchronous launch/loading path.
+        if #available(iOS 16.0, *) {
+            let collector = ScreenTimeDataCollector.shared
+            if collector.authorizationStatus == .authorized {
+                collector.startMonitoring()
+            }
+        }
     }
 
     private func resetUserScopedState() {
@@ -102,6 +108,20 @@ class AppViewModel: ObservableObject {
             onboardingProfile = OnboardingProfile()
         }
         pendingSessionFeedback = StorageService.load(PendingSessionFeedback.self, forKey: .pendingSessionFeedback, email: email)
+        clearCompletedSessionRecoveryStateIfNeeded(email: email)
+    }
+
+    private func clearCompletedSessionRecoveryStateIfNeeded(email: String) {
+        if let pendingSessionFeedback,
+           sessions.contains(where: { $0.id == pendingSessionFeedback.id }) {
+            self.pendingSessionFeedback = nil
+            StorageService.remove(forKey: .pendingSessionFeedback, email: email)
+        }
+
+        if let running = StorageService.load(RunningMivoSession.self, forKey: .runningSession, email: email),
+           sessions.contains(where: { $0.id == running.id }) {
+            StorageService.remove(forKey: .runningSession, email: email)
+        }
     }
 
     private func saveForCurrentUser<T: Encodable>(_ value: T, forKey key: StorageKey) {
@@ -119,15 +139,6 @@ class AppViewModel: ObservableObject {
     func login(email: String, password: String, rememberMe: Bool = true) async throws {
         let normalizedEmail = email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if isBuiltInTestingEmail(normalizedEmail) {
-            guard isBuiltInTestingCredentials(email: normalizedEmail, password: password) else {
-                throw AppError.invalidCredentials
-            }
-            try createOrUpdateLocalTestingRecord(email: normalizedEmail, password: password)
-            try completeLogin(email: normalizedEmail, persistSession: rememberMe)
-            return
-        }
-
         if RemoteAuthService.isConfigured {
             do {
                 let remoteUser = try await RemoteAuthService.login(email: normalizedEmail, password: password)
@@ -138,28 +149,24 @@ class AppViewModel: ObservableObject {
                 try completeOfflineLogin(email: normalizedEmail, password: password, rememberMe: rememberMe)
                 return
             }
-        } else if isBuiltInAdminCredentials(email: normalizedEmail, password: password) {
-            try createOrUpdateLocalAdminRecord(email: normalizedEmail, password: password)
-            try completeLogin(email: normalizedEmail, persistSession: rememberMe)
-            return
         }
 
         try completeLocalLogin(email: normalizedEmail, password: password, rememberMe: rememberMe)
     }
 
+    func socialLogin(_ credential: SocialCredential) async throws {
+        guard RemoteAuthService.isConfigured else { throw AppError.socialSignInUnavailable }
+        let remoteUser = try await RemoteAuthService.socialLogin(credential)
+        // Social accounts have no password; cache a random one so the local keychain record stays valid.
+        let placeholder = UUID().uuidString + UUID().uuidString
+        try cacheRemoteUser(remoteUser, password: placeholder)
+        if remoteUser.onboardingProfile == nil {
+            settings.onboardingComplete = false
+        }
+        try completeLogin(email: remoteUser.email, persistSession: true)
+    }
+
     private func completeOfflineLogin(email: String, password: String, rememberMe: Bool) throws {
-        if isBuiltInAdminCredentials(email: email, password: password) {
-            try createOrUpdateLocalAdminRecord(email: email, password: password)
-            try completeLogin(email: email, persistSession: rememberMe)
-            return
-        }
-
-        if isBuiltInTestingCredentials(email: email, password: password) {
-            try createOrUpdateLocalTestingRecord(email: email, password: password)
-            try completeLogin(email: email, persistSession: rememberMe)
-            return
-        }
-
         try completeLocalLogin(email: email, password: password, rememberMe: rememberMe)
     }
 
@@ -214,18 +221,6 @@ class AppViewModel: ObservableObject {
         let displayName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? String(normalizedEmail.split(separator: "@").first ?? Substring(normalizedEmail))
             : name.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if isBuiltInTestingEmail(normalizedEmail) {
-            guard isBuiltInTestingCredentials(email: normalizedEmail, password: password) else {
-                throw AppError.invalidCredentials
-            }
-            try createOrUpdateLocalTestingRecord(email: normalizedEmail, password: password)
-            try completeLogin(email: normalizedEmail)
-            settings.onboardingComplete = true
-            settings.tutorialComplete = true
-            saveForCurrentUser(settings, forKey: .settings)
-            return
-        }
 
         if RemoteAuthService.isConfigured {
             do {
@@ -284,7 +279,11 @@ class AppViewModel: ObservableObject {
     // MARK: - Sessions
 
     func addSession(_ session: Session) {
-        sessions.append(session)
+        if let existingIndex = sessions.firstIndex(where: { $0.id == session.id }) {
+            sessions[existingIndex] = session
+        } else {
+            sessions.append(session)
+        }
         saveForCurrentUser(sessions, forKey: .sessions)
         refreshWeeklyReportSnapshot()
         updateWidgetSharedSummary()
@@ -305,7 +304,6 @@ class AppViewModel: ObservableObject {
     }
 
     func saveRunningSession(_ session: RunningMivoSession) {
-        guard !isRestrictionBypassUser else { return }
         saveForCurrentUser(session, forKey: .runningSession)
     }
 
@@ -314,34 +312,76 @@ class AppViewModel: ObservableObject {
     }
 
     func recoverExpiredRunningSessionIfNeeded(now: Date = Date()) {
-        guard isLoggedIn, settings.onboardingComplete, !isRestrictionBypassUser else { return }
+        guard isLoggedIn, settings.onboardingComplete else { return }
         guard let email = user?.email,
               let running = StorageService.load(RunningMivoSession.self, forKey: .runningSession, email: email) else { return }
 
-        guard let startedAt = ISO8601DateFormatter().date(from: running.startTime) else {
+        if sessions.contains(where: { $0.id == running.id }) {
+            if pendingSessionFeedback?.id == running.id {
+                pendingSessionFeedback = nil
+                removeForCurrentUser(.pendingSessionFeedback)
+            }
+            clearRunningSession()
+            FamilyControlsManager.shared.endSessionAndRelockForIntervention()
+            return
+        }
+
+        let formatter = ISO8601DateFormatter()
+        guard let segmentStartedAt = formatter.date(from: running.startTime) else {
             clearRunningSession()
             return
         }
 
-        let elapsedSeconds = max(0, Int(now.timeIntervalSince(startedAt)))
-        let remainingSeconds = running.plannedSeconds - elapsedSeconds
+        let accumulatedElapsedSeconds = max(0, running.accumulatedElapsedSeconds ?? 0)
+        let storedApprovedSeconds = max(1, running.approvedSeconds ?? running.plannedSeconds)
+        let storedApprovedWasLegacyTotal = accumulatedElapsedSeconds > 0 && storedApprovedSeconds > running.plannedSeconds
+        let currentSegmentApprovedSeconds = storedApprovedWasLegacyTotal
+            ? max(1, min(running.plannedSeconds, storedApprovedSeconds - accumulatedElapsedSeconds))
+            : storedApprovedSeconds
+        let totalApprovedSeconds = storedApprovedWasLegacyTotal
+            ? storedApprovedSeconds
+            : accumulatedElapsedSeconds + currentSegmentApprovedSeconds
+        let storedExpiresAt = running.expiresAt.flatMap { formatter.date(from: $0) }
+        let fallbackSegmentSeconds: Int
+        if running.expiresAt == nil,
+           accumulatedElapsedSeconds > 0,
+           running.approvedSeconds == nil || running.approvedSeconds == running.plannedSeconds,
+           running.plannedSeconds > accumulatedElapsedSeconds {
+            fallbackSegmentSeconds = running.plannedSeconds - accumulatedElapsedSeconds
+        } else {
+            fallbackSegmentSeconds = running.plannedSeconds
+        }
+        let expectedEnd = storedExpiresAt ?? segmentStartedAt.addingTimeInterval(TimeInterval(max(1, fallbackSegmentSeconds)))
+        let expirationInfo = FamilyControlsManager.shared.currentSessionExpirationInfo()
+        let systemExpired = expirationInfo != nil
+        let isExpiredByClock = expectedEnd <= now
 
-        if remainingSeconds > 0 {
-            FamilyControlsManager.shared.setMivoSessionActive(true, exactDurationSeconds: remainingSeconds)
-            return
+        if !isExpiredByClock && !systemExpired {
+            let remainingSeconds = max(1, Int(expectedEnd.timeIntervalSince(now)))
+            let result = FamilyControlsManager.shared.setMivoSessionActive(true, exactDurationSeconds: remainingSeconds)
+            if result.success {
+                return
+            }
         }
 
         FamilyControlsManager.shared.endSessionAndRelockForIntervention()
         guard pendingSessionFeedback == nil else { return }
+
+        let expiredAt = expirationInfo?.expiredAt ?? expectedEnd
+        let cappedEnd = min(min(expiredAt, expectedEnd), now)
+        let segmentElapsedSeconds = max(0, Int(cappedEnd.timeIntervalSince(segmentStartedAt)))
+        let actualSeconds = max(1, min(totalApprovedSeconds, accumulatedElapsedSeconds + segmentElapsedSeconds))
+        let actualMinutes = max(1, Int(ceil(Double(actualSeconds) / 60.0)))
+        let finalStartTime = running.originalStartTime ?? running.startTime
 
         savePendingSessionFeedback(
             PendingSessionFeedback(
                 id: running.id,
                 intention: running.intention,
                 plannedDuration: running.plannedDuration,
-                actualDuration: max(1, Int((Double(elapsedSeconds) / 60.0).rounded())),
-                startTime: running.startTime,
-                endTime: ISO8601DateFormatter().string(from: now),
+                actualDuration: actualMinutes,
+                startTime: finalStartTime,
+                endTime: formatter.string(from: cappedEnd),
                 extendedOnce: running.extendedOnce,
                 urgeReason: running.urgeReason,
                 urgeNote: running.urgeNote,
@@ -351,13 +391,48 @@ class AppViewModel: ObservableObject {
         )
     }
 
-    var isAdminUser: Bool {
-        user?.isAdmin == true || user?.email.lowercased() == builtInAdminEmail
+    @discardableResult
+    func resumePendingSession(
+        from feedback: PendingSessionFeedback,
+        addingMinutes addedMinutes: Int,
+        emergencyReason: String? = nil
+    ) -> MivoSessionActivationResult {
+        let addedSeconds = max(60, addedMinutes * 60)
+        let result = markMivoSessionActiveFor(seconds: addedSeconds)
+        guard result.success else { return result }
+
+        let now = Date()
+        let formatter = ISO8601DateFormatter()
+        let emergencyReason = emergencyReason?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasEmergencyReason = (emergencyReason?.isEmpty == false)
+
+        pendingSessionFeedback = nil
+        removeForCurrentUser(.pendingSessionFeedback)
+        saveRunningSession(
+            RunningMivoSession(
+                id: UUID().uuidString,
+                intention: feedback.intention,
+                plannedDuration: addedMinutes,
+                plannedSeconds: addedSeconds,
+                startTime: formatter.string(from: now),
+                urgeReason: feedback.urgeReason,
+                urgeNote: feedback.urgeNote,
+                extendedOnce: true,
+                emergencyUnlockUsed: feedback.emergencyUnlockUsed == true || hasEmergencyReason,
+                emergencyUnlockReason: hasEmergencyReason ? emergencyReason : feedback.emergencyUnlockReason,
+                approvedSeconds: addedSeconds,
+                expiresAt: formatter.string(from: now.addingTimeInterval(TimeInterval(addedSeconds))),
+                expiredAt: nil,
+                expirationSource: nil,
+                accumulatedElapsedSeconds: 0,
+                originalStartTime: formatter.string(from: now)
+            )
+        )
+        return result
     }
 
-    var isRestrictionBypassUser: Bool {
-        guard let email = user?.email.lowercased() else { return false }
-        return isBuiltInTestingEmail(email)
+    var isAdminUser: Bool {
+        user?.isAdmin == true
     }
 
     func loadAdminUsers() async throws -> [AdminUser] {
@@ -632,7 +707,7 @@ class AppViewModel: ObservableObject {
         pendingSessionFeedback = nil
         pendingTimeTruthPrompt = nil
         isLoggedIn = false
-        FamilyControlsManager.shared.setMivoSessionActive(false)
+        _ = FamilyControlsManager.shared.setMivoSessionActive(false)
         FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
 
         // Offload heavier history deletion to background, update published state on main when done.
@@ -669,10 +744,6 @@ class AppViewModel: ObservableObject {
 
     func consumePendingInterventionSetup() -> Bool {
         guard isLoggedIn, settings.onboardingComplete else { return false }
-        guard !isRestrictionBypassUser else {
-            clearRestrictionStateForTesting()
-            return false
-        }
         let pending = FamilyControlsManager.shared.consumePendingInterventionSetup()
         if pending {
             guard !mivoLaunchGateActive else { return false }
@@ -681,35 +752,31 @@ class AppViewModel: ObservableObject {
         return pending
     }
 
-    func markMivoLaunchSessionStarted(plannedMinutes: Int = 0) {
-        guard !isRestrictionBypassUser else {
-            clearRestrictionStateForTesting()
-            return
-        }
-        FamilyControlsManager.shared.setMivoSessionActive(true, plannedMinutes: plannedMinutes, exactDurationSeconds: max(1, plannedMinutes) * 60)
+    @discardableResult
+    func markMivoLaunchSessionStarted(plannedMinutes: Int = 0) -> MivoSessionActivationResult {
+        let result = FamilyControlsManager.shared.setMivoSessionActive(true, plannedMinutes: plannedMinutes, exactDurationSeconds: max(1, plannedMinutes) * 60)
+        guard result.success else { return result }
         mivoLaunchGateActive = false
+        return result
     }
 
-    func markMivoSessionActiveFor(seconds: Int) {
-        guard !isRestrictionBypassUser else {
-            clearRestrictionStateForTesting()
-            return
-        }
-        FamilyControlsManager.shared.setMivoSessionActive(true, exactDurationSeconds: max(1, seconds))
+    @discardableResult
+    func markMivoSessionActiveFor(seconds: Int) -> MivoSessionActivationResult {
+        let result = FamilyControlsManager.shared.setMivoSessionActive(true, exactDurationSeconds: max(1, seconds))
+        guard result.success else { return result }
         mivoLaunchGateActive = false
+        return result
     }
 
     func finishMivoSession(requiresReview: Bool = false) {
-        guard !isRestrictionBypassUser else {
-            clearRestrictionStateForTesting()
-            return
-        }
         if requiresReview {
             FamilyControlsManager.shared.endSessionAndRelockForIntervention()
             return
         }
+        pendingSessionFeedback = nil
+        removeForCurrentUser(.pendingSessionFeedback)
         clearRunningSession()
-        FamilyControlsManager.shared.setMivoSessionActive(false)
+        _ = FamilyControlsManager.shared.setMivoSessionActive(false)
     }
 
     func sessionExtensionDecision(
@@ -717,17 +784,19 @@ class AppViewModel: ObservableObject {
         plannedMinutes: Int,
         elapsedSeconds: Int,
         extensionUsed: Bool,
+        requestedMinutes: Int? = nil,
         now: Date = Date()
     ) -> SessionExtensionDecision {
         let plan = adaptiveScreenTimePlan()
         let ruleMode = protectedGroupRuleMode()
         let actualMinutes = max(1, Int(ceil(Double(elapsedSeconds) / 60.0)))
+        let requestedAddMinutes = min(max(requestedMinutes ?? 5, 1), 60)
 
         if ruleMode == .looseTracking {
             return SessionExtensionDecision(
                 allowed: true,
-                addedMinutes: 5,
-                title: "5 more minutes approved",
+                addedMinutes: requestedAddMinutes,
+                title: "\(requestedAddMinutes) more \(requestedAddMinutes == 1 ? "minute" : "minutes") approved",
                 message: "This protected group is set to loose tracking, so Mivo records the choice without making the intervention stricter."
             )
         }
@@ -735,8 +804,8 @@ class AppViewModel: ObservableObject {
         guard !plan.collecting || ruleMode == .plannedWindowsOnly else {
             return SessionExtensionDecision(
                 allowed: true,
-                addedMinutes: 5,
-                title: "5 more minutes approved",
+                addedMinutes: requestedAddMinutes,
+                title: "\(requestedAddMinutes) more \(requestedAddMinutes == 1 ? "minute" : "minutes") approved",
                 message: "Mivo is still learning your real scroll pattern. You can add a little time, and this session will help the adaptive plan get smarter."
             )
         }
@@ -768,7 +837,7 @@ class AppViewModel: ObservableObject {
         let projectedToday = todaysTotalMinutes + actualMinutes
         let remainingTarget = plan.targetMinutes - projectedToday
 
-        guard remainingTarget >= 3 else {
+        guard remainingTarget >= 1 else {
             return SessionExtensionDecision(
                 allowed: false,
                 addedMinutes: 0,
@@ -777,12 +846,14 @@ class AppViewModel: ObservableObject {
             )
         }
 
-        let added = min(5, max(3, remainingTarget))
+        let added = min(requestedAddMinutes, remainingTarget)
         return SessionExtensionDecision(
             allowed: true,
             addedMinutes: added,
-            title: "\(added) more minutes approved",
-            message: "This still fits inside today's adaptive plan. Mivo will lock the app again when the added time ends."
+            title: "\(added) more \(added == 1 ? "minute" : "minutes") approved",
+            message: added == requestedAddMinutes
+                ? "This still fits inside today's adaptive plan. Mivo will lock the app again when the added time ends."
+                : "Mivo can only approve \(added) more \(added == 1 ? "minute" : "minutes") inside today's adaptive plan."
         )
     }
 
@@ -1214,6 +1285,15 @@ class AppViewModel: ObservableObject {
             }
         }
 
+        if #available(iOS 16.0, *),
+           ScreenTimeDataCollector.shared.authorizationStatus == .authorized,
+           deviceActivityReportGeneratedAt != nil || deviceActivityMinutesToday != nil || !deviceActivityPerAppSeconds.isEmpty {
+            // Keep the last readable Apple report on screen while DeviceActivityReport reloads.
+            // Otherwise the UI flashes to an empty/unreadable state whenever iOS rebuilds the report extension.
+            updateWidgetSharedSummary()
+            return
+        }
+
         lastDeviceActivityReportJSON = nil
         deviceActivityMinutesToday = nil
         deviceActivityPerAppSeconds = [:]
@@ -1222,20 +1302,23 @@ class AppViewModel: ObservableObject {
     }
 
     func startObservingDeviceActivityUpdates() {
+        // Idempotent: never stack a second observer or polling timer.
+        guard deviceActivityObserver == nil, deviceActivityPollTimer == nil else { return }
+
         // Listen for updates from Screen Time collector
-        NotificationCenter.default.addObserver(forName: Notification.Name("mivoDeviceActivityDidUpdate"), object: nil, queue: .main) { [weak self] _ in
+        deviceActivityObserver = NotificationCenter.default.addObserver(forName: Notification.Name("mivoDeviceActivityDidUpdate"), object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 self?.loadDeviceActivityReport()
             }
         }
-        
+
         // Set up a timer to poll for updates every 5 minutes
-        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        deviceActivityPollTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.loadDeviceActivityReport()
             }
         }
-        
+
         // Initial load
         Task { @MainActor in loadDeviceActivityReport() }
     }
@@ -1343,8 +1426,10 @@ class AppViewModel: ObservableObject {
                 return
             } catch AppError.noAccount {
                 throw AppError.noAccount
+            } catch AppError.remoteAuthUnavailable {
+                // Keep the local fallback only for offline development or cached local-only accounts.
             } catch {
-                // Let local-only test accounts reset even when the backend is offline.
+                throw error
             }
         }
 
@@ -1368,60 +1453,8 @@ class AppViewModel: ObservableObject {
         try SecureAuthService.saveRecord(record)
     }
 
-    private func isBuiltInAdminCredentials(email: String, password: String) -> Bool {
-        email == builtInAdminEmail && password == "Pranshu@123"
-    }
-
-    private func isBuiltInTestingEmail(_ email: String) -> Bool {
-        email == builtInTestingEmail
-    }
-
-    private func isBuiltInTestingCredentials(email: String, password: String) -> Bool {
-        isBuiltInTestingEmail(email) && password == builtInTestingPassword
-    }
-
-    private func createOrUpdateLocalAdminRecord(email: String, password: String) throws {
-        var record: SecureAuthRecord
-        if let existing = SecureAuthService.loadRecord(email: email) {
-            record = try SecureAuthService.updatePassword(password, for: existing)
-        } else {
-            record = try SecureAuthService.createRecord(email: email, password: password, name: "Mivo Admin")
-        }
-
-        record.isAdmin = true
-        record.adminToken = nil
-        try SecureAuthService.saveRecord(record)
-    }
-
-    private func createOrUpdateLocalTestingRecord(email: String, password: String) throws {
-        var record: SecureAuthRecord
-        if let existing = SecureAuthService.loadRecord(email: email) {
-            record = try SecureAuthService.updatePassword(password, for: existing)
-        } else {
-            record = try SecureAuthService.createRecord(email: email, password: password, name: "Mivo Testing")
-        }
-
-        record.isAdmin = false
-        record.adminToken = nil
-        try SecureAuthService.saveRecord(record)
-    }
-
     private func applyRestrictionState(for email: String) {
-        if isBuiltInTestingEmail(email.lowercased()) {
-            clearRestrictionStateForTesting()
-        } else {
-            FamilyControlsManager.shared.setSignedInForImpulseProtection(true)
-        }
-    }
-
-    private func clearRestrictionStateForTesting() {
-        mivoLaunchGateActive = false
-        pendingSessionFeedback = nil
-        removeForCurrentUser(.pendingSessionFeedback)
-        clearRunningSession()
-        FamilyControlsManager.shared.setMivoSessionActive(false)
-        FamilyControlsManager.shared.clearPendingInterventionSetup()
-        FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
+        FamilyControlsManager.shared.setSignedInForImpulseProtection(true)
     }
 
 }
@@ -1437,6 +1470,9 @@ enum AppError: LocalizedError {
     case secureStorageFailed
     case remoteAuthUnavailable
     case adminRequired
+    case passwordResetUnavailable
+    case socialSignInFailed
+    case socialSignInUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -1448,6 +1484,9 @@ enum AppError: LocalizedError {
         case .secureStorageFailed: return "Could not save credentials securely."
         case .remoteAuthUnavailable: return "The online Mivo account server is not reachable yet."
         case .adminRequired: return "Admin access is required. Sign in with the admin account."
+        case .passwordResetUnavailable: return "Password reset needs verified email recovery before it can be used."
+        case .socialSignInFailed: return "We couldn't verify that sign-in. Please try again."
+        case .socialSignInUnavailable: return "Google and Apple sign-in need the online Mivo account server."
         }
     }
 }

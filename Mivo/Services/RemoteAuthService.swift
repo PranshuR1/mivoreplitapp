@@ -55,11 +55,17 @@ enum RemoteAuthService {
 
     private static var baseURL: URL? {
         if let raw = Bundle.main.object(forInfoDictionaryKey: "MIVO_AUTH_API_URL") as? String,
-           !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+           let url = configuredURL(from: raw) {
+            return url
         }
 
         return nil
+    }
+
+    private static func configuredURL(from raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix("$("), !trimmed.hasSuffix(")") else { return nil }
+        return URL(string: trimmed)
     }
 
     static func register(email: String, password: String, name: String, onboardingProfile: OnboardingProfile?) async throws -> RemoteAuthUser {
@@ -73,6 +79,27 @@ enum RemoteAuthService {
         let response: AuthResponse = try await rawRequest(
             path: "/auth/login",
             body: AuthRequest(email: email, password: password, name: nil, onboardingProfile: nil)
+        )
+        guard let user = response.user else { throw AppError.accountDataMissing }
+        return RemoteAuthUser(
+            email: user.email,
+            name: user.name,
+            createdAt: user.createdAt,
+            onboardingProfile: user.onboardingProfile,
+            isAdmin: user.isAdmin,
+            adminToken: response.adminToken
+        )
+    }
+
+    static func socialLogin(_ credential: SocialCredential) async throws -> RemoteAuthUser {
+        struct SocialRequest: Codable {
+            let provider: String
+            let idToken: String
+            let name: String?
+        }
+        let response: AuthResponse = try await rawRequest(
+            path: "/auth/social",
+            body: SocialRequest(provider: credential.provider, idToken: credential.idToken, name: credential.name)
         )
         guard let user = response.user else { throw AppError.accountDataMissing }
         return RemoteAuthUser(
@@ -171,6 +198,9 @@ enum RemoteAuthService {
             case "invalidCredentials": throw AppError.invalidCredentials
             case "noAccount": throw AppError.noAccount
             case "weakPassword": throw AppError.weakPassword
+            case "passwordResetUnavailable": throw AppError.passwordResetUnavailable
+            case "invalidSocialToken", "emailNotVerified": throw AppError.socialSignInFailed
+            case "socialNotConfigured": throw AppError.socialSignInUnavailable
             case "adminRequired", "cannotDeleteAdmin": throw AppError.adminRequired
             default: throw AppError.remoteAuthUnavailable
             }

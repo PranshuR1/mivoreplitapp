@@ -5,6 +5,10 @@
     <!-- Family Controls entitlement for development/testing -->
     <key>com.apple.developer.family-controls</key>
     <true/>
+    <key>com.apple.developer.applesignin</key>
+    <array>
+        <string>Default</string>
+    </array>
     <!-- App Groups (must match the App Group configured in Apple Developer portal)
          Replace group.com.mivo.mivoapp with the App Group you register for your Team. -->
     <key>com.apple.security.application-groups</key>
