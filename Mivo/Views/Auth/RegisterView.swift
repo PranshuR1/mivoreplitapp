@@ -41,6 +41,7 @@ struct RegisterView: View {
                         Text(error)
                             .font(.system(size: 13))
                             .foregroundColor(MivoColors.timerRed)
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
