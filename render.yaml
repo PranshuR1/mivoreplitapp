@@ -3,7 +3,7 @@ services:
     name: mivo-auth-server
     env: node
     rootDir: backend
-    plan: free
+    plan: starter # persistent disks are not available on the free plan
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
@@ -14,3 +14,13 @@ services:
     envVars:
       - key: MIVO_DATA_DIR
         value: /var/data
+      - key: MIVO_TRUST_PROXY
+        value: "true"
+      - key: MIVO_ADMIN_EMAIL
+        sync: false
+      - key: MIVO_ADMIN_PASSWORD
+        sync: false
+      - key: MIVO_LOGIN_RATE_LIMIT_MAX
+        value: 5
+      - key: MIVO_RATE_LIMIT_WINDOW_MS
+        value: 900000

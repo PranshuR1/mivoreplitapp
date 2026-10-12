@@ -178,7 +178,7 @@ class AppViewModel: ObservableObject {
             throw AppError.invalidCredentials
         }
 
-        if record.passwordIterations == 0 {
+        if SecureAuthService.needsRehash(record) {
             record = try SecureAuthService.updatePassword(password, for: record)
         }
 
@@ -627,9 +627,10 @@ class AppViewModel: ObservableObject {
                 try? SecureAuthService.saveRecord(record)
             }
 
-            if RemoteAuthService.isConfigured {
+            if RemoteAuthService.isConfigured,
+               let sessionToken = SecureAuthService.loadRecord(email: u.email)?.sessionToken, !sessionToken.isEmpty {
                 Task {
-                    await RemoteAuthService.saveProfile(email: u.email, onboardingProfile: onboardingProfile)
+                    await RemoteAuthService.saveProfile(email: u.email, sessionToken: sessionToken, onboardingProfile: onboardingProfile)
                 }
             }
         }
@@ -1450,6 +1451,7 @@ class AppViewModel: ObservableObject {
         record.onboardingProfile = remoteUser.onboardingProfile
         record.isAdmin = remoteUser.isAdmin == true
         record.adminToken = remoteUser.adminToken
+        record.sessionToken = remoteUser.sessionToken
         try SecureAuthService.saveRecord(record)
     }
 

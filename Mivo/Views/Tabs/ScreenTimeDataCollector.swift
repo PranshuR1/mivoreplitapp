@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import DeviceActivity
 import FamilyControls
 
@@ -12,6 +13,7 @@ import DeviceActivity
 @available(iOS 16.0, *)
 @MainActor
 class ScreenTimeDataCollector {
+    private static let logger = Logger(subsystem: "app.mivo.com", category: "ScreenTimeData")
     
     static let shared = ScreenTimeDataCollector()
     
@@ -74,7 +76,7 @@ class ScreenTimeDataCollector {
                 return ScreenTimeReport(from: json)
             }
         } catch {
-            print("[ScreenTimeDataCollector] Failed to parse cached report: \(error)")
+            Self.logger.error("Failed to parse cached report: \(error.localizedDescription, privacy: .public)")
         }
         
         return nil
@@ -83,7 +85,7 @@ class ScreenTimeDataCollector {
     /// Save a report to the app group
     func saveReport(_ report: ScreenTimeReport) {
         guard let userDefaults = UserDefaults(suiteName: appGroup) else {
-            print("[ScreenTimeDataCollector] Failed to access app group")
+            Self.logger.error("Failed to access app group")
             return
         }
         

@@ -7,6 +7,7 @@ struct RemoteAuthUser: Codable {
     let onboardingProfile: OnboardingProfile?
     let isAdmin: Bool?
     let adminToken: String?
+    var sessionToken: String? = nil
 }
 
 struct AdminUser: Codable, Identifiable {
@@ -33,6 +34,7 @@ enum RemoteAuthService {
         let password: String?
         let name: String?
         let onboardingProfile: OnboardingProfile?
+        var sessionToken: String? = nil
     }
 
     private struct AdminRequest: Codable {
@@ -45,6 +47,7 @@ enum RemoteAuthService {
         let exists: Bool?
         let user: RemoteAuthUser?
         let adminToken: String?
+        let sessionToken: String?
         let users: [AdminUser]?
         let error: String?
     }
@@ -87,7 +90,8 @@ enum RemoteAuthService {
             createdAt: user.createdAt,
             onboardingProfile: user.onboardingProfile,
             isAdmin: user.isAdmin,
-            adminToken: response.adminToken
+            adminToken: response.adminToken,
+            sessionToken: response.sessionToken
         )
     }
 
@@ -108,16 +112,9 @@ enum RemoteAuthService {
             createdAt: user.createdAt,
             onboardingProfile: user.onboardingProfile,
             isAdmin: user.isAdmin,
-            adminToken: response.adminToken
+            adminToken: response.adminToken,
+            sessionToken: response.sessionToken
         )
-    }
-
-    static func accountExists(email: String) async throws -> Bool {
-        let response: AuthResponse = try await rawRequest(
-            path: "/auth/exists",
-            body: AuthRequest(email: email, password: nil, name: nil, onboardingProfile: nil)
-        )
-        return response.exists == true
     }
 
     static func resetPassword(email: String, newPassword: String) async throws {
@@ -127,10 +124,10 @@ enum RemoteAuthService {
         )
     }
 
-    static func saveProfile(email: String, onboardingProfile: OnboardingProfile) async {
+    static func saveProfile(email: String, sessionToken: String, onboardingProfile: OnboardingProfile) async {
         let _: AuthResponse? = try? await rawRequest(
             path: "/auth/profile",
-            body: AuthRequest(email: email, password: nil, name: nil, onboardingProfile: onboardingProfile)
+            body: AuthRequest(email: email, password: nil, name: nil, onboardingProfile: onboardingProfile, sessionToken: sessionToken)
         )
     }
 
@@ -170,7 +167,15 @@ enum RemoteAuthService {
     private static func request(path: String, body: AuthRequest) async throws -> RemoteAuthUser {
         let response: AuthResponse = try await rawRequest(path: path, body: body)
         guard let user = response.user else { throw AppError.accountDataMissing }
-        return user
+        return RemoteAuthUser(
+            email: user.email,
+            name: user.name,
+            createdAt: user.createdAt,
+            onboardingProfile: user.onboardingProfile,
+            isAdmin: user.isAdmin,
+            adminToken: user.adminToken,
+            sessionToken: response.sessionToken
+        )
     }
 
     private static func rawRequest<Response: Decodable, Body: Encodable>(path: String, body: Body) async throws -> Response {

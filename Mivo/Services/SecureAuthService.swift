@@ -1,3 +1,4 @@
+import CommonCrypto
 import CryptoKit
 import Foundation
 import Security
@@ -11,6 +12,9 @@ struct SecureAuthRecord: Codable {
     var passwordIterations: Int
     var isAdmin: Bool?
     var adminToken: String?
+    var sessionToken: String?
+    /// nil = legacy iterated-SHA256 scheme; "pbkdf2-sha256" = current.
+    var passwordScheme: String?
     var onboardingProfile: OnboardingProfile?
 }
 
@@ -18,7 +22,8 @@ enum SecureAuthService {
     private static let keychainService = "app.mivo.auth"
     private static let legacyUserAccount = "primary-user"
     private static let userAccountPrefix = "user-"
-    private static let passwordIterations = 120_000
+    private static let passwordIterations = 210_000
+    private static let pbkdf2Scheme = "pbkdf2-sha256"
 
     static func loadRecord() -> SecureAuthRecord? {
         if let email = StorageService.load(String.self, forKey: .rememberedEmail),
@@ -68,14 +73,15 @@ enum SecureAuthService {
     }
 
     static func createRecord(email: String, password: String, name: String) throws -> SecureAuthRecord {
-        let salt = randomBytes(count: 32)
+        let salt = try randomBytes(count: 32)
         let record = SecureAuthRecord(
             email: normalizeEmail(email),
             name: name,
             createdAt: ISO8601DateFormatter().string(from: Date()),
             passwordHash: hashPassword(password, salt: salt, iterations: passwordIterations),
             passwordSalt: salt.hexString,
-            passwordIterations: passwordIterations
+            passwordIterations: passwordIterations,
+            passwordScheme: pbkdf2Scheme
         )
         try saveRecord(record)
         return record
@@ -87,15 +93,23 @@ enum SecureAuthService {
         }
 
         guard let salt = Data(hexString: record.passwordSalt) else { return false }
-        let hash = hashPassword(password, salt: salt, iterations: record.passwordIterations)
+        let hash = record.passwordScheme == pbkdf2Scheme
+            ? hashPassword(password, salt: salt, iterations: record.passwordIterations)
+            : legacyHashPassword(password, salt: salt, iterations: record.passwordIterations)
         return constantTimeEquals(hash, record.passwordHash)
     }
 
+    /// True when the stored hash uses a weaker legacy scheme and should be re-hashed after a successful login.
+    static func needsRehash(_ record: SecureAuthRecord) -> Bool {
+        record.passwordIterations == 0 || record.passwordScheme != pbkdf2Scheme
+    }
+
     static func updatePassword(_ password: String, for record: SecureAuthRecord) throws -> SecureAuthRecord {
-        let salt = randomBytes(count: 32)
+        let salt = try randomBytes(count: 32)
         var updated = record
         updated.passwordSalt = salt.hexString
         updated.passwordIterations = passwordIterations
+        updated.passwordScheme = pbkdf2Scheme
         updated.passwordHash = hashPassword(password, salt: salt, iterations: passwordIterations)
         try saveRecord(updated)
         return updated
@@ -110,6 +124,24 @@ enum SecureAuthService {
     }
 
     private static func hashPassword(_ password: String, salt: Data, iterations: Int) -> String {
+        var derived = [UInt8](repeating: 0, count: 32)
+        let passwordBytes = Array(password.utf8)
+        let status = salt.withUnsafeBytes { saltBuffer in
+            CCKeyDerivationPBKDF(
+                CCPBKDFAlgorithm(kCCPBKDF2),
+                passwordBytes.map { Int8(bitPattern: $0) }, passwordBytes.count,
+                saltBuffer.bindMemory(to: UInt8.self).baseAddress, salt.count,
+                CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                UInt32(iterations),
+                &derived, derived.count
+            )
+        }
+        guard status == kCCSuccess else { return "" }
+        return Data(derived).hexString
+    }
+
+    /// Pre-PBKDF2 scheme; kept only so existing accounts can sign in and be upgraded.
+    private static func legacyHashPassword(_ password: String, salt: Data, iterations: Int) -> String {
         var digestInput = Data()
         digestInput.append(salt)
         digestInput.append(Data(password.utf8))
@@ -125,13 +157,10 @@ enum SecureAuthService {
         return digest.hexString
     }
 
-    private static func randomBytes(count: Int) -> Data {
+    private static func randomBytes(count: Int) throws -> Data {
         var bytes = [UInt8](repeating: 0, count: count)
-        let status = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
-        if status != errSecSuccess {
-            for index in bytes.indices {
-                bytes[index] = UInt8.random(in: UInt8.min...UInt8.max)
-            }
+        guard SecRandomCopyBytes(kSecRandomDefault, count, &bytes) == errSecSuccess else {
+            throw AppError.secureStorageFailed
         }
         return Data(bytes)
     }

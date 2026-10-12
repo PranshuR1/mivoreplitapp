@@ -13,13 +13,17 @@ const rateLimitWindowMs = boundedNumber(process.env.MIVO_RATE_LIMIT_WINDOW_MS, 1
 const globalRateLimitMax = boundedNumber(process.env.MIVO_GLOBAL_RATE_LIMIT_MAX, 120, 10, 10_000);
 const loginRateLimitMax = boundedNumber(process.env.MIVO_LOGIN_RATE_LIMIT_MAX, 5, 1, 100);
 const maxBodyBytes = boundedNumber(process.env.MIVO_MAX_BODY_BYTES, 20_000, 1_000, 250_000);
-const allowedOrigin = process.env.MIVO_ALLOWED_ORIGIN || "*";
+const allowedOrigin = process.env.MIVO_ALLOWED_ORIGIN || "";
+const trustProxy = process.env.MIVO_TRUST_PROXY === "true";
+const sessionTtlMs = 1000 * 60 * 60 * 24 * 30;
+const adminSessionTtlMs = 1000 * 60 * 60 * 24 * 14;
+const tokenKeyPrefix = "sha256:";
 const allowUnverifiedPasswordReset = process.env.MIVO_ALLOW_UNVERIFIED_PASSWORD_RESET === "true";
 const googleClientIds = (process.env.MIVO_GOOGLE_CLIENT_IDS || "").split(",").map((v) => v.trim()).filter(Boolean);
 const appleClientIds = (process.env.MIVO_APPLE_CLIENT_IDS || "app.mivo.com").split(",").map((v) => v.trim()).filter(Boolean);
 const jwksCache = new Map();
 const rateLimitBuckets = new Map();
-const loginRateLimitedRoutes = new Set(["/auth/login", "/auth/register", "/auth/reset-password", "/auth/social"]);
+const loginRateLimitedRoutes = new Set(["/auth/login", "/auth/register", "/auth/reset-password", "/auth/social", "/auth/profile"]);
 
 class HttpError extends Error {
   constructor(status, code) {
@@ -36,14 +40,18 @@ function boundedNumber(value, fallback, min, max) {
 }
 
 function jsonResponse(res, status, payload) {
-  res.writeHead(status, {
+  const headers = {
     "Content-Type": "application/json",
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "no-store",
-    "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  });
+  };
+  // The iOS app is not a browser, so CORS is opt-in via MIVO_ALLOWED_ORIGIN.
+  if (allowedOrigin) {
+    headers["Access-Control-Allow-Origin"] = allowedOrigin;
+    headers["Access-Control-Allow-Headers"] = "Content-Type";
+    headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
+  }
+  res.writeHead(status, headers);
   res.end(JSON.stringify(payload));
 }
 
@@ -61,8 +69,12 @@ function parseRoute(req) {
 }
 
 function clientIp(req) {
-  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  return forwarded || req.socket.remoteAddress || "unknown";
+  if (trustProxy) {
+    // Only the right-most entry is appended by our own proxy; earlier entries are client-controlled.
+    const hops = String(req.headers["x-forwarded-for"] || "").split(",").map((h) => h.trim()).filter(Boolean);
+    if (hops.length) return hops[hops.length - 1];
+  }
+  return req.socket.remoteAddress || "unknown";
 }
 
 function hitRateLimit(key, maxAttempts, windowMs) {
@@ -172,6 +184,7 @@ function sanitizeAuthPayload(payload) {
     name: cleanString(payload.name, "name", { max: 80 }),
     targetEmail: payload.targetEmail === undefined ? "" : cleanEmail(payload.targetEmail, { required: false, field: "targetEmail" }),
     adminToken: cleanString(payload.adminToken, "adminToken", { max: 128 }),
+    sessionToken: cleanString(payload.sessionToken, "sessionToken", { max: 128 }),
     onboardingProfile: payload.onboardingProfile === undefined ? null : cleanJsonValue(payload.onboardingProfile, "onboardingProfile"),
     profile: payload.profile === undefined ? null : cleanJsonValue(payload.profile, "profile"),
   };
@@ -201,15 +214,29 @@ function adminUser(record) {
   };
 }
 
+// Sessions are stored under a hash of the token; plaintext-keyed legacy entries are discarded.
+function dropLegacyTokens(sessions) {
+  const kept = {};
+  for (const [key, value] of Object.entries(sessions || {})) {
+    if (key.startsWith(tokenKeyPrefix) && value && value.expiresAt > Date.now()) kept[key] = value;
+  }
+  return kept;
+}
+
+function tokenKey(token) {
+  return tokenKeyPrefix + crypto.createHash("sha256").update(String(token)).digest("hex");
+}
+
 async function readUsers() {
   try {
     const raw = await fs.readFile(usersPath, "utf8");
     const db = JSON.parse(raw);
     if (!db.users) db.users = {};
-    if (!db.adminSessions) db.adminSessions = {};
+    db.adminSessions = dropLegacyTokens(db.adminSessions);
+    db.userSessions = dropLegacyTokens(db.userSessions);
     return db;
   } catch (error) {
-    if (error.code === "ENOENT") return { users: {}, adminSessions: {} };
+    if (error.code === "ENOENT") return { users: {}, adminSessions: {}, userSessions: {} };
     throw error;
   }
 }
@@ -261,16 +288,34 @@ function ensureAdminUser(db) {
 
 function issueAdminToken(db, email) {
   const token = crypto.randomBytes(32).toString("hex");
-  const expiresAt = Date.now() + 1000 * 60 * 60 * 24 * 14;
-  db.adminSessions[token] = { email, expiresAt };
+  db.adminSessions[tokenKey(token)] = { email, expiresAt: Date.now() + adminSessionTtlMs };
   return token;
+}
+
+function issueSessionToken(db, email) {
+  const token = crypto.randomBytes(32).toString("hex");
+  db.userSessions[tokenKey(token)] = { email, expiresAt: Date.now() + sessionTtlMs };
+  return token;
+}
+
+function requireSession(db, payload, email) {
+  const token = String(payload.sessionToken || "");
+  if (!token || !email) return false;
+  const key = tokenKey(token);
+  const session = db.userSessions[key];
+  if (!session || session.expiresAt < Date.now()) {
+    delete db.userSessions[key];
+    return false;
+  }
+  return session.email === email;
 }
 
 function requireAdmin(db, payload) {
   const token = String(payload.adminToken || "");
-  const session = db.adminSessions[token];
+  const key = tokenKey(token);
+  const session = token ? db.adminSessions[key] : null;
   if (!session || session.expiresAt < Date.now()) {
-    if (token) delete db.adminSessions[token];
+    if (token) delete db.adminSessions[key];
     return null;
   }
   const record = db.users[session.email];
@@ -644,8 +689,9 @@ async function handleSocialAuth(req, res) {
   record.lastLoginAt = new Date().toISOString();
   record.socialProviders = Array.from(new Set([...(record.socialProviders || []), provider]));
   const adminToken = record.role === "admin" ? issueAdminToken(db, record.email) : null;
+  const sessionToken = issueSessionToken(db, record.email);
   await writeUsers(db);
-  jsonResponse(res, created ? 201 : 200, { ok: true, user: publicUser(record), adminToken });
+  jsonResponse(res, created ? 201 : 200, { ok: true, user: publicUser(record), adminToken, sessionToken });
 }
 
 async function handleAuth(req, res, routePath) {
@@ -660,12 +706,6 @@ async function handleAuth(req, res, routePath) {
 
   if (!isAdminRoute && !email) {
     jsonResponse(res, 400, { error: "invalidEmail" });
-    return;
-  }
-
-  if (routePath === "/auth/exists") {
-    if (adminSeeded) await writeUsers(db);
-    jsonResponse(res, 200, { ok: true, exists: Boolean(existing) });
     return;
   }
 
@@ -691,8 +731,9 @@ async function handleAuth(req, res, routePath) {
       role: "user",
     };
     db.users[email] = record;
+    const sessionToken = issueSessionToken(db, email);
     await writeUsers(db);
-    jsonResponse(res, 201, { ok: true, user: publicUser(record) });
+    jsonResponse(res, 201, { ok: true, user: publicUser(record), sessionToken });
     return;
   }
 
@@ -703,8 +744,9 @@ async function handleAuth(req, res, routePath) {
     }
     existing.lastLoginAt = new Date().toISOString();
     const adminToken = existing.role === "admin" ? issueAdminToken(db, existing.email) : null;
+    const sessionToken = issueSessionToken(db, existing.email);
     await writeUsers(db);
-    jsonResponse(res, 200, { ok: true, user: publicUser(existing), adminToken });
+    jsonResponse(res, 200, { ok: true, user: publicUser(existing), adminToken, sessionToken });
     return;
   }
 
@@ -731,8 +773,8 @@ async function handleAuth(req, res, routePath) {
   }
 
   if (routePath === "/auth/profile") {
-    if (!existing) {
-      jsonResponse(res, 404, { error: "noAccount" });
+    if (!existing || !requireSession(db, payload, email)) {
+      jsonResponse(res, 401, { error: "invalidSession" });
       return;
     }
     existing.onboardingProfile = payload.onboardingProfile || null;
@@ -887,7 +929,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(port, () => {
   console.log(`Mivo backend listening on port ${port}`);
   console.log(`Health check: /health`);
-  console.log(`Auth endpoints: /auth/register /auth/login /auth/exists /auth/reset-password /auth/profile`);
+  console.log(`Auth endpoints: /auth/register /auth/login /auth/reset-password /auth/profile`);
   console.log(`AI endpoints: /api/ai/recommend-focus /api/ai/recommend-protected-apps /api/ai/estimate-saved /api/ai/estimate-life-breakdown /api/ai/screen-time-plan`);
   console.log(`Auth database: ${usersPath}`);
 });
