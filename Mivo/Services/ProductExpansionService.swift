@@ -87,9 +87,23 @@ enum ProductExpansionService {
         let _: EmptyResponse = try await rpcAllowingEmpty("save_recovery_plan", body: ["input_plan": payload])
     }
 
+    /// Restores this account's recovery plans on a device that has none
+    /// locally yet (reinstall, new device) — `save_recovery_plan` above was
+    /// push-only until this was added, so a signed-out device had no way to
+    /// get its history back even though Supabase held a full copy the
+    /// whole time.
+    static func recoveryPlans() async throws -> [RecoveryPlan] {
+        try await rpc("get_recovery_plans", body: [:])
+    }
+
     static func saveMonthlyEffectReport(_ report: MonthlyEffectReport) async throws {
         let payload = try jsonObject(report)
         let _: EmptyResponse = try await rpcAllowingEmpty("save_monthly_effect_report", body: ["input_report": payload])
+    }
+
+    /// See `recoveryPlans()` above — same push-only gap, same fix.
+    static func monthlyEffectReports() async throws -> [MonthlyEffectReport] {
+        try await rpc("get_monthly_effect_reports", body: [:])
     }
 
     static func inviteAccountabilityPartner(email: String, summary: SharedWeeklySummary) async throws -> AccountabilityConnection {
@@ -127,6 +141,11 @@ enum ProductExpansionService {
             "record_mivo_clear_session",
             body: ["input_session": payload]
         )
+    }
+
+    /// See `recoveryPlans()` above — same push-only gap, same fix.
+    static func mivoClearSessions() async throws -> [MivoClearSession] {
+        try await rpc("get_mivo_clear_sessions", body: [:])
     }
 
     static func ingestDiagnostic(kind: String, payload: [String: Any]) async {

@@ -15,9 +15,9 @@ enum MivoClearError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unavailable: return "Mivo Clear BETA is temporarily unavailable."
-        case .invalidConfiguration: return "Mivo Clear BETA received an invalid platform configuration."
-        case .ageRestricted: return "Mivo Clear BETA is available to users age 13 and older."
+        case .unavailable: return "Mivo Clear is temporarily unavailable."
+        case .invalidConfiguration: return "Mivo Clear received an invalid platform configuration."
+        case .ageRestricted: return "Mivo Clear is available to users age 13 and older."
         case .googleNotConfigured: return "YouTube setup is not configured in this build yet."
         case .googleSignInFailed(let detail): return detail
         case .api(let detail): return detail
@@ -45,6 +45,7 @@ final class MivoClearStore: ObservableObject {
         if loadedEmail != email {
             loadedEmail = email
             sessions = StorageService.load([MivoClearSession].self, forKey: .mivoClearSessions, email: email) ?? []
+            await restoreBackupOnlyIfNeeded(email: email)
         }
         do {
             let remote = try await ProductExpansionService.mivoClearConfigurations()
@@ -62,6 +63,22 @@ final class MivoClearStore: ObservableObject {
                 lastError = MivoClearError.invalidConfiguration.localizedDescription
             }
         }
+    }
+
+    /// `recordMivoClearSession` was push-only until this was added —
+    /// Supabase held every session this account ever recorded, but a
+    /// signed-out device (or a reinstall) had no way to read it back. Only
+    /// adds sessions missing locally by id, so an in-progress local session
+    /// or a more recent local edit is never clobbered by the server copy.
+    private func restoreBackupOnlyIfNeeded(email: String) async {
+        guard ProductExpansionService.isConfigured, let remote = try? await ProductExpansionService.mivoClearSessions() else { return }
+        let localIDs = Set(sessions.map(\.id))
+        let missing = remote.filter { !localIDs.contains($0.id) }
+        guard !missing.isEmpty else { return }
+        sessions.append(contentsOf: missing)
+        sessions.sort { $0.startedAt > $1.startedAt }
+        sessions = Array(sessions.prefix(180))
+        StorageService.save(sessions, forKey: .mivoClearSessions, email: email)
     }
 
     func configuration(for platform: MivoClearPlatform) -> MivoClearPlatformConfiguration? {
@@ -261,7 +278,7 @@ enum MivoClearContentRuleCompiler {
     static func compile(configuration: MivoClearPlatformConfiguration) async throws -> WKContentRuleList? {
         // Keep a local compiler revision in the identifier so a shipped safety
         // rule change cannot be masked by WebKit's previously compiled list.
-        let identifier = "mivo-clear-\(configuration.platform.rawValue)-v\(configuration.version)-fast-r3"
+        let identifier = "mivo-clear-\(configuration.platform.rawValue)-v\(configuration.version)-fast-r5"
         if let cached = cachedLists[identifier] { return cached }
 
         // YouTube's Polymer tree is large and changes constantly. Broad :has()
@@ -287,14 +304,15 @@ enum MivoClearContentRuleCompiler {
         } else {
             selectors = configuration.hiddenSelectors
         }
-        guard !selectors.isEmpty else { return nil }
+        let blockedPatterns = feedRequestBlockPatterns(for: configuration.platform)
+        guard !selectors.isEmpty || !blockedPatterns.isEmpty else { return nil }
 
         if let existing = await existingRuleList(identifier: identifier) {
             cachedLists[identifier] = existing
             return existing
         }
 
-        let rules: [[String: Any]] = selectors.map { selector in
+        let hideRules: [[String: Any]] = selectors.map { selector in
             [
                 "trigger": [
                     "url-filter": ".*",
@@ -306,6 +324,13 @@ enum MivoClearContentRuleCompiler {
                 ]
             ]
         }
+        let blockRules: [[String: Any]] = blockedPatterns.map { pattern in
+            [
+                "trigger": ["url-filter": pattern],
+                "action": ["type": "block"]
+            ]
+        }
+        let rules = hideRules + blockRules
         let data = try JSONSerialization.data(withJSONObject: rules)
         guard let json = String(data: data, encoding: .utf8) else { throw MivoClearError.invalidConfiguration }
         let compiled: WKContentRuleList = try await withCheckedThrowingContinuation { continuation in
@@ -322,6 +347,41 @@ enum MivoClearContentRuleCompiler {
         return compiled
     }
 
+    /// Requests that exist only to refill an endless feed.
+    ///
+    /// Everything else in Mivo Clear reacts to a feed *after* it has arrived —
+    /// hiding it with CSS, or detecting it with injected JavaScript and
+    /// navigating away. Both depend on correctly recognising markup that Meta
+    /// and ByteDance rewrite continuously, which is why they keep failing.
+    /// A blocked request never arrives, so there is nothing to recognise: the
+    /// viewer reaches the end of the one video they opened and stops.
+    ///
+    /// Deliberately narrow. A conversation is served by `direct_v2`, a profile
+    /// by `users`, and video bytes by the CDN — none of which match here, so a
+    /// reel shared in a DM still plays. A pattern that turns out not to match
+    /// anything simply does nothing, which makes this safe to be wrong about
+    /// in a way that a CSS selector guess is not.
+    private static func feedRequestBlockPatterns(for platform: MivoClearPlatform) -> [String] {
+        switch platform {
+        case .instagram:
+            return [
+                ".*instagram\\.com/api/v1/clips/.*",
+                ".*instagram\\.com/api/v1/discover/.*",
+                ".*instagram\\.com/api/v1/feed/reels_media.*"
+            ]
+        case .tiktok:
+            return [
+                ".*tiktok\\.com/api/recommend/item_list.*",
+                ".*tiktok\\.com/api/related/item_list.*",
+                ".*tiktok\\.com/api/explore/item_list.*"
+            ]
+        case .youtube:
+            return [".*youtube\\.com/youtubei/v1/reel/.*"]
+        case .snapchat:
+            return []
+        }
+    }
+
     @MainActor
     private static func existingRuleList(identifier: String) async -> WKContentRuleList? {
         await withCheckedContinuation { continuation in
@@ -333,8 +393,21 @@ enum MivoClearContentRuleCompiler {
 }
 
 enum MivoClearRuntimeGuard {
+    /// Bumped whenever the injected guard changes behaviour.
+    ///
+    /// The guard is a JavaScript string, so a stale build on a device is
+    /// indistinguishable from a broken heuristic when a bug is reported. The
+    /// running guard announces this number once per page, which makes "is the
+    /// fix even installed?" a question with an answer.
+    static let version = 5
+
+    /// The version the running page last announced. `nil` until a Clear page has
+    /// loaded; a value below `version` means the device is on a stale build.
+    @MainActor static var lastReportedVersion: Int?
+
     static func script(configuration: MivoClearPlatformConfiguration, singleMediaURL: URL? = nil) throws -> WKUserScript {
         let payload: [String: Any] = [
+            "guardVersion": Self.version,
             "platform": configuration.platform.rawValue,
             "homeURL": configuration.homeURL,
             "allowedHosts": configuration.allowedHosts,
@@ -404,6 +477,11 @@ enum MivoClearRuntimeGuard {
           };
           const isInstagramReel = path => !!instagramReelIdentifier(path);
           const isTikTokVideo = path => path.includes('/video/') || path.endsWith('/video');
+          // A real conversation, not the inbox list itself — the inbox has its
+          // own legitimate "Suggested" people section that must never trip the
+          // reel-escape logic below.
+          const isInstagramDirectThread = path => path.startsWith('/direct/t/') ||
+            (path.startsWith('/direct/') && path !== '/direct' && path !== '/direct/inbox');
           const currentInstagramSingle = () => trim(sessionStorage.getItem(instagramSingleKey) || config.singleInstagramReelPath || '');
           const inlineInstagramSingle = () => sessionStorage.getItem(instagramInlineKey) === '1';
           const currentTikTokSingle = () => trim(sessionStorage.getItem(tiktokSingleKey) || config.singleTikTokVideoPath || '');
@@ -577,6 +655,21 @@ enum MivoClearRuntimeGuard {
               return rect.width * rect.height > largestRect.width * largestRect.height ? video : largest;
             }, null);
           };
+          // Deliberately no size threshold, unlike the dominance check above.
+          // The web reel viewer scrolls continuously rather than snapping to
+          // one full-screen reel at a time, so mid-scroll there is often a
+          // moment where no single video clears the 40%/62% dominance bar even
+          // though a reel is clearly still on screen — exactly the state a
+          // "next reel" swipe passes through. The suggested-feed escape below
+          // needs to stay armed through that moment, not just before and after it.
+          const anyVisibleInstagramVideo = () => {
+            if (config.platform !== 'instagram') return false;
+            return Array.from(document.querySelectorAll('video')).some(video => {
+              const rect = video.getBoundingClientRect();
+              return rect.height > 0 && rect.width > 0 &&
+                rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth;
+            });
+          };
           const instagramVideoArea = video => {
             if (!video) return 0;
             const rect = video.getBoundingClientRect();
@@ -594,9 +687,7 @@ enum MivoClearRuntimeGuard {
           };
           const markInstagramDirectMediaClick = event => {
             const route = trim(location.pathname);
-            const isConversation = route.startsWith('/direct/t/') ||
-              (route.startsWith('/direct/') && route !== '/direct' && route !== '/direct/inbox');
-            if (config.platform !== 'instagram' || !isConversation) return null;
+            if (config.platform !== 'instagram' || !isInstagramDirectThread(route)) return null;
             const video = largestVisibleInstagramVideo();
             const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
             let reelURL = null;
@@ -627,7 +718,15 @@ enum MivoClearRuntimeGuard {
               );
             });
             if (!reelURL && !touchesVideo && !touchesReelPreview) return null;
-            pendingInstagramDirectMediaUntil = Date.now() + 2600;
+            // Instagram can spend several seconds loading a reel after the tap
+            // (a spinner is visible in that gap). Every downstream protection —
+            // the scroll lock, the suggested-reel escape — depends on this
+            // window still being open once the video actually renders, so it
+            // must outlast a slow connection rather than a fast one. The window
+            // still requires real evidence (a bigger or new-source video, or an
+            // overlay) once it fires, not merely elapsed time, so widening it
+            // does not on its own make a stray tap look like an opened reel.
+            pendingInstagramDirectMediaUntil = Date.now() + 20000;
             pendingInstagramDirectMediaArea = instagramVideoArea(video);
             pendingInstagramDirectMediaSource = instagramVideoSource(video);
             return {
@@ -688,7 +787,20 @@ enum MivoClearRuntimeGuard {
             const route = trim(location.pathname);
             if (config.platform !== 'instagram' || !route.startsWith('/direct')) return false;
             const video = largestVisibleInstagramVideo();
-            return !!video && !!visibleInstagramReplyControl();
+            if (!video) return false;
+            if (visibleInstagramReplyControl()) return true;
+            // The reply box match is an exact English phrase and nothing else
+            // here required it to be visible — a different locale, a build that
+            // rewords the placeholder, or the keyboard covering it would all
+            // silently fall through to the pending-click path only. A video
+            // that is both large AND actively playing is close to unique to the
+            // opened player: the attachment preview sitting in the scrollback
+            // is a static poster with a play glyph until tapped, not a running
+            // video, so this does not fire on an unopened shared reel.
+            const rect = video.getBoundingClientRect();
+            const dominatesViewport = rect.height >= innerHeight * 0.6 || rect.width >= innerWidth * 0.85;
+            const isPlaying = !video.paused && !video.ended && video.readyState >= 2;
+            return dominatesViewport && isPlaying;
           };
           const detectInlineInstagramViewer = (forceScan = false) => {
             if (config.platform !== 'instagram') return;
@@ -813,14 +925,20 @@ enum MivoClearRuntimeGuard {
             }
             return false;
           };
+          // A thrown error in any one detector must not cost the escape
+          // checks their turn on this tick — that gap is exactly how a swipe
+          // can ride out an entire poll cycle unblocked.
+          const safely = fn => {
+            try { fn(); } catch (_) {}
+          };
           const checkCurrentRoute = () => {
             const path = trim(location.pathname);
-            detectInlineInstagramViewer();
-            detectInlineTikTokViewer();
-            removeYouTubeShortsEntries();
-            removeTikTokNativeSidebar();
-            removeInstagramDirectBackControl();
-            rememberOrigin();
+            safely(detectInlineInstagramViewer);
+            safely(detectInlineTikTokViewer);
+            safely(removeYouTubeShortsEntries);
+            safely(removeTikTokNativeSidebar);
+            safely(removeInstagramDirectBackControl);
+            safely(rememberOrigin);
             if (config.platform === 'instagram' && !isInstagramReel(path)) {
               sessionStorage.removeItem(instagramSingleKey);
             }
@@ -837,17 +955,142 @@ enum MivoClearRuntimeGuard {
               location.replace(config.homeURL);
               return;
             }
-            detectSingleMediaEscape();
-            applyInstagramSingleLock();
-            applyTikTokSingleLock();
+            safely(instagramSuggestedFeedEscape);
+            safely(detectSingleMediaEscape);
+            safely(applyInstagramSingleLock);
+            safely(applyTikTokSingleLock);
+            safely(freezeAfterEscape);
+            safely(reportDiagnostics);
           };
+          // Temporary instrumentation for the reel-scroll investigation. A
+          // WKWebView in a device build exposes no console, so the only way to
+          // learn which specific check is returning false at the moment a reel
+          // scrolls past is to ship the answer back to the native layer.
+          let lastDiagnosticAt = 0;
+          const reportDiagnostics = () => {
+            const now = Date.now();
+            if (now - lastDiagnosticAt < 400) return;
+            lastDiagnosticAt = now;
+            const path = trim(location.pathname);
+            const videos = Array.from(document.querySelectorAll('video'));
+            const big = largestVisibleInstagramVideo();
+            let ratio = 0;
+            if (big) {
+              const rect = big.getBoundingClientRect();
+              ratio = Math.round((rect.height / Math.max(1, innerHeight)) * 100);
+            }
+            const parts = [
+              'v' + config.guardVersion,
+              path.length > 26 ? path.slice(0, 26) + '\\u2026' : path,
+              'thread=' + (isInstagramDirectThread(path) ? 'Y' : 'n'),
+              'vid=' + videos.length,
+              'big=' + (big ? 'Y' + ratio : 'n'),
+              'any=' + (anyVisibleInstagramVideo() ? 'Y' : 'n'),
+              'inline=' + (inlineInstagramSingle() ? 'Y' : 'n'),
+              'sugg=' + (visibleSuggestedReelLabel() ? 'Y' : 'n'),
+              'send=' + (visibleInstagramSendControl() ? 'Y' : 'n'),
+              'reply=' + (visibleInstagramReplyControl() ? 'Y' : 'n'),
+              'esc=' + (escapeNotified ? 'Y' : 'n')
+            ];
+            try {
+              window.webkit.messageHandlers.mivoClearSingleMedia.postMessage({
+                diag: parts.join(' ')
+              });
+            } catch (_) {}
+          };
+          const freezeAfterEscape = () => {
+            // Between the notice appearing and the return navigation committing
+            // there is about a second in which the feed would otherwise keep
+            // scrolling under the overlay.
+            if (!escapeNotified) return;
+            document.documentElement.style.setProperty('overflow', 'hidden', 'important');
+            document.documentElement.style.setProperty('touch-action', 'none', 'important');
+            if (document.body) {
+              document.body.style.setProperty('overflow', 'hidden', 'important');
+              document.body.style.setProperty('touch-action', 'none', 'important');
+            }
+          };
+          const instagramSuggestedFeedEscape = () => {
+            // The single-media flags depend on measuring the viewer's video and
+            // spotting a "Reply to" box, and Instagram lays the reel viewer out
+            // differently depending on the space the web view has, and on
+            // whether the reel arrived through a DM, a share sheet, or a bare
+            // permalink. When that detection misses, every other guard stays
+            // disarmed and the feed scrolls forever. A "Suggested" heading (or
+            // its "Send to" chrome) next to a playing video needs none of that
+            // inference: it doesn't matter which route got the viewer here,
+            // only that something Instagram calls "suggested" is now on screen
+            // next to a video the viewer didn't ask for.
+            if (config.platform !== 'instagram') return false;
+            const path = trim(location.pathname);
+            // Inside a real conversation thread, arm on *any* sliver of video
+            // (see anyVisibleInstagramVideo's note) since that's exactly the
+            // context a next-reel swipe passes through mid-scroll. Everywhere
+            // else keeps the stricter dominant-video bar, so this still can't
+            // fire on, say, the inbox's own "Suggested" people section.
+            const armed = isInstagramDirectThread(path)
+              ? anyVisibleInstagramVideo()
+              : !!largestVisibleInstagramVideo();
+            if (!armed) return false;
+            if (visibleSuggestedReelLabel()) {
+              notifyEscape('suggested');
+              return true;
+            }
+            // Second, independent signal. Instagram swaps the conversation's
+            // "Reply to <name>" box for a "Send to chat" / "Send to group" pill
+            // the moment the viewer scrolls off the shared reel. That swap needs
+            // neither the word "Suggested" to be present nor a guess at which
+            // tag renders it, so it still fires when the label is localised,
+            // restyled, or clipped out of the compact layout.
+            if (visibleInstagramSendControl() && !visibleInstagramReplyControl()) {
+              notifyEscape('suggested');
+              return true;
+            }
+            return false;
+          };
+          const visibleInstagramSendControl = () => {
+            const candidates = document.querySelectorAll(
+              "button, [role='button'], a, div[tabindex], span, div"
+            );
+            let remaining = 3000;
+            for (const control of candidates) {
+              if (remaining-- <= 0) break;
+              // Leaf-ish only: a wrapper's textContent would drag in the whole
+              // viewer and match on any descendant.
+              if (control.childElementCount > 2) continue;
+              const marker = [
+                control.getAttribute('aria-label'),
+                control.textContent
+              ].filter(Boolean).join(' ').trim().toLowerCase();
+              if (marker.length > 40) continue;
+              if (!marker.includes('send to')) continue;
+              const rect = control.getBoundingClientRect();
+              if (rect.width > 40 && rect.height > 18 && rect.bottom > 0 && rect.top < innerHeight) {
+                return control;
+              }
+            }
+            return null;
+          };
+          const suggestedReelLabels = ['suggested', 'suggested reels', 'suggested for you', 'more reels'];
           const visibleSuggestedReelLabel = () => {
-            const labels = document.querySelectorAll("h1, h2, h3, h4, [role='heading'], span");
-            for (const label of labels) {
-              const text = (label.textContent || '').trim().toLowerCase();
-              if (text !== 'suggested' && text !== 'suggested reels' &&
-                  text !== 'suggested for you' && text !== 'more reels') continue;
-              const rect = label.getBoundingClientRect();
+            // Instagram does not render this label with a consistent tag — it is a
+            // span in the full-height viewer and a plain div in the compact one —
+            // so match the text node itself instead of guessing at a selector.
+            // A text node is always a leaf, which is what kept the old query from
+            // matching a wrapper whose combined text merely starts with
+            // "Suggested".
+            const root = document.body || document.documentElement;
+            if (!root) return false;
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            let remaining = 4000;
+            let node;
+            while ((node = walker.nextNode()) && remaining > 0) {
+              remaining -= 1;
+              const text = (node.nodeValue || '').trim().toLowerCase();
+              if (!suggestedReelLabels.includes(text)) continue;
+              const element = node.parentElement;
+              if (!element) continue;
+              const rect = element.getBoundingClientRect();
               if (rect.bottom > 0 && rect.top < innerHeight && rect.width > 0) return true;
             }
             return false;
@@ -863,14 +1106,29 @@ enum MivoClearRuntimeGuard {
             if (!instagramActive && !tiktokActive) {
               lockedInstagramVideoSource = '';
               changedSourceStreak = 0;
-              escapeNotified = false;
+              // Only re-arm once the viewer is genuinely out of any media
+              // context. Clearing it while a suggested reel is still on screen
+              // would undo the freeze that keeps the feed still until the
+              // return navigation commits.
+              if (!largestVisibleInstagramVideo() && !visibleSuggestedReelLabel()) {
+                escapeNotified = false;
+              }
               return;
             }
             if (instagramActive) {
               // Instagram keeps the shared reel mounted and appends "Suggested"
-              // reels underneath. Either signal means the viewer moved past the
-              // one reel the conversation actually linked to.
+              // reels underneath. Any of these signals means the viewer moved
+              // past the one reel the conversation actually linked to. This
+              // used to only run under a /direct route — a reel opened from a
+              // share sheet or a permalink outside the DM viewer never
+              // touched it, so the only defense left there was the label
+              // text, which the previous bug report already showed is not
+              // reliable on its own.
               if (visibleSuggestedReelLabel()) {
+                notifyEscape('suggested');
+                return;
+              }
+              if (visibleInstagramSendControl() && !visibleInstagramReplyControl()) {
                 notifyEscape('suggested');
                 return;
               }
@@ -954,28 +1212,11 @@ enum MivoClearRuntimeGuard {
               inlineInstagramSingle();
             if (!active) return;
 
-            document.querySelectorAll("h1, h2, h3, h4, [role='heading'], span").forEach(label => {
-              const text = (label.textContent || '').trim().toLowerCase();
-              const isSuggestedLabel = text === 'suggested' ||
-                text === 'suggested reels' ||
-                text === 'suggested for you' ||
-                text === 'more reels';
-              if (!isSuggestedLabel) return;
-
-              let removable = label;
-              for (let depth = 0, node = label; node && depth < 8; depth += 1, node = node.parentElement) {
-                const rect = node.getBoundingClientRect();
-                const containsSuggestedMedia = !!node.querySelector &&
-                  !!node.querySelector("a[href*='/reel/'], a[href*='/reels/'], video");
-                if (containsSuggestedMedia && rect.height >= 100) {
-                  removable = node;
-                  break;
-                }
-              }
-              removable.style.setProperty('display', 'none', 'important');
-              removable.setAttribute('aria-hidden', 'true');
-            });
-
+            // Deliberately no longer hides the "Suggested" section. Hiding it
+            // was unreliable — Instagram re-renders it under new markup and the
+            // viewer kept scrolling anyway — and worse, a hidden heading is
+            // invisible to the escape detection that now returns the viewer to
+            // the conversation. Detecting and leaving beats half-hiding.
             document.querySelectorAll("button, [role='button'], a").forEach(control => {
               const marker = [
                 control.getAttribute('aria-label'),
@@ -1055,6 +1296,35 @@ enum MivoClearRuntimeGuard {
               target.style.setProperty('pointer-events', 'none', 'important');
               target.setAttribute('aria-hidden', 'true');
               target.setAttribute('data-mivo-clear-hidden-direct-back', '1');
+            });
+
+            hideInstagramDirectLeadingControl();
+          };
+          const hideInstagramDirectLeadingControl = () => {
+            // Everything above keys off an <svg>, so a back arrow drawn as a
+            // background image, an <img>, or a CSS chevron survives and still
+            // leads out to the feed. The arrow is always the leading control of
+            // the inbox header, so match it by role and position instead of by
+            // how it happens to be drawn.
+            document.querySelectorAll(
+              "button, [role='button'], a, [tabindex='0']"
+            ).forEach(control => {
+              if (control.getAttribute('data-mivo-clear-hidden-direct-back') === '1') return;
+              const rect = control.getBoundingClientRect();
+              const inLeadingSlot = rect.left >= 0 && rect.left < 72 && rect.top < 120;
+              const iconSized = rect.width >= 16 && rect.width <= 72 &&
+                rect.height >= 16 && rect.height <= 72;
+              if (!inLeadingSlot || !iconSized) return;
+              // The arrow is iconographic. Anything carrying words is a real
+              // control (a username, "Requests", "Edit") and must survive.
+              if ((control.textContent || '').trim().length > 0) return;
+              // Never swallow a text field or the account switcher's avatar.
+              if (control.querySelector('input, textarea, img[alt]')) return;
+              control.style.setProperty('display', 'none', 'important');
+              control.style.setProperty('visibility', 'hidden', 'important');
+              control.style.setProperty('pointer-events', 'none', 'important');
+              control.setAttribute('aria-hidden', 'true');
+              control.setAttribute('data-mivo-clear-hidden-direct-back', '1');
             });
           };
           const applyInstagramSingleLock = () => {
@@ -1348,7 +1618,7 @@ enum MivoClearRuntimeGuard {
           const scheduleCheck = () => {
             if (checkScheduled) return;
             checkScheduled = true;
-            const delay = config.platform === 'instagram' ? 180 : 60;
+            const delay = config.platform === 'instagram' ? 80 : 60;
             checkTimer = setTimeout(() => {
               checkScheduled = false;
               checkCurrentRoute();
@@ -1391,12 +1661,192 @@ enum MivoClearRuntimeGuard {
           document.addEventListener('yt-navigate-finish', scheduleCheck);
           new MutationObserver(scheduleCheck).observe(document.documentElement, { childList: true, subtree: true });
           if (config.platform === 'instagram') {
-            window.setInterval(scheduleCheck, 450);
+            // The web reel viewer scrolls continuously rather than snapping
+            // one reel at a time, so a fast swipe can carry the viewer past
+            // several reels between two checks. A tighter interval shrinks
+            // that window — this is a plain DOM-query poll, cheap enough to
+            // run this often.
+            window.setInterval(scheduleCheck, 150);
           }
+          try {
+            window.webkit.messageHandlers.mivoClearSingleMedia.postMessage({
+              guardReady: true,
+              guardVersion: config.guardVersion,
+              platform: config.platform
+            });
+          } catch (_) {}
           scheduleCheck();
         })();
         """
         return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+    }
+
+    /// A second, deliberately tiny guard whose whole job is to stop a feed
+    /// advancing under your thumb.
+    ///
+    /// It exists separately from the script above because that one is large,
+    /// stateful, and injected into the main frame only — so if a reel viewer
+    /// renders in a subframe, or any single heuristic in it misfires, every
+    /// protection it owns goes down together. This one shares none of that:
+    /// it runs in *every* frame, holds no state worth corrupting, touches no
+    /// navigation, and keys off a single measurement that does not depend on
+    /// recognising anyone's markup — is a video currently covering most of
+    /// the screen?
+    ///
+    /// That measurement is the reel viewer, and essentially nothing else. A
+    /// shared-video thumbnail in a conversation is small; an opened reel fills
+    /// the viewport. So scrolling stays normal while reading a chat and stops
+    /// dead once a reel is open — which is the actual rule Mivo wants, stated
+    /// directly instead of inferred from labels, pill text and video sources.
+    static func feedScrollLockScript(configuration: MivoClearPlatformConfiguration) -> WKUserScript? {
+        guard configuration.platform == .instagram || configuration.platform == .tiktok else {
+            return nil
+        }
+        let source = """
+        (() => {
+          // Generous enough that only a genuinely opened video qualifies, so
+          // ordinary conversation scrolling is never caught.
+          const COVERS_HEIGHT = 0.65;
+          const COVERS_WIDTH = 0.85;
+          const EDITABLE = 'input, textarea, [contenteditable="true"], [role="slider"], [role="textbox"]';
+
+          const coveringVideo = () => {
+            const videos = document.querySelectorAll('video');
+            for (const video of videos) {
+              const rect = video.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) continue;
+              const onScreen = rect.bottom > 0 && rect.top < innerHeight &&
+                rect.right > 0 && rect.left < innerWidth;
+              if (!onScreen) continue;
+              if (rect.height >= innerHeight * COVERS_HEIGHT ||
+                  rect.width >= innerWidth * COVERS_WIDTH) return video;
+            }
+            return null;
+          };
+
+          // Disabling inline playback (see MivoClearWebView.makeUIView) sends
+          // every video through iOS's native player instead of playing on the
+          // page. That native player is where "webkitendfullscreen" fires —
+          // the standard, non-proprietary event WebKit dispatches on a
+          // <video> when its native fullscreen presentation closes. It is the
+          // one moment guaranteed to mean "the viewer just finished watching
+          // and is back on this page," regardless of what Instagram or TikTok
+          // silently did underneath while it was covering the screen.
+          const boundVideos = new WeakSet();
+          const bindFullscreenExit = video => {
+            if (boundVideos.has(video)) return;
+            boundVideos.add(video);
+            video.addEventListener('webkitendfullscreen', () => {
+              try {
+                window.webkit.messageHandlers.mivoClearSingleMedia.postMessage({
+                  videoFullscreenEnded: true
+                });
+              } catch (_) {}
+            });
+          };
+
+          let armed = false;
+          const refresh = () => {
+            document.querySelectorAll('video').forEach(bindFullscreenExit);
+            const next = !!coveringVideo();
+            if (next === armed) return;
+            armed = next;
+            try {
+              window.webkit.messageHandlers.mivoClearSingleMedia.postMessage({
+                scrollLock: armed
+              });
+            } catch (_) {}
+          };
+          setInterval(refresh, 200);
+          refresh();
+
+          const swallow = event => {
+            if (!armed) return;
+            const target = event.target;
+            if (target && target.closest && target.closest(EDITABLE)) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            event.stopPropagation();
+          };
+
+          document.addEventListener('touchmove', swallow, { capture: true, passive: false });
+          document.addEventListener('wheel', swallow, { capture: true, passive: false });
+          document.addEventListener('keydown', event => {
+            if (!armed) return;
+            if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ' '].includes(event.key)) {
+              event.preventDefault();
+            }
+          }, true);
+        })();
+        """
+        return WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
+    }
+
+    /// YouTube plays inline by default (see `MivoClearWebView.makeUIView`),
+    /// so it doesn't need the scroll-lock half of `feedScrollLockScript`
+    /// above — a `/watch` page is allowed content, not something to freeze.
+    /// But when the viewer explicitly goes fullscreen and then closes that
+    /// native player, the `/watch` page underneath is still sitting there
+    /// with YouTube's own "up next"/suggested column, which is exactly the
+    /// open-ended scrolling Mivo Clear exists to remove. Reusing the same
+    /// `webkitendfullscreen` → `videoFullscreenEnded` message the Instagram/
+    /// TikTok script already sends means the existing handler in
+    /// `MivoClearWebView.Coordinator` (routes to `focusedFallbackURL`,
+    /// which resolves to the platform's home for YouTube) needs no changes.
+    static func youTubeFullscreenExitScript(configuration: MivoClearPlatformConfiguration) -> WKUserScript? {
+        guard configuration.platform == .youtube else { return nil }
+        let source = """
+        (() => {
+          const notifyFullscreenEnded = () => {
+            try {
+              window.webkit.messageHandlers.mivoClearSingleMedia.postMessage({
+                videoFullscreenEnded: true
+              });
+            } catch (_) {}
+          };
+
+          // Two independent signals for "the fullscreen player just closed,"
+          // because which one fires depends on how the video got fullscreen
+          // in the first place, and that varies by iOS/WebKit version and by
+          // which UI the viewer used to trigger it:
+          //
+          // 1. `webkitendfullscreen` on the <video> itself — the legacy,
+          //    iOS-only native-player event. This is what fires when iOS
+          //    promotes an inline <video> straight to its own system player
+          //    (the "X / PiP / AirPlay" chrome), which is the common case
+          //    here since YouTube plays inline by default.
+          // 2. The standard `fullscreenchange` event on `document` — what
+          //    fires when the page itself calls `Element.requestFullscreen()`
+          //    (YouTube's own in-page fullscreen button uses this path on
+          //    some WebKit versions instead of the legacy API). Without this
+          //    second listener, a video entering fullscreen through the
+          //    standard API closes with no signal at all, leaving the
+          //    /watch page's "up next" rail exposed underneath — exactly the
+          //    open-ended scrolling surface this whole script exists to
+          //    remove.
+          //
+          // Both funnel into the same message, so the existing handler in
+          // `MivoClearWebView.Coordinator` needs no changes either way.
+          const boundVideos = new WeakSet();
+          const bindFullscreenExit = video => {
+            if (boundVideos.has(video)) return;
+            boundVideos.add(video);
+            video.addEventListener('webkitendfullscreen', notifyFullscreenEnded);
+          };
+          document.querySelectorAll('video').forEach(bindFullscreenExit);
+          setInterval(() => document.querySelectorAll('video').forEach(bindFullscreenExit), 500);
+
+          let wasFullscreen = false;
+          const checkStandardFullscreen = () => {
+            const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+            if (wasFullscreen && !isFullscreen) notifyFullscreenEnded();
+            wasFullscreen = isFullscreen;
+          };
+          document.addEventListener('fullscreenchange', checkStandardFullscreen, true);
+          document.addEventListener('webkitfullscreenchange', checkStandardFullscreen, true);
+        })();
+        """
+        return WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
     }
 }
 

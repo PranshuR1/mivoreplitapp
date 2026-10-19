@@ -30,18 +30,40 @@ enum DeviceBindingService {
     private static let installationAccount = "installation-id"
     private static let bindingAccount = "bound-account"
 
+    /// Dev/test installations permanently exempted from the one-device-per-account
+    /// restriction — neither the local Keychain binding below nor the server-side
+    /// `RemoteAuthService.claimDevice` row is ever written or enforced for these, so
+    /// signing into any account from one of these devices never binds it.
+    static let exemptInstallationIDs: Set<String> = [
+        "b37a76e0-6e80-4c90-b702-689613c5d04e"
+    ]
+
+    static func isExemptInstallation(_ installationID: String) -> Bool {
+        exemptInstallationIDs.contains(installationID)
+    }
+
+    /// Checked ahead of `loadBinding()` — an exempt device must never read
+    /// back as bound, even if a binding record was written to the Keychain
+    /// before this device's ID was added to `exemptInstallationIDs` (or by
+    /// a build that predates the exemption entirely). Without this check
+    /// here specifically, `LoginView`'s "New to Mivo? Create an account"
+    /// link would still hide on this device despite `bind()`/`assertAllows`
+    /// already refusing to write new bindings for it.
     static var boundEmail: String? {
-        loadBinding()?.email
+        guard let id = try? installationID(), !isExemptInstallation(id) else { return nil }
+        return loadBinding()?.email
     }
 
     static var boundEmailHint: String? {
-        loadBinding().map { emailHint(for: $0.email, attempt: 1) }
+        guard let id = try? installationID(), !isExemptInstallation(id) else { return nil }
+        return loadBinding().map { emailHint(for: $0.email, attempt: 1) }
     }
 
     static func installationID() throws -> String {
         if let data = KeychainStore.read(service: keychainService, account: installationAccount),
            let value = String(data: data, encoding: .utf8),
            !value.isEmpty {
+            if isExemptInstallation(value) { purgeLocalBindingIfPresent() }
             return value
         }
 
@@ -51,7 +73,17 @@ enum DeviceBindingService {
         return value
     }
 
+    /// Belt-and-suspenders alongside the `boundEmail`/`boundEmailHint`
+    /// checks above: actually clears any stale local binding for an exempt
+    /// device rather than just hiding it, so `assertAllows`/`bind` never
+    /// see leftover state from before this device was exempted either.
+    private static func purgeLocalBindingIfPresent() {
+        guard loadBinding() != nil else { return }
+        KeychainStore.delete(service: keychainService, account: bindingAccount)
+    }
+
     static func assertAllows(email: String) throws {
+        if let id = try? installationID(), isExemptInstallation(id) { return }
         guard var binding = loadBinding() else { return }
         let normalizedEmail = normalizeEmail(email)
         guard binding.email == normalizedEmail else {
@@ -68,12 +100,14 @@ enum DeviceBindingService {
     }
 
     static func bind(userID: String, email: String, replacingLocalBinding: Bool = false) throws {
+        let id = try installationID()
+        guard !isExemptInstallation(id) else { return }
         let normalizedEmail = normalizeEmail(email)
         if !replacingLocalBinding {
             try assertAllows(email: normalizedEmail)
         }
         let record = DeviceBindingRecord(
-            installationID: try installationID(),
+            installationID: id,
             userID: userID,
             email: normalizedEmail,
             failedAccountAttempts: nil

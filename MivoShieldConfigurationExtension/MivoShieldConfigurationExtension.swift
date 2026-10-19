@@ -22,6 +22,10 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     private let mivoClearMappingPrefix = "mivo.clear.mapping."
     private let mivoClearEnabledPrefix = "mivo.clear.enabled."
     private let pendingSetupFreshnessWindow: TimeInterval = 10 * 60
+    private let stillLockActiveKey = "mivo.still.lock.active"
+    private let stillLockEndsAtKey = "mivo.still.lock.endsAt"
+    private let crossDeviceFocusActiveKey = "mivo.crossDeviceFocus.active"
+    private let crossDeviceFocusEndsAtKey = "mivo.crossDeviceFocus.endsAt"
 
     // Brand colours (match Mivo's palette)
     private let cream        = UIColor(red: 0.96, green: 0.95, blue: 0.91, alpha: 1.0)
@@ -44,26 +48,46 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     }
 
     private func makeConfiguration(applicationToken: ApplicationToken? = nil) -> ShieldConfiguration {
-        let isCountingDown    = countdownRemaining() > 0
         let hasActiveSession  = isSessionActive()
         let needsMivoSetup    = pendingInterventionSetup() && !hasActiveSession
         let sessionExpired    = sessionExpiredAfterTimer()
 
-        // ── 1. Counting down (highest priority — shown during pause) ──
-        // No buttons: the countdown finishes on its own. Every visible element
-        // (icon, title, subtitle) changes each second so the user can see the
-        // pause is actually progressing even when iOS is slow to re-render the
-        // shield surface.
-        if isCountingDown {
-            let n = countdownRemaining()
-            let total = pauseDurationSeconds()
-            let elapsed = max(0, total - n)
+        // ── 0. Mivo Still Lock Mode (overrides everything else) ──
+        // No buttons — same "resolves on its own, nothing to tap" shape as
+        // the countdown below. The timer is the only way this screen changes.
+        if let remaining = stillLockRemainingMinutes() {
             return ShieldConfiguration(
                 backgroundBlurStyle: .systemUltraThinMaterialLight,
                 backgroundColor: cream,
-                icon: timerIcon(state: .countdown(remaining: n, total: total)),
-                title: label(countdownTitle(remaining: n, total: total, isActiveSession: hasActiveSession), color: textPrimary),
-                subtitle: label(progressDotsSubtitle(elapsed: elapsed, total: total, remaining: n), color: textMuted),
+                icon: timerIcon(state: .locked),
+                title: label("Locked by Mivo Still", color: textPrimary),
+                subtitle: label(
+                    remaining > 0
+                        ? "Every app is locked. \(remaining) minute\(remaining == 1 ? "" : "s") left."
+                        : "Unlocking shortly.",
+                    color: textMuted
+                ),
+                primaryButtonLabel: nil,
+                primaryButtonBackgroundColor: nil,
+                secondaryButtonLabel: nil
+            )
+        }
+
+        // ── 0.5. Cross-device focus lock ("Block my iPhone too" from Mac) ──
+        // No buttons, same shape as Still Lock above — only ending the
+        // session on Mac clears this, so "Open Mivo" would be a dead end.
+        if let remaining = crossDeviceFocusRemainingMinutes() {
+            return ShieldConfiguration(
+                backgroundBlurStyle: .systemUltraThinMaterialLight,
+                backgroundColor: cream,
+                icon: timerIcon(state: .locked),
+                title: label("Focus mode on your Mac", color: textPrimary),
+                subtitle: label(
+                    remaining > 0
+                        ? "Every app is locked while your Mac focus session runs. \(remaining) minute\(remaining == 1 ? "" : "s") left."
+                        : "Unlocking shortly.",
+                    color: textMuted
+                ),
                 primaryButtonLabel: nil,
                 primaryButtonBackgroundColor: nil,
                 secondaryButtonLabel: nil
@@ -88,22 +112,23 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         }
 
         // ── 3. Active session check-in (mid-scroll pause) ──
-        // Single primary "Pause & continue" button starts a 5-second countdown that
-        // automatically unlocks the app. No "Not now" option — the goal is a brief
-        // mid-scroll moment of notice, not a wall.
+        // A ShieldActionDelegate extension is a short-lived service process
+        // with no UI of its own, so it never runs its own countdown here —
+        // the shield just points to Mivo, where a real Timer runs the pause
+        // (see MidScrollCheckInView).
         if hasActiveSession {
-            let seconds = pauseDurationSeconds()
             let experimentPause = isExperimentActive() && experimentStrongerFriction()
+            let seconds = pauseDurationSeconds()
             return ShieldConfiguration(
                 backgroundBlurStyle: .systemUltraThinMaterialLight,
                 backgroundColor: cream,
                 icon: timerIcon(state: .timer),
-                title: label(experimentPause ? "Experiment pause" : "Take a breath", color: textPrimary),
+                title: label(experimentPause ? "Experiment pause" : "Check-in time", color: textPrimary),
                 subtitle: label(
-                    "Quick \(seconds)-second pause, then back to scrolling. Tap to begin — Mivo unlocks the app on its own.",
+                    "Open Mivo for your \(seconds)-second timer before you're let back in.",
                     color: textMuted
                 ),
-                primaryButtonLabel: label("Pause & continue", color: .white),
+                primaryButtonLabel: label("Open Mivo", color: .white),
                 primaryButtonBackgroundColor: btnBrown,
                 secondaryButtonLabel: nil
             )
@@ -176,10 +201,12 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         }
 
         // ── 6. Default — route to Mivo; the pause follows intention selection ──
+        // With Companion on, the character stands in for the lock glyph on this
+        // everyday shield only; every restricted/locked state above keeps the lock.
         return ShieldConfiguration(
             backgroundBlurStyle: .systemUltraThinMaterialLight,
             backgroundColor: cream,
-            icon: timerIcon(state: .locked),
+            icon: companionPortrait() ?? timerIcon(state: .locked),
             title: label("Open Mivo", color: textPrimary),
             subtitle: label(
                 "Set your intention and time in Mivo. This app stays locked until the pause is complete and your session starts.",
@@ -224,9 +251,18 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     private enum IconState {
         case timer
         case locked
-        /// `remaining` and `total` drive the progress ring + countdown digit so
-        /// every tick draws a visibly different icon.
-        case countdown(remaining: Int, total: Int)
+    }
+
+    /// The badge the app renders into the App Group while Companion is on (see
+    /// `CompanionPortraitRenderer`). A shield can only display a bitmap, so this
+    /// just reads the file; it is `nil` — and the lock icon is used — whenever
+    /// Companion is off or the shared container isn't reachable.
+    private func companionPortrait() -> UIImage? {
+        guard let url = FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
+                .appendingPathComponent("mivo-companion-portrait.png"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return UIImage(data: data, scale: 3)
     }
 
     private func timerIcon(state: IconState) -> UIImage {
@@ -244,8 +280,6 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
             switch state {
             case .locked:
                 drawLock(in: bounds, color: foreground)
-            case .countdown(let remaining, let total):
-                drawCountdownProgress(in: bounds, remaining: remaining, total: total, foreground: foreground)
             case .timer:
                 let n = pauseDurationSeconds()
                 let fontSize: CGFloat = n >= 10 ? 34 : 42
@@ -260,76 +294,27 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         }
     }
 
-    /// Title that visibly changes each tick — different verb per second, plus a
-    /// monospaced digit so the redraw is obvious even when iOS lags.
-    private func countdownTitle(remaining: Int, total: Int, isActiveSession: Bool) -> String {
-        // Verb cycles by remaining seconds: gives the user something concrete to
-        // notice every second so it feels alive even if iOS coalesces ticks.
-        let verbs: [String]
-        if isActiveSession {
-            verbs = ["Almost there", "Easing back", "Settling", "Steady", "Breathing"]
-        } else {
-            verbs = ["One last beat", "Almost there", "Settling in", "Steady", "Breathing"]
-        }
-        // Pick verb by remaining (clamped). Higher remaining = earlier in pause.
-        let idx = min(max(remaining - 1, 0), verbs.count - 1)
-        let verb = verbs[idx]
-        return "\(verb)  ·  \(remaining)s"
-    }
-
-    /// Progress dots that fill in left-to-right as the pause elapses. Even if
-    /// the title text gets cached, the dots row changes shape every second.
-    private func progressDotsSubtitle(elapsed: Int, total: Int, remaining: Int) -> String {
-        let clampedTotal = min(max(total, 1), 10)
-        let clampedElapsed = min(max(elapsed, 0), clampedTotal)
-        let filled = String(repeating: "●", count: clampedElapsed)
-        let empty = String(repeating: "○", count: max(0, clampedTotal - clampedElapsed))
-        return "\(filled)\(empty)   \(remaining) second\(remaining == 1 ? "" : "s") left"
-    }
-
-    /// Draws an arc-style progress ring + large digit. `remaining`/`total` mean
-    /// each tick paints a different arc length and a different number — iOS
-    /// can't cache this to a single static image.
-    private func drawCountdownProgress(in bounds: CGRect, remaining: Int, total: Int, foreground: UIColor) {
-        let center = CGPoint(x: bounds.midX, y: bounds.midY)
-        let radius: CGFloat = 34
-        let clampedTotal = max(total, 1)
-        let progress = CGFloat(max(0, min(clampedTotal - remaining, clampedTotal))) / CGFloat(clampedTotal)
-        // Background ring (dim)
-        UIColor(red: 0.85, green: 0.78, blue: 0.66, alpha: 0.55).setStroke()
-        let bg = UIBezierPath(arcCenter: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: true)
-        bg.lineWidth = 6
-        bg.stroke()
-        // Foreground arc — grows as the pause elapses.
-        if progress > 0 {
-            let startAngle = -CGFloat.pi / 2
-            let endAngle = startAngle + (.pi * 2 * progress)
-            let arc = UIBezierPath(arcCenter: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: true)
-            arc.lineWidth = 6
-            arc.lineCapStyle = .round
-            foreground.setStroke()
-            arc.stroke()
-        }
-        // Large monospaced digit so even the bitmap of the icon differs per tick.
-        let para = NSMutableParagraphStyle(); para.alignment = .center
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.monospacedDigitSystemFont(ofSize: 30, weight: .bold),
-            .foregroundColor: foreground,
-            .paragraphStyle: para
-        ]
-        let text = "\(remaining)" as NSString
-        text.draw(in: CGRect(x: 0, y: bounds.midY - 19, width: bounds.width, height: 36), withAttributes: attrs)
-    }
-
     // MARK: - State readers
 
-    private func countdownRemaining() -> Int {
-        guard let d = UserDefaults(suiteName: appGroup) else { return 0 }
-        let explicit = d.integer(forKey: countdownRemainingKey)
-        if explicit > 0 { return explicit }
-        let end = d.double(forKey: countdownUntilKey)
-        guard end > 0 else { return 0 }
-        return max(0, Int(ceil(end - Date().timeIntervalSince1970)))
+    /// Returns remaining whole minutes if a Lock Mode block is active and not
+    /// yet past its end time, nil otherwise. Does not self-clear the flag —
+    /// that's the extension's `intervalDidStart`/`intervalDidEnd` job; this
+    /// is read-only, matching how the other state readers here work.
+    private func stillLockRemainingMinutes() -> Int? {
+        guard let d = UserDefaults(suiteName: appGroup), d.bool(forKey: stillLockActiveKey) else { return nil }
+        let endsAt = d.double(forKey: stillLockEndsAtKey)
+        guard endsAt > Date().timeIntervalSince1970 else { return nil }
+        return max(0, Int(ceil((endsAt - Date().timeIntervalSince1970) / 60)))
+    }
+
+    /// Set by `FamilyControlsManager.applyCrossDeviceFocusShield(endsAt:)`
+    /// whenever `CrossDeviceFocusService.reconcile()` finds an active "Block
+    /// my iPhone too" command from Mac. Same shape as `stillLockRemainingMinutes`.
+    private func crossDeviceFocusRemainingMinutes() -> Int? {
+        guard let d = UserDefaults(suiteName: appGroup), d.bool(forKey: crossDeviceFocusActiveKey) else { return nil }
+        let endsAt = d.double(forKey: crossDeviceFocusEndsAtKey)
+        guard endsAt > Date().timeIntervalSince1970 else { return nil }
+        return max(0, Int(ceil((endsAt - Date().timeIntervalSince1970) / 60)))
     }
 
     private func pauseDurationSeconds() -> Int {

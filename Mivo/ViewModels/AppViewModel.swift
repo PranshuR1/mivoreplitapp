@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UserNotifications
 @preconcurrency import UserNotifications
 #if canImport(WidgetKit)
 import WidgetKit
@@ -18,6 +19,9 @@ class AppViewModel: ObservableObject {
     @Published var user: UserProfile? = nil
     @Published var sessions: [Session] = []
     @Published var truthChecks: [TruthCheckGuess] = []
+    @Published var recallCheckIns: [RecallCheckIn] = []
+    @Published var instagramWrapperSessions: [InstagramWrapperSession] = []
+    @Published var instagramRecallPrompts: [InstagramRecallPrompt] = []
     @Published var dailyScreenTimeObservations: [DailyScreenTimeObservation] = []
     @Published var dailyScrollSchedules: [DailyScrollSchedule] = []
     @Published var weeklyReports: [WeeklyReportSnapshot] = []
@@ -47,10 +51,35 @@ class AppViewModel: ObservableObject {
     @Published var pendingDailyScrollSchedulePrompt: DailyScrollSchedulePrompt? = nil
     /// One-time post-observation prompt that tells the user how many days until
     /// their personalized plan reaches the goal they set in onboarding.
+    @Published var pendingScrollGoalPrompt: ScrollGoalPrompt? = nil
     @Published var pendingGoalForecastPrompt: GoalForecastPrompt? = nil
+    /// Offer to restart the plan for someone who has been away (or who wants a
+    /// clean slate). Logic lives in `AppViewModel+Comeback.swift`.
+    @Published var pendingComebackPrompt: ComebackPrompt? = nil
+    @Published var comebackAnchor: ComebackAnchor? = nil
+    @Published var comebackLapse: ComebackLapseRecord? = nil
+    /// The periodic "rate us / give feedback" card. No payload needed — see
+    /// `MivoRatingPromptStore` for the every-two-days, stops-when-acted-on logic.
+    @Published var showRatingPrompt = false
+    /// The user's pre-committed real-world substitute for opening a blocked
+    /// app — see `evaluateSwapPrompt()` for how existing users are asked once.
+    @Published var userSwap: UserSwap? = nil
+    @Published var showSwapPrompt = false
+    /// Google/Apple sign-in falls back to the email prefix as the display
+    /// name when the provider doesn't return one — see `evaluateNamePrompt()`
+    /// for the ask-once gating that catches it.
+    @Published var showNamePrompt = false
     @Published var sessionActivationError: String? = nil
     /// Set to true when the shield "Open Mivo" button triggers a deep link
     @Published var deepLinkInterventionRequested: Bool = false
+    /// Mid-session "still want to keep scrolling?" check-in — see
+    /// `checkMidScrollCheckInFlag()`.
+    @Published var pendingMidScrollCheckIn: Bool = false
+    /// Best-effort app name for the check-in currently presenting, read
+    /// alongside the flag itself in `checkMidScrollCheckInFlag()`. Nil is
+    /// expected and handled — the recall prompt just asks generically.
+    @Published var pendingMidScrollCheckInAppName: String? = nil
+    @Published var pendingInstagramWrapper: Bool = false
     /// Set when an App Store event or universal link should open the Referral Hub.
     @Published var deepLinkReferralHubRequested: Bool = false
     @Published var pendingMivoClearRoute: MivoClearRoute? = nil
@@ -79,36 +108,62 @@ class AppViewModel: ObservableObject {
         UserDefaults.standard.set(true, forKey: internalDataFreshStartMarker)
     }
 
+    /// `loadUserScopedData` decodes every locally-cached array for the
+    /// account — sessions, truth checks, weekly reports, intervention
+    /// attempts, and more — none of which are capped in size. For an
+    /// account with real history this can genuinely take a few seconds of
+    /// synchronous `JSONDecoder` work, and this used to run inline inside
+    /// `init()`, which SwiftUI must finish before it can render *anything*
+    /// — not even `SplashView` — since the root `AppViewModel` is a
+    /// `@StateObject` the whole view tree depends on. That's why the app
+    /// looked frozen (nothing painted, not even a spinner) for however
+    /// long the decode took, rather than showing a normal loading state.
+    ///
+    /// Deferring the authenticated branch into a `Task` doesn't make the
+    /// decode itself faster, but it lets SwiftUI paint at least one frame
+    /// — `SplashView`, gated on `isLoading` — before that work runs, so
+    /// the wait reads as "loading" instead of "hung."
     func loadData() {
-        if StorageService.exists(forKey: .authSession),
-           let authRecord = SecureAuthService.loadRecord() {
-            user = UserProfile(
-                email: authRecord.email,
-                name: authRecord.name,
-                createdAt: authRecord.createdAt,
-                onboardingProfile: authRecord.onboardingProfile,
-                isAdmin: authRecord.isAdmin,
-                accountRole: authRecord.accountRole
-            )
-            adminToken = authRecord.adminToken
-            isLoggedIn = true
-            loadUserScopedData(for: authRecord.email)
-            syncLearningModeProtectionState()
-            applyRestrictionState(for: authRecord.email)
-            validateActiveRemoteSessionIfNeeded(email: authRecord.email)
-        } else {
+        guard StorageService.exists(forKey: .authSession),
+              let authRecord = SecureAuthService.loadRecord() else {
             adminToken = nil
             resetUserScopedState()
             FamilyControlsManager.shared.setLearningModeUnlocked(false)
             FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
+            recoverExpiredRunningSessionIfNeeded()
+            isLoading = false
+            return
         }
-        recoverExpiredRunningSessionIfNeeded()
-        isLoading = false
+
+        user = UserProfile(
+            email: authRecord.email,
+            name: authRecord.name,
+            createdAt: authRecord.createdAt,
+            onboardingProfile: authRecord.onboardingProfile,
+            isAdmin: authRecord.isAdmin,
+            accountRole: authRecord.accountRole
+        )
+        adminToken = authRecord.adminToken
+        isLoggedIn = true
+        isLoading = true
+
+        Task { [weak self] in
+            guard let self else { return }
+            self.loadUserScopedData(for: authRecord.email)
+            self.syncLearningModeProtectionState()
+            self.applyRestrictionState(for: authRecord.email)
+            self.validateActiveRemoteSessionIfNeeded(email: authRecord.email)
+            self.recoverExpiredRunningSessionIfNeeded()
+            self.isLoading = false
+        }
     }
 
     private func resetUserScopedState() {
         sessions = []
         truthChecks = []
+        recallCheckIns = []
+        instagramWrapperSessions = []
+        instagramRecallPrompts = []
         dailyScreenTimeObservations = []
         dailyScrollSchedules = []
         weeklyReports = []
@@ -121,13 +176,109 @@ class AppViewModel: ObservableObject {
         pendingExpiredRunningSession = nil
         pendingTimeTruthPrompt = nil
         pendingDailyScrollSchedulePrompt = nil
-        FamilyControlsManager.shared.setCheckInIntervalMinutes(3)
+        pendingComebackPrompt = nil
+        comebackAnchor = nil
+        comebackLapse = nil
         syncWeeklyExperimentEnforcement()
+
+        // Every screen in this app requires being signed in — there's no
+        // local-only mode the way Mac/Windows have — so this function
+        // running is the one place that always corresponds to "no longer
+        // signed in," whether that's an explicit logout or a background
+        // session-revalidation failure. Any notification scheduled while
+        // signed in (session end, check-in, Still Lock, etc.) is an
+        // `UNUserNotificationCenter` request that lives entirely outside
+        // this app's process — it does not know or care that the account
+        // just signed out, and would otherwise still fire on schedule.
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+    }
+
+    /// Current version of the day-key repair. Bump only if a later change makes
+    /// another pass necessary.
+    private static let dayKeyRepairVersion = 1
+
+    /// Rewrites records whose day key was written under the device's own
+    /// calendar rather than a Gregorian one.
+    ///
+    /// Runs immediately after load and before anything derives a plan, a report
+    /// or a streak from these arrays, so no screen ever sees the half-repaired
+    /// state. It is a no-op — and costs one integer read — for the Gregorian
+    /// devices that are the vast majority.
+    @discardableResult
+    private func repairDayKeysIfNeeded(for email: String) -> Int {
+        let completed = StorageService.load(Int.self, forKey: .dayKeyRepairVersion, email: email) ?? 0
+        guard completed < Self.dayKeyRepairVersion else { return 0 }
+
+        var repaired = 0
+
+        let fixedSessions = sessions.map { session -> Session in
+            guard let fixed = session.repairingDayKey() else { return session }
+            repaired += 1
+            return fixed
+        }
+        let fixedTruthChecks = truthChecks.map { check -> TruthCheckGuess in
+            guard let fixed = check.repairingDayKey() else { return check }
+            repaired += 1
+            return fixed
+        }
+        let fixedObservations = dailyScreenTimeObservations.map { observation -> DailyScreenTimeObservation in
+            guard let fixed = observation.repairingDayKey() else { return observation }
+            repaired += 1
+            return fixed
+        }
+        let fixedSchedules = dailyScrollSchedules.map { schedule -> DailyScrollSchedule in
+            guard let fixed = schedule.repairingDayKey() else { return schedule }
+            repaired += 1
+            return fixed
+        }
+
+        if repaired > 0 {
+            // Sessions are legitimately many-per-day, so they are never merged.
+            sessions = fixedSessions
+            // A truth check is one per day by construction, and a repaired key
+            // can land on a day that already has one.
+            truthChecks = dedupedByDate(
+                fixedTruthChecks, date: { $0.date }, recency: { $0.checkedAt ?? "" }
+            ).sorted { $0.date > $1.date }
+            // A repaired key can collide with a record already written under the
+            // correct key. Observations and schedules are one-per-day, so keep
+            // the newest and drop the duplicate rather than showing the day twice.
+            dailyScreenTimeObservations = dedupedByDate(
+                fixedObservations, date: { $0.date }, recency: { $0.recordedAt }
+            ).sorted { $0.date > $1.date }
+            dailyScrollSchedules = dedupedByDate(
+                fixedSchedules, date: { $0.date }, recency: { $0.createdAt }
+            ).sorted { $0.date > $1.date }
+
+            StorageService.save(sessions, forKey: .sessions, email: email)
+            StorageService.save(truthChecks, forKey: .truthChecks, email: email)
+            StorageService.save(dailyScreenTimeObservations, forKey: .dailyScreenTimeObservations, email: email)
+            StorageService.save(dailyScrollSchedules, forKey: .dailyScrollSchedules, email: email)
+            appendAISummary("Repaired \(repaired) record(s) whose day key was stored under a non-Gregorian calendar.")
+        }
+
+        StorageService.save(Self.dayKeyRepairVersion, forKey: .dayKeyRepairVersion, email: email)
+        return repaired
+    }
+
+    /// Keeps one record per day, preferring the most recently written.
+    private func dedupedByDate<T>(_ values: [T], date: (T) -> String, recency: (T) -> String) -> [T] {
+        var newest: [String: T] = [:]
+        for value in values {
+            let key = date(value)
+            if let existing = newest[key], recency(existing) >= recency(value) { continue }
+            newest[key] = value
+        }
+        return Array(newest.values)
     }
 
     private func loadUserScopedData(for email: String) {
         sessions = StorageService.load([Session].self, forKey: .sessions, email: email) ?? []
         truthChecks = StorageService.load([TruthCheckGuess].self, forKey: .truthChecks, email: email) ?? []
+        recallCheckIns = StorageService.load([RecallCheckIn].self, forKey: .recallCheckIns, email: email) ?? []
+        instagramWrapperSessions = StorageService.load([InstagramWrapperSession].self, forKey: .instagramWrapperSessions, email: email) ?? []
+        instagramRecallPrompts = StorageService.load([InstagramRecallPrompt].self, forKey: .instagramRecallPrompts, email: email) ?? []
         dailyScreenTimeObservations = StorageService.load(
             [DailyScreenTimeObservation].self,
             forKey: .dailyScreenTimeObservations,
@@ -153,6 +304,11 @@ class AppViewModel: ObservableObject {
         } else {
             onboardingProfile = OnboardingProfile()
         }
+        userSwap = StorageService.load(UserSwap.self, forKey: .userSwap, email: email)
+        comebackAnchor = StorageService.load(ComebackAnchor.self, forKey: .comebackAnchor, email: email)
+        comebackLapse = StorageService.load(ComebackLapseRecord.self, forKey: .comebackLapse, email: email)
+        repairDayKeysIfNeeded(for: email)
+
         let checkInMinutes = settings.checkInIntervalMinutes ?? onboardingProfile.checkInIntervalMinutes ?? 3
         settings.checkInIntervalMinutes = checkInMinutes
         FamilyControlsManager.shared.setCheckInIntervalMinutes(checkInMinutes)
@@ -160,9 +316,11 @@ class AppViewModel: ObservableObject {
         pendingSessionFeedback = StorageService.load(PendingSessionFeedback.self, forKey: .pendingSessionFeedback, email: email)
         pendingExpiredRunningSession = nil
         syncWeeklyExperimentEnforcement()
+        DropPathTimeAdjustmentService.shared.prepare(for: self)
+        DropPathTimeAdjustmentService.shared.applyPendingAdjustments(for: todayKey(), appVM: self)
     }
 
-    private func saveForCurrentUser<T: Encodable>(_ value: T, forKey key: StorageKey) {
+    func saveForCurrentUser<T: Encodable>(_ value: T, forKey key: StorageKey) {
         guard let email = user?.email else { return }
         StorageService.save(value, forKey: key, email: email)
         scheduleCurrentUserStateRemoteSync()
@@ -209,7 +367,18 @@ class AppViewModel: ObservableObject {
             appInterventionRules: appInterventionRules,
             accountabilitySummary: StorageService.load(AccountabilitySummary.self, forKey: .accountabilitySummary, email: email),
             widgetSharedSummary: StorageService.load(WidgetSharedSummary.self, forKey: .widgetSharedSummary, email: email),
-            aiDataset: StorageService.load([String].self, forKey: .aiDataset, email: email) ?? []
+            aiDataset: StorageService.load([String].self, forKey: .aiDataset, email: email) ?? [],
+            mivoStillSessions: MivoStillStore.shared.sessions,
+            appFrictionProfiles: ProductExpansionStore.shared.appProfiles,
+            userSwap: userSwap,
+            interventionAttempts: interventionAttempts,
+            dailyScreenTimeObservations: dailyScreenTimeObservations,
+            timeLoans: TimeLoanService.shared.loans,
+            intentGameHistory: IntentGameService.shared.history,
+            dropPathTimeAdjustments: DropPathTimeAdjustmentService.shared.adjustments,
+            recallCheckIns: recallCheckIns,
+            instagramWrapperSessions: instagramWrapperSessions,
+            instagramRecallPrompts: instagramRecallPrompts
         )
 
         Task {
@@ -238,7 +407,7 @@ class AppViewModel: ObservableObject {
                     replacingLocalBinding: true
                 )
                 try cacheRemoteUser(remoteUser, password: password)
-                try completeLogin(email: remoteUser.email, persistSession: rememberMe)
+                try completeLogin(email: remoteUser.email, persistSession: rememberMe, remoteSettings: remoteUser.settings, restoredState: remoteUser.restoredState)
                 return
             } catch {
                 throw error
@@ -247,6 +416,65 @@ class AppViewModel: ObservableObject {
 
         try DeviceBindingService.assertAllows(email: normalizedEmail)
         try completeLocalLogin(email: normalizedEmail, password: password, rememberMe: rememberMe)
+    }
+
+    /// Same device-binding/local-cache flow as `login(email:password:)`,
+    /// entered from a Google ID token instead of an email/password pair —
+    /// see `RemoteAuthService.loginWithGoogle`. A Google account has no
+    /// Mivo password, so this generates a random one purely to fill the
+    /// local keychain record's existing password-hash field; it's never
+    /// shown to the user and never sent anywhere. Supabase's access/refresh
+    /// tokens (cached in that same record) are what actually authenticate
+    /// this account going forward, exactly as they are for a password
+    /// account once it's signed in.
+    func loginWithGoogle() async throws {
+        guard RemoteAuthService.isConfigured else { throw AppError.remoteAuthUnavailable }
+        let idToken = try await GoogleAuthService.signIn()
+        let remoteUser = try await RemoteAuthService.loginWithGoogle(idToken: idToken)
+        let installationID = try DeviceBindingService.installationID()
+        do {
+            try await RemoteAuthService.claimDevice(installationID: installationID, user: remoteUser)
+        } catch AppError.remoteAuthUnavailable {
+            throw AppError.googleSignInFailed("Google accepted your sign-in, but Mivo could not register this device with the server. Check your connection and try again.")
+        } catch AppError.accountDataMissing {
+            throw AppError.googleSignInFailed("Google accepted your sign-in, but the server did not return a usable account session. Try again.")
+        }
+        try DeviceBindingService.bind(
+            userID: remoteUser.remoteUserId ?? remoteUser.email,
+            email: remoteUser.email,
+            replacingLocalBinding: true
+        )
+        try cacheRemoteUser(remoteUser, password: UUID().uuidString + UUID().uuidString)
+        try completeLogin(
+            email: remoteUser.email,
+            persistSession: true,
+            remoteSettings: remoteUser.settings,
+            restoredState: remoteUser.restoredState
+        )
+    }
+
+    /// Same shape as `loginWithGoogle()` above — `idToken`/`nonce` come
+    /// from `LoginView`'s `SignInWithAppleButton` (see
+    /// `RemoteAuthService.loginWithApple`). Apple accounts have no Mivo
+    /// password either, so this generates the same kind of throwaway local
+    /// password purely for the Keychain record's password-hash field.
+    func loginWithApple(idToken: String, nonce: String) async throws {
+        guard RemoteAuthService.isConfigured else { throw AppError.remoteAuthUnavailable }
+        let remoteUser = try await RemoteAuthService.loginWithApple(idToken: idToken, nonce: nonce)
+        let installationID = try DeviceBindingService.installationID()
+        try await RemoteAuthService.claimDevice(installationID: installationID, user: remoteUser)
+        try DeviceBindingService.bind(
+            userID: remoteUser.remoteUserId ?? remoteUser.email,
+            email: remoteUser.email,
+            replacingLocalBinding: true
+        )
+        try cacheRemoteUser(remoteUser, password: UUID().uuidString + UUID().uuidString)
+        try completeLogin(
+            email: remoteUser.email,
+            persistSession: true,
+            remoteSettings: remoteUser.settings,
+            restoredState: remoteUser.restoredState
+        )
     }
 
     private func completeOfflineLogin(email: String, password: String, rememberMe: Bool) throws {
@@ -268,7 +496,18 @@ class AppViewModel: ObservableObject {
         try completeLogin(email: email, persistSession: rememberMe)
     }
 
-    func completeLogin(email: String, persistSession: Bool = true) throws {
+    /// `remoteSettings` is only ever non-nil right after a fresh Supabase
+    /// login/refresh (see `RemoteAuthService.fetchSupabaseUserState`). It
+    /// exists to cover a real gap: `AppSettings` — including
+    /// `onboardingComplete` — was always pushed to the backend on every
+    /// sync, but nothing ever pulled it back down on login, so a device that
+    /// never locally cached it (a fresh install, most commonly after
+    /// deleting and reinstalling the app) fell back to "onboarding not
+    /// complete" and re-ran onboarding for an account that had already
+    /// finished it. Applied the same way `record.onboardingProfile` already
+    /// is a few lines below: only when this device truly has nothing cached
+    /// yet, never overwriting real local state.
+    func completeLogin(email: String, persistSession: Bool = true, remoteSettings: AppSettings? = nil, restoredState: RestoredUserState? = nil) throws {
         guard let record = SecureAuthService.loadRecord(email: email) else {
             throw AppError.accountDataMissing
         }
@@ -306,6 +545,91 @@ class AppViewModel: ObservableObject {
            !StorageService.exists(forKey: .onboardingProfile, email: record.email) {
             onboardingProfile = userOnboard
             StorageService.save(userOnboard, forKey: .onboardingProfile, email: record.email)
+        }
+
+        // Same restoration, for AppSettings (onboardingComplete above all) —
+        // see the doc comment on this function for why this is needed.
+        if let remoteSettings, !StorageService.exists(forKey: .settings, email: record.email) {
+            settings = remoteSettings
+            StorageService.save(remoteSettings, forKey: .settings, email: record.email)
+        }
+
+        // Same restoration again, for everything else `user_state` already
+        // held in Supabase — `performCurrentUserStateRemoteSync()` has been
+        // pushing sessions/truth checks/schedules/reports/rules/summaries on
+        // every save, but until now nothing ever read them back, so a fresh
+        // install + login silently lost all of it despite it already sitting
+        // in the backend. Each field only fills in when this device has
+        // never locally synced it, so it can't clobber a newer local edit.
+        if let restoredState {
+            if let remote = restoredState.sessions, !remote.isEmpty, !StorageService.exists(forKey: .sessions, email: record.email) {
+                sessions = remote
+                StorageService.save(remote, forKey: .sessions, email: record.email)
+            }
+            if let remote = restoredState.truthChecks, !remote.isEmpty, !StorageService.exists(forKey: .truthChecks, email: record.email) {
+                truthChecks = remote
+                StorageService.save(remote, forKey: .truthChecks, email: record.email)
+            }
+            if let remote = restoredState.recallCheckIns, !remote.isEmpty, !StorageService.exists(forKey: .recallCheckIns, email: record.email) {
+                recallCheckIns = remote
+                StorageService.save(remote, forKey: .recallCheckIns, email: record.email)
+            }
+            if let remote = restoredState.instagramWrapperSessions, !remote.isEmpty, !StorageService.exists(forKey: .instagramWrapperSessions, email: record.email) {
+                instagramWrapperSessions = remote
+                StorageService.save(remote, forKey: .instagramWrapperSessions, email: record.email)
+            }
+            if let remote = restoredState.instagramRecallPrompts, !remote.isEmpty, !StorageService.exists(forKey: .instagramRecallPrompts, email: record.email) {
+                instagramRecallPrompts = remote
+                StorageService.save(remote, forKey: .instagramRecallPrompts, email: record.email)
+            }
+            if let remote = restoredState.dailyScrollSchedules, !remote.isEmpty, !StorageService.exists(forKey: .dailyScrollSchedules, email: record.email) {
+                dailyScrollSchedules = remote
+                StorageService.save(remote, forKey: .dailyScrollSchedules, email: record.email)
+            }
+            if let remote = restoredState.weeklyReports, !remote.isEmpty, !StorageService.exists(forKey: .weeklyReports, email: record.email) {
+                weeklyReports = remote
+                StorageService.save(remote, forKey: .weeklyReports, email: record.email)
+            }
+            if let remote = restoredState.appInterventionRules, !remote.isEmpty, !StorageService.exists(forKey: .appInterventionRules, email: record.email) {
+                appInterventionRules = remote
+                StorageService.save(remote, forKey: .appInterventionRules, email: record.email)
+            }
+            if let remote = restoredState.accountabilitySummary, !StorageService.exists(forKey: .accountabilitySummary, email: record.email) {
+                StorageService.save(remote, forKey: .accountabilitySummary, email: record.email)
+            }
+            if let remote = restoredState.widgetSharedSummary, !StorageService.exists(forKey: .widgetSharedSummary, email: record.email) {
+                StorageService.save(remote, forKey: .widgetSharedSummary, email: record.email)
+            }
+            if let remote = restoredState.aiDataset, !remote.isEmpty, !StorageService.exists(forKey: .aiDataset, email: record.email) {
+                StorageService.save(remote, forKey: .aiDataset, email: record.email)
+            }
+            if let remote = restoredState.mivoStillSessions, !remote.isEmpty, !StorageService.exists(forKey: .mivoStillSessions, email: record.email) {
+                StorageService.save(remote, forKey: .mivoStillSessions, email: record.email)
+            }
+            if let remote = restoredState.appFrictionProfiles, !remote.isEmpty, !StorageService.exists(forKey: .appFrictionProfiles, email: record.email) {
+                StorageService.save(remote, forKey: .appFrictionProfiles, email: record.email)
+            }
+            if let remote = restoredState.userSwap, !StorageService.exists(forKey: .userSwap, email: record.email) {
+                userSwap = remote
+                StorageService.save(remote, forKey: .userSwap, email: record.email)
+            }
+            if let remote = restoredState.interventionAttempts, !remote.isEmpty, !StorageService.exists(forKey: .interventionAttempts, email: record.email) {
+                interventionAttempts = remote
+                StorageService.save(remote, forKey: .interventionAttempts, email: record.email)
+            }
+            if let remote = restoredState.dailyScreenTimeObservations, !remote.isEmpty, !StorageService.exists(forKey: .dailyScreenTimeObservations, email: record.email) {
+                dailyScreenTimeObservations = remote
+                StorageService.save(remote, forKey: .dailyScreenTimeObservations, email: record.email)
+            }
+            if let remote = restoredState.timeLoans, !remote.isEmpty, !StorageService.exists(forKey: .timeLoans, email: record.email) {
+                StorageService.save(remote, forKey: .timeLoans, email: record.email)
+            }
+            if let remote = restoredState.intentGameHistory, !remote.isEmpty, !StorageService.exists(forKey: .intentGameResults, email: record.email) {
+                StorageService.save(remote, forKey: .intentGameResults, email: record.email)
+            }
+            if let remote = restoredState.dropPathTimeAdjustments, !remote.isEmpty, !StorageService.exists(forKey: .dropPathTimeAdjustments, email: record.email) {
+                StorageService.save(remote, forKey: .dropPathTimeAdjustments, email: record.email)
+            }
         }
     }
 
@@ -365,6 +689,10 @@ class AppViewModel: ObservableObject {
         if isSuperAdminUser {
             Task { try? await ReferralCampaignService.unregisterAdminPushDevice() }
         }
+        if let email = user?.email, let record = SecureAuthService.loadRecord(email: email),
+           let installationID = try? DeviceBindingService.installationID() {
+            Task { await RemoteAuthService.unregisterPushDevice(installationID: installationID, record: record) }
+        }
         // Offload storage mutation to background to avoid blocking the UI
         DispatchQueue.global(qos: .userInitiated).async {
             StorageService.remove(forKey: .authSession)
@@ -374,12 +702,46 @@ class AppViewModel: ObservableObject {
                 guard let self = self else { return }
                 FamilyControlsManager.shared.setLearningModeUnlocked(false)
                 FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
+                // Drops the account's companion state and clears the widget's snapshot.
+                CompanionStateManager.shared.prepare(forEmail: nil)
                 self.user = nil
                 self.adminToken = nil
                 self.isLoggedIn = false
                 self.resetUserScopedState()
             }
         }
+    }
+
+    /// Permanently deletes the signed-in account: remote rows first, then every
+    /// local trace, then signs out. Throws without touching local data if the
+    /// remote deletion fails, so the caller can never show a false success.
+    func deleteAccount(password: String) async throws {
+        guard let currentUser = user else { throw AppError.noAccount }
+        let email = currentUser.email.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let record = SecureAuthService.loadRecord(email: email) else {
+            throw AppError.accountDataMissing
+        }
+        guard SecureAuthService.verifyPassword(password, for: record) else {
+            throw AppError.invalidCredentials
+        }
+
+        if RemoteAuthService.isConfigured {
+            try await RemoteAuthService.deleteOwnAccount(email: email, password: password, record: record)
+        }
+
+        // Remote account is gone — clear every local trace of it.
+        StorageService.removeUserScopedMivoData(email: email)
+        StorageService.remove(forKey: .user)
+        StorageService.remove(forKey: .credentials)
+        StorageService.remove(forKey: .onboardingProfile)
+        SecureAuthService.deleteRecord(email: email)
+        SecureAuthService.deleteRecord()
+        // Release the device binding, otherwise this device could never register
+        // another Mivo account after the deletion.
+        DeviceBindingService.releaseIfBound(email: email)
+        ParentalConsentTicketStore.clear()
+
+        logout()
     }
 
     func validateCurrentRemoteAccount() {
@@ -503,6 +865,15 @@ class AppViewModel: ObservableObject {
             return
         }
 
+        endRunningSession(running, now: now)
+    }
+
+    /// Ends `running` right now and shows the session-end review screen
+    /// (`pendingExpiredRunningSession` → `SessionEndedReviewView`) — the
+    /// shared tail both `recoverExpiredRunningSessionIfNeeded()` (once it
+    /// finds a session whose stored `expiresAt` has already passed) and
+    /// `endRunningSessionFromCheckInTimeout()` below need.
+    private func endRunningSession(_ running: RunningMivoSession, now: Date = Date()) {
         FamilyControlsManager.shared.endSessionAndRelockForIntervention()
         let expired = expiredChoiceSession(from: running, now: now)
         if autoFinishExpiredRunningSessionIfForgotten(expired, now: now) {
@@ -510,6 +881,20 @@ class AppViewModel: ObservableObject {
         }
         saveRunningSession(expired)
         pendingExpiredRunningSession = expired
+    }
+
+    /// Called when the mid-scroll check-in's own countdown — driven
+    /// directly by `FamilyControlsManager.mivoSessionRemainingSeconds()`,
+    /// not by `RunningMivoSession.expiresAt` — reaches zero. Ends the
+    /// running session and shows the same review screen a normal
+    /// expiration would, instead of silently dismissing back to a blank
+    /// tab. Doesn't wait for `RunningMivoSession.expiresAt` to also read as
+    /// past: `FamilyControlsManager`'s live countdown hitting zero is
+    /// already authoritative on its own, and the two can briefly disagree.
+    func endRunningSessionFromCheckInTimeout(now: Date = Date()) {
+        guard let email = user?.email,
+              let running = StorageService.load(RunningMivoSession.self, forKey: .runningSession, email: email) else { return }
+        endRunningSession(running, now: now)
     }
 
     private func expiredChoiceSession(from running: RunningMivoSession, now: Date = Date()) -> RunningMivoSession {
@@ -784,6 +1169,92 @@ class AppViewModel: ObservableObject {
         persistPreferredScrollWindows(normalized)
         pendingDailyScrollSchedulePrompt = nil
         appendAISummary("Daily scroll schedule locked for \(date): \(normalized.map { "\($0.title) \($0.startHour)-\($0.endHour)" }.joined(separator: ", "))")
+        DropPathTimeAdjustmentService.shared.applyPendingAdjustments(for: date, appVM: self)
+    }
+
+    /// Removes time from the next unfinished window today. When today has no
+    /// remaining window, an already-created tomorrow schedule is used; if that
+    /// does not exist yet, the caller persists a pending adjustment for it.
+    func applyTimeReductionToNextScheduledWindow(
+        minutes: Int,
+        sourceGame: IntentGameType = .dropPath,
+        now: Date = Date()
+    ) -> ScheduledTimeReductionApplication? {
+        guard minutes > 0 else { return nil }
+        let calendar = Calendar.current
+        let minuteOfDay = calendar.component(.hour, from: now) * 60
+            + calendar.component(.minute, from: now)
+        let today = MivoDay.key(now)
+
+        if let application = applyScheduledTimeReduction(
+            minutes: minutes,
+            on: today,
+            notBeforeMinute: minuteOfDay,
+            sourceGame: sourceGame
+        ) {
+            return application
+        }
+
+        return applyScheduledTimeReduction(
+            minutes: minutes,
+            on: MivoDay.key(offsetFromToday: 1, from: now),
+            notBeforeMinute: nil,
+            sourceGame: sourceGame
+        )
+    }
+
+    /// Low-level schedule mutation shared by immediate and overnight Drop Path
+    /// adjustments. It preserves the locked time window and only changes the
+    /// number of minutes allowed inside it.
+    func applyScheduledTimeReduction(
+        minutes: Int,
+        on date: String,
+        notBeforeMinute: Int?,
+        sourceGame: IntentGameType = .dropPath
+    ) -> ScheduledTimeReductionApplication? {
+        guard minutes > 0,
+              let scheduleIndex = dailyScrollSchedules.firstIndex(where: { $0.date == date }) else {
+            return nil
+        }
+
+        let schedule = dailyScrollSchedules[scheduleIndex]
+        let windowIndex = schedule.windows.indices
+            .filter { index in
+                let window = schedule.windows[index]
+                guard window.minutes > 0 else { return false }
+                guard let notBeforeMinute else { return true }
+                return window.endHour * 60 > notBeforeMinute
+            }
+            .sorted { schedule.windows[$0].startHour < schedule.windows[$1].startHour }
+            .first
+        guard let windowIndex else { return nil }
+
+        let window = schedule.windows[windowIndex]
+        let removed = min(minutes, window.minutes)
+        guard removed > 0 else { return nil }
+        var windows = schedule.windows
+        windows[windowIndex] = ScreenScrollWindow(
+            id: window.id,
+            title: window.title,
+            startHour: window.startHour,
+            endHour: window.endHour,
+            minutes: window.minutes - removed,
+            reason: "\(sourceGame.title) removed \(removed) min from this session."
+        )
+        dailyScrollSchedules[scheduleIndex] = DailyScrollSchedule(
+            id: schedule.id,
+            date: schedule.date,
+            windows: windows,
+            createdAt: schedule.createdAt
+        )
+        saveForCurrentUser(dailyScrollSchedules, forKey: .dailyScrollSchedules)
+        appendAISummary("\(sourceGame.title) removed \(removed)m from \(window.title) on \(date).")
+        return ScheduledTimeReductionApplication(
+            minutesRemoved: removed,
+            targetDate: date,
+            windowID: window.id,
+            windowTitle: window.title
+        )
     }
 
     func dailyScrollSchedule(for date: String? = nil) -> DailyScrollSchedule? {
@@ -812,6 +1283,8 @@ class AppViewModel: ObservableObject {
             pendingDailyScrollSchedulePrompt = nil
             return
         }
+        // A returning user resets first; today's windows are asked right after.
+        guard pendingComebackPrompt == nil else { return }
 
         let today = todayKey()
         guard dailyScrollSchedule(for: today) == nil else {
@@ -889,6 +1362,7 @@ class AppViewModel: ObservableObject {
             pendingTimeTruthPrompt = nil
             return
         }
+        guard pendingComebackPrompt == nil else { return }
 
         let today = todayKey()
         guard !truthChecks.contains(where: { $0.date == today }) else {
@@ -923,6 +1397,52 @@ class AppViewModel: ObservableObject {
         }
     }
 
+    /// Asks existing users for the daily target onboarding never managed to save.
+    ///
+    /// `saveOnboardingProfile` used to drop `dailyScrollGoalMinutes`, so anyone
+    /// who set up before that was fixed has no goal on file and has silently
+    /// been running against the 30-minute default. The value cannot be
+    /// recovered — it was never written — so the only honest repair is to ask.
+    func evaluateScrollGoalPrompt() {
+        guard isLoggedIn, settings.onboardingComplete else {
+            pendingScrollGoalPrompt = nil
+            return
+        }
+        guard pendingComebackPrompt == nil else { return }
+        guard pendingScrollGoalPrompt == nil,
+              onboardingProfile.dailyScrollGoalMinutes == nil else { return }
+        if let email = user?.email,
+           StorageService.load(Bool.self, forKey: .scrollGoalPromptShown, email: email) == true { return }
+
+        let plan = rawAdaptiveScreenTimePlan()
+        // Their own baseline is the only useful frame for this choice, so wait
+        // until observation has produced one rather than asking in a vacuum.
+        guard !plan.collecting else { return }
+
+        pendingScrollGoalPrompt = ScrollGoalPrompt(
+            id: "scroll-goal-\(plan.baselineMinutes)",
+            baselineMinutes: plan.baselineMinutes,
+            options: [30, 45, 70, 90],
+            createdAt: ISO8601DateFormatter().string(from: Date())
+        )
+    }
+
+    func saveScrollGoal(_ minutes: Int) {
+        var profile = onboardingProfile
+        profile.dailyScrollGoalMinutes = minutes
+        saveOnboardingProfile(profile)
+        saveForCurrentUser(true, forKey: .scrollGoalPromptShown)
+        pendingScrollGoalPrompt = nil
+        HapticsService.success()
+    }
+
+    /// Dismissing leaves the default in place but stops the asking, so the
+    /// prompt never becomes a nag.
+    func dismissScrollGoalPrompt() {
+        pendingScrollGoalPrompt = nil
+        saveForCurrentUser(true, forKey: .scrollGoalPromptShown)
+    }
+
     /// Show the one-time goal-forecast prompt the first time the user enters
     /// their personalized plan (i.e. right after observation completes).
     func evaluateGoalForecastPrompt() {
@@ -930,6 +1450,12 @@ class AppViewModel: ObservableObject {
             pendingGoalForecastPrompt = nil
             return
         }
+        // A fresh start has its own forecast, and this one is drawn from the
+        // old ramp, so its numbers would contradict the new plan.
+        guard pendingComebackPrompt == nil, comebackAnchor == nil else { return }
+        // The forecast is drawn from the goal, so it must not run while the
+        // goal itself is still being asked for.
+        guard pendingScrollGoalPrompt == nil else { return }
         guard pendingGoalForecastPrompt == nil else { return }
         // Don't re-show after the user has dismissed it once.
         if let email = user?.email,
@@ -963,6 +1489,101 @@ class AppViewModel: ObservableObject {
     func dismissGoalForecastPrompt() {
         pendingGoalForecastPrompt = nil
         saveForCurrentUser(true, forKey: .goalForecastShown)
+    }
+
+    /// Every-two-days "rate us / give feedback" card — see
+    /// `MivoRatingPromptStore` for the frequency and stop-forever rules.
+    /// Never interrupts anything: it only checks in on the same minute-poll
+    /// every other periodic prompt already uses, and skips entirely while a
+    /// bigger prompt is already up.
+    func evaluateRatingPrompt() {
+        guard isLoggedIn, settings.onboardingComplete else { return }
+        guard !showRatingPrompt else { return }
+        guard pendingScrollGoalPrompt == nil,
+              pendingGoalForecastPrompt == nil,
+              pendingComebackPrompt == nil,
+              pendingTimeTruthPrompt == nil,
+              pendingDailyScrollSchedulePrompt == nil,
+              !showNamePrompt else { return }
+        guard MivoRatingPromptStore.shouldShow() else { return }
+        MivoRatingPromptStore.markShown()
+        showRatingPrompt = true
+    }
+
+    func saveUserSwap(_ swap: UserSwap) {
+        userSwap = swap
+        saveForCurrentUser(swap, forKey: .userSwap)
+        saveForCurrentUser(true, forKey: .userSwapPromptShown)
+        showSwapPrompt = false
+    }
+
+    /// Onboarding captures this for new users directly. Existing users never
+    /// saw that step, so this asks once, the next time they open the app —
+    /// mirroring the ask-once gating the other prompts above use so nothing
+    /// stacks on top of anything else.
+    func evaluateSwapPrompt() {
+        guard isLoggedIn, settings.onboardingComplete else { return }
+        guard !showSwapPrompt, userSwap == nil else { return }
+        guard pendingScrollGoalPrompt == nil,
+              pendingGoalForecastPrompt == nil,
+              pendingComebackPrompt == nil,
+              pendingTimeTruthPrompt == nil,
+              pendingDailyScrollSchedulePrompt == nil,
+              !showRatingPrompt, !showNamePrompt else { return }
+        if let email = user?.email,
+           StorageService.load(Bool.self, forKey: .userSwapPromptShown, email: email) == true { return }
+        showSwapPrompt = true
+    }
+
+    func skipSwapPromptForNow() {
+        showSwapPrompt = false
+        saveForCurrentUser(true, forKey: .userSwapPromptShown)
+    }
+
+    /// True when the current name is exactly the email's local part — the
+    /// fallback `RemoteAuthService.supabaseSignInWithGoogle`/`supabaseSignInWithApple`
+    /// use when the OAuth provider doesn't return a real name. Computed
+    /// live off `user` rather than cached, so it self-corrects the moment
+    /// `saveDisplayName` (or a metadata change on another device) resolves it.
+    private func hasFallbackDisplayName(_ user: UserProfile) -> Bool {
+        let prefix = user.email.split(separator: "@").first.map(String.init) ?? ""
+        return !prefix.isEmpty && user.name.caseInsensitiveCompare(prefix) == .orderedSame
+    }
+
+    /// Asks once, the next time an OAuth account with a fallback name opens
+    /// the app — mirroring the ask-once gating the other prompts above use
+    /// so nothing stacks on top of anything else.
+    func evaluateNamePrompt() {
+        guard isLoggedIn, settings.onboardingComplete else { return }
+        guard !showNamePrompt, let user, hasFallbackDisplayName(user) else { return }
+        guard pendingScrollGoalPrompt == nil,
+              pendingGoalForecastPrompt == nil,
+              pendingComebackPrompt == nil,
+              pendingTimeTruthPrompt == nil,
+              pendingDailyScrollSchedulePrompt == nil,
+              !showRatingPrompt, !showSwapPrompt else { return }
+        if StorageService.load(Bool.self, forKey: .namePromptDismissed, email: user.email) == true { return }
+        showNamePrompt = true
+    }
+
+    func saveDisplayName(_ name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var record = SecureAuthService.loadRecord(email: user?.email ?? "") else { return }
+
+        record.name = trimmed
+        try? SecureAuthService.saveRecord(record)
+        user?.name = trimmed
+        saveForCurrentUser(true, forKey: .namePromptDismissed)
+        showNamePrompt = false
+
+        if let accessToken = record.remoteAccessToken {
+            try? await RemoteAuthService.updateDisplayName(trimmed, accessToken: accessToken)
+        }
+    }
+
+    func skipNamePromptForNow() {
+        showNamePrompt = false
+        saveForCurrentUser(true, forKey: .namePromptDismissed)
     }
 
     func scheduleTimeTruthNotification() {
@@ -1094,6 +1715,16 @@ class AppViewModel: ObservableObject {
         }
         if let a = partial.age { onboardingProfile.age = a }
         if let ar = partial.ageRange { onboardingProfile.ageRange = ar }
+        // This merge is field-by-field, so anything not listed here is silently
+        // dropped. The daily goal was missing, which meant the target the user
+        // picked in onboarding never reached the plan and every ramp fell back
+        // to the 30-minute default.
+        if let goal = partial.dailyScrollGoalMinutes {
+            onboardingProfile.dailyScrollGoalMinutes = goal
+        }
+        if let pauseStyle = partial.pauseStyle {
+            onboardingProfile.pauseStyle = pauseStyle
+        }
         if let interval = partial.checkInIntervalMinutes {
             onboardingProfile.checkInIntervalMinutes = interval
             FamilyControlsManager.shared.setCheckInIntervalMinutes(interval)
@@ -1243,10 +1874,16 @@ class AppViewModel: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             StorageService.remove(forKey: .sessions)
             StorageService.remove(forKey: .truthChecks)
+            StorageService.remove(forKey: .recallCheckIns)
+            StorageService.remove(forKey: .instagramWrapperSessions)
+            StorageService.remove(forKey: .instagramRecallPrompts)
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.sessions = []
                 self.truthChecks = []
+                self.recallCheckIns = []
+                self.instagramWrapperSessions = []
+                self.instagramRecallPrompts = []
                 NotificationCenter.default.post(name: .mivoSessionHistoryDidUpdate, object: nil)
             }
         }
@@ -1357,6 +1994,10 @@ class AppViewModel: ObservableObject {
             return
         }
         guard url.scheme == "mivo" else { return }
+        if url.host == "companion" {
+            CompanionStateManager.shared.requestOpen()
+            return
+        }
         if url.host == "session" {
             let actionName = url.pathComponents.last ?? ""
             liveActivityDeepLinkAction = LiveActivityDeepLinkAction(rawValue: actionName)
@@ -1373,6 +2014,128 @@ class AppViewModel: ObservableObject {
             defaults?.synchronize()
             deepLinkInterventionRequested = true
         }
+    }
+
+    /// Companion to `checkDeepLinkInterventionFlag()` — picks up the flag
+    /// `requestMidScrollCheckIn()` in the ShieldAction extension writes when
+    /// the primary shield button is tapped mid-session. Checked separately
+    /// (not folded into `deepLinkInterventionRequested`) since it opens a
+    /// short pause + yes/no view, not the reason/duration flow.
+    func checkMidScrollCheckInFlag() {
+        let defaults = UserDefaults(suiteName: FamilyControlsManager.shared.appGroup)
+        guard defaults?.bool(forKey: MivoScreenTimeKeys.pendingMidScrollCheckIn) == true else { return }
+        defaults?.set(false, forKey: MivoScreenTimeKeys.pendingMidScrollCheckIn)
+        let appName = defaults?.string(forKey: MivoScreenTimeKeys.pendingMidScrollCheckInAppName)
+        defaults?.removeObject(forKey: MivoScreenTimeKeys.pendingMidScrollCheckInAppName)
+        defaults?.synchronize()
+        guard FamilyControlsManager.shared.isMivoSessionActive() else { return }
+        pendingMidScrollCheckInAppName = appName
+        pendingMidScrollCheckIn = true
+    }
+
+    /// Companion to `checkMidScrollCheckInFlag()` — picks up the flag
+    /// `requestInstagramWrapper()` in the ShieldAction extension writes when
+    /// Instagram is tapped with the wrapper toggle on.
+    func checkPendingInstagramWrapperFlag() {
+        let defaults = UserDefaults(suiteName: FamilyControlsManager.shared.appGroup)
+        guard defaults?.bool(forKey: MivoScreenTimeKeys.pendingInstagramWrapper) == true else { return }
+        defaults?.set(false, forKey: MivoScreenTimeKeys.pendingInstagramWrapper)
+        defaults?.synchronize()
+        pendingInstagramWrapper = true
+    }
+
+    /// Real, measured data — see `InstagramWrapperSession` for why this is
+    /// trustworthy in a way `RecallCheckIn.guessedCount` never can be.
+    func recordInstagramWrapperSession(
+        startedAt: Date,
+        scrollCount: Int,
+        videoPlayCount: Int = 0,
+        videoWatchSeconds: Int = 0,
+        tapCount: Int = 0,
+        scrollDistancePoints: Int = 0,
+        sectionChanges: Int = 0,
+        longestPauseSeconds: Int = 0,
+        firstScrollDelaySeconds: Int = 0
+    ) {
+        let session = InstagramWrapperSession(
+            id: UUID().uuidString,
+            date: todayKey(),
+            startedAt: ISO8601DateFormatter().string(from: startedAt),
+            endedAt: ISO8601DateFormatter().string(from: Date()),
+            scrollCount: scrollCount,
+            videoPlayCount: videoPlayCount,
+            videoWatchSeconds: videoWatchSeconds,
+            tapCount: tapCount,
+            scrollDistancePoints: scrollDistancePoints,
+            sectionChanges: sectionChanges,
+            longestPauseSeconds: longestPauseSeconds,
+            firstScrollDelaySeconds: firstScrollDelaySeconds
+        )
+        instagramWrapperSessions.append(session)
+        saveForCurrentUser(instagramWrapperSessions, forKey: .instagramWrapperSessions)
+    }
+
+    func instagramWrapperSessions(for dateKey: String) -> [InstagramWrapperSession] {
+        instagramWrapperSessions.filter { $0.date == dateKey }
+    }
+
+    /// Logged by `InstagramWrapperView` every few real scrolls — see
+    /// `InstagramRecallPrompt` for why `scrollsAgo` is measured, not guessed.
+    func recordInstagramRecallPrompt(scrollsAgo: Int, answer: String) {
+        let prompt = InstagramRecallPrompt(
+            id: UUID().uuidString,
+            date: todayKey(),
+            scrollsAgo: scrollsAgo,
+            answer: answer.trimmingCharacters(in: .whitespacesAndNewlines),
+            checkedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        instagramRecallPrompts.append(prompt)
+        saveForCurrentUser(instagramRecallPrompts, forKey: .instagramRecallPrompts)
+    }
+
+    func instagramRecallPrompts(for dateKey: String) -> [InstagramRecallPrompt] {
+        instagramRecallPrompts.filter { $0.date == dateKey }
+    }
+
+    // MARK: - Recall ("Mivo Recall" / Attention Receipt)
+    //
+    // iOS gives no API to count what happens inside another app (no scroll
+    // events, no content signal) — see the mid-scroll check-in's own
+    // reasoning above. So instead of a count Mivo can't actually get, this
+    // asks the person to self-report right after a check-in fires, while
+    // it's still fresh, and pairs that against real numbers Mivo does have
+    // (session length, `todayPerAppMinutes()`). The gap between "I think I
+    // saw ~5 things" and "you were in there 41 minutes and named one" is the
+    // whole point — see `AttentionReceiptView`.
+    @discardableResult
+    func recordRecallCheckIn(guessedCount: Int, recalledText: String) -> RecallCheckIn {
+        let check = RecallCheckIn(
+            id: UUID().uuidString,
+            date: todayKey(),
+            appName: pendingMidScrollCheckInAppName,
+            guessedCount: max(0, guessedCount),
+            recalledText: recalledText.trimmingCharacters(in: .whitespacesAndNewlines),
+            checkedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        recallCheckIns.append(check)
+        saveForCurrentUser(recallCheckIns, forKey: .recallCheckIns)
+        pendingMidScrollCheckInAppName = nil
+        return check
+    }
+
+    func recallCheckIns(for dateKey: String) -> [RecallCheckIn] {
+        recallCheckIns.filter { $0.date == dateKey }
+    }
+
+    /// Public wrapper around the same per-app snapshot `TruthCheckGuess`
+    /// already uses internally — the Attention Receipt needs the identical
+    /// real, on-device numbers (today's Screen Time report), not a second
+    /// source of truth.
+    func todayPerAppMinutes() -> [(name: String, minutes: Int)] {
+        let snapshot = currentPerAppMinutesSnapshot(for: todayKey()) ?? [:]
+        return snapshot
+            .map { (name: $0.key, minutes: $0.value) }
+            .sorted { $0.minutes > $1.minutes }
     }
 
     func checkPendingMivoClearRoute() {
@@ -1485,7 +2248,7 @@ class AppViewModel: ObservableObject {
                 allowed: false,
                 addedMinutes: 0,
                 title: "Keep the original limit",
-                message: "You approved the \(profile.appName) personality without extensions. Save this session here, or change that personality later in Settings."
+                message: "You approved the \(profile.appName) personality without extensions. Save this session here, or change that personality later under Protect."
             )
         }
 
@@ -1636,6 +2399,46 @@ class AppViewModel: ObservableObject {
         return (maxMinutes: computedMaxMinutes, isLimited: true, message: message, windowTitle: windowText)
     }
 
+    /// True when today's zero unlock minutes come from a deliberate, hard
+    /// protection — a locked schedule, an approved experiment's own
+    /// allowance already spent, or "last scroll of the night" already used
+    /// — rather than the adaptive daily target simply running low. Mirrors
+    /// the same sub-checks `adaptiveSessionDurationLimit` already makes, but
+    /// answers the narrower question Intent Games' Time Loan needs: a
+    /// locked schedule or a spent commitment device should never be
+    /// borrowed around, while an ordinary low-on-flexible-allowance moment
+    /// still should be. Kept separate rather than changing
+    /// `adaptiveSessionDurationLimit`'s return shape, since that has many
+    /// existing callers.
+    func isHardProtectionActive(now: Date = Date()) -> Bool {
+        let plan = adaptiveScreenTimePlan()
+        guard !plan.collecting else { return false }
+
+        let hour = Calendar.current.component(.hour, from: now)
+
+        if let locked = dailyScrollSchedule(), !locked.windows.contains(where: { scrollWindow($0, contains: hour) }) {
+            return true
+        }
+
+        let experimentPolicy = weeklyExperimentEnforcementPolicy
+        if experimentPolicy.protects(hour: hour) {
+            let lockedScheduleAllowsNow = dailyScrollSchedule()?.windows.contains {
+                scrollWindow($0, contains: hour)
+            } == true
+            if !lockedScheduleAllowsNow {
+                let allowedMinutes = max(0, experimentPolicy.rule?.allowedMinutes ?? 0)
+                let usedMinutes = minutesUsedToday(in: experimentPolicy)
+                if max(0, allowedMinutes - usedMinutes) <= 0 { return true }
+            }
+        }
+
+        if isLateNightProtectionActive(at: now), hasUsedLastScrollTonight(at: now) {
+            return true
+        }
+
+        return false
+    }
+
     private func minutesUsedToday(in window: ScreenScrollWindow) -> Int {
         let calendar = Calendar.current
         let formatter = ISO8601DateFormatter()
@@ -1691,7 +2494,9 @@ class AppViewModel: ObservableObject {
                 windows: todaySchedule.windows,
                 idSuffix: "today-\(todaySchedule.date)",
                 collectingSummary: "First 3 days are observation mode — no cap enforced. On day 4 your personalized plan starts from your self-report plus the 3 observed days.",
-                activeSummary: "Today’s scroll windows are locked from the morning check. Mivo trims your target from your blended baseline.",
+                activeSummary: comebackAnchor != nil
+                    ? plan.summary
+                    : "Today’s scroll windows are locked from the morning check. Mivo trims your target from your blended baseline.",
                 reason: plan.collecting ? "Your times are saved for tracking. Days 1–3 have no enforced cap — Mivo just observes." : "These windows are the schedule you locked for today. You can choose again tomorrow morning."
             )
         }
@@ -1708,7 +2513,7 @@ class AppViewModel: ObservableObject {
         return plan
     }
 
-    private func syncLearningModeProtectionState() {
+    func syncLearningModeProtectionState() {
         guard isLoggedIn, !isRestrictionBypassUser else {
             FamilyControlsManager.shared.setLearningModeUnlocked(false)
             return
@@ -1723,7 +2528,8 @@ class AppViewModel: ObservableObject {
             truthChecks: truthChecks,
             todayScreenTimeMinutes: deviceActivityMinutesToday,
             profile: onboardingProfile,
-            dailyObservations: dailyScreenTimeObservations
+            dailyObservations: dailyScreenTimeObservations,
+            comeback: comebackAnchor
         )
     }
 
@@ -2038,6 +2844,12 @@ class AppViewModel: ObservableObject {
         saveForCurrentUser(summary, forKey: .accountabilitySummary)
     }
 
+    /// The fields that actually matter for whether a widget reload is
+    /// worth it — everything in `WidgetSharedSummary` except its own
+    /// `updatedAt` timestamp, which would otherwise always differ and make
+    /// change detection pointless.
+    private var lastWidgetSummarySignature: String?
+
     func updateWidgetSharedSummary() {
         let plan = adaptiveScreenTimePlan()
         let nextWindow = nextWidgetWindowText(for: plan)
@@ -2045,13 +2857,33 @@ class AppViewModel: ObservableObject {
             total + session.actualDuration
         }
         let scrolledMinutesToday = deviceActivityMinutesToday ?? trackedScrollMinutes
+        let planState = plan.collecting ? "Learning mode" : "\(plan.targetMinutes)m target"
+        let streakText = "\(todaysSessions.count) session\(todaysSessions.count == 1 ? "" : "s") today"
+
+        // `loadDeviceActivityReport()` calls this on every code path, and
+        // HomeView polls that every 5 seconds for as long as the app is
+        // open — this used to call `WidgetCenter.reloadAllTimelines()`
+        // unconditionally on every one of those polls, regardless of
+        // whether anything had changed. That's a full widget-timeline
+        // reload (a real XPC round trip to the widget extension, confirmed
+        // via Console showing a flood of MivoWidgets state-update messages)
+        // every 5 seconds, forever — a genuine, ongoing, app-wide
+        // performance cost and a very likely cause of "everything feels
+        // laggy." Skip all of it, including the storage write, when
+        // nothing meaningful actually changed.
+        let focusedMinutesToday = MivoStillStore.shared.minutesToday
+        let signature = "\(recoveredMinutes(from: todaysSessions))|\(scrolledMinutesToday)|\(nextWindow)|\(planState)|\(streakText)|\(focusedMinutesToday)"
+        guard signature != lastWidgetSummarySignature else { return }
+        lastWidgetSummarySignature = signature
+
         let summary = WidgetSharedSummary(
             recoveredMinutesToday: recoveredMinutes(from: todaysSessions),
             screenTimeMinutesToday: scrolledMinutesToday,
             nextScrollWindow: nextWindow,
-            planState: plan.collecting ? "Learning mode" : "\(plan.targetMinutes)m target",
-            streakText: "\(todaysSessions.count) session\(todaysSessions.count == 1 ? "" : "s") today",
-            updatedAt: ISO8601DateFormatter().string(from: Date())
+            planState: planState,
+            streakText: streakText,
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            focusedMinutesToday: focusedMinutesToday
         )
         saveForCurrentUser(summary, forKey: .widgetSharedSummary)
         if let groupDefaults = UserDefaults(suiteName: FamilyControlsManager.shared.appGroup),
@@ -2695,19 +3527,33 @@ class AppViewModel: ObservableObject {
                 )
             }
         } catch AppError.invalidCredentials {
-            handleDeletedRemoteAccount(email: email)
+            // NOT reliable proof the account was deleted — Supabase rotates
+            // refresh tokens on every use, so a concurrent or retried
+            // refresh can legitimately invalidate a token that was still
+            // good moments earlier. This used to call
+            // handleDeletedRemoteAccount(), wiping every local session,
+            // screen time record, and everything else on nothing more than
+            // a background network hiccup. Sign out of the stale remote
+            // session only; local data is untouched and reloads correctly
+            // on the next successful login.
+            signOutOfStaleRemoteSession()
         } catch AppError.noAccount {
-            handleDeletedRemoteAccount(email: email)
+            signOutOfStaleRemoteSession()
         } catch {
             // Keep the user in place for temporary network/server failures, but
             // never treat the local keychain as proof that the remote account exists.
         }
     }
 
-    private func handleDeletedRemoteAccount(email: String) {
-        DeviceBindingService.releaseIfBound(email: email)
-        SecureAuthService.deleteRecord(email: email)
-        StorageService.removeUserScopedMivoData(email: email)
+    /// Signs out of a remote session that failed to validate or refresh,
+    /// without touching anything locally stored — see the comment at the
+    /// call site for why a background check can never be trusted enough to
+    /// delete data. `resetUserScopedState()` only clears in-memory
+    /// `@Published` state (the same thing a normal `logout()` does); the
+    /// on-disk, email-scoped records are left exactly as they were, so a
+    /// false positive costs nothing more than having to log back in, and a
+    /// genuinely deleted account simply can't.
+    private func signOutOfStaleRemoteSession() {
         StorageService.remove(forKey: .authSession)
         StorageService.remove(forKey: .rememberedEmail)
         FamilyControlsManager.shared.setLearningModeUnlocked(false)
@@ -2792,11 +3638,22 @@ class AppViewModel: ObservableObject {
         let repeatedOpening = standardState.attemptCount >= 2 || adaptiveSeconds >= 10
         let strongerExperiment = experimentStrengthensRepeatedOpenings && repeatedOpening
         let experimentCooldown = strongerExperiment && standardState.attemptCount >= 3 ? 120 : 10
+        // The pause length chosen during onboarding sets the floor. An active
+        // experiment or a repeated opening can still raise it, but never lowers
+        // what the user asked for.
+        let chosen = onboardingProfile.pauseStyle ?? .fiveSecond
+        let baseSeconds = repeatedOpening ? max(10, chosen.waitSeconds) : chosen.waitSeconds
         return InterventionFrictionState(
             level: strongerExperiment ? 3 : (adaptiveSeconds >= 10 ? 2 : 1),
             attemptCount: standardState.attemptCount,
-            waitSeconds: strongerExperiment ? experimentCooldown : (repeatedOpening ? 10 : 5)
+            waitSeconds: strongerExperiment ? max(experimentCooldown, baseSeconds) : baseSeconds
         )
+    }
+
+    /// Whether the pause should ask what the user came to do, per the pause
+    /// style chosen in onboarding.
+    var interventionAsksReason: Bool {
+        onboardingProfile.pauseStyle?.asksReason ?? false
     }
 
     var completedWeeklyExperimentAwaitingDecision: WeeklyExperiment? {
@@ -3031,6 +3888,7 @@ class AppViewModel: ObservableObject {
         interventionAttempts.append(InterventionAttemptRecord(id: id, occurredAt: ISO8601DateFormatter().string(from: Date()), continued: nil))
         interventionAttempts = Array(interventionAttempts.suffix(200))
         saveForCurrentUser(interventionAttempts, forKey: .interventionAttempts)
+        CompanionInterventionAdapter.pauseBegan()
         return id
     }
 
@@ -3038,6 +3896,7 @@ class AppViewModel: ObservableObject {
         guard let index = interventionAttempts.firstIndex(where: { $0.id == id }) else { return }
         interventionAttempts[index].continued = continued
         saveForCurrentUser(interventionAttempts, forKey: .interventionAttempts)
+        CompanionInterventionAdapter.pauseResolved(continued: continued)
         Task { await ReferralCampaignService.logEvent(continued ? "intervention_continued" : "intervention_cancelled") }
     }
 
@@ -3237,7 +4096,11 @@ enum AppError: LocalizedError {
     case signupEmailRateLimited
     case emailConfirmationRequired
     case adminRequired
+    case accountDeletionBlockedForAdmin
+    case accountDeletionFailed(reason: String?)
     case deviceBoundToAnotherAccount(hint: String?)
+    /// Google sign-in failed; the associated text is already user-readable and says which step failed.
+    case googleSignInFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -3251,11 +4114,20 @@ enum AppError: LocalizedError {
         case .signupEmailRateLimited: return "Signup email limit hit. Wait a few minutes or turn off email confirmation in Supabase Auth settings."
         case .emailConfirmationRequired: return "Check your email to confirm this account, then sign in."
         case .adminRequired: return "Admin access is required. Sign in with the admin account."
+        case .accountDeletionBlockedForAdmin:
+            return "Admin accounts own published Mivo content and can't be deleted from the app. Contact support to have this account removed."
+        case .accountDeletionFailed(let reason):
+            if let reason, !reason.isEmpty {
+                return "Your account could not be deleted: \(reason). Nothing was removed — please try again."
+            }
+            return "Your account could not be deleted. Nothing was removed — please try again."
         case .deviceBoundToAnotherAccount(let hint):
             if let hint {
                 return "This device already has a Mivo account. Original email hint: \(hint). Sign in with that account."
             }
             return "This device is already linked to its previous Mivo account. Sign in with that account."
+        case .googleSignInFailed(let detail):
+            return detail
         }
     }
 }

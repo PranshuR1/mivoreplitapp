@@ -176,9 +176,13 @@ struct MonthlyEffectReportView: View {
     private func percent(_ value: Double) -> String { "\(Int((value * 100).rounded()))%" }
 }
 
+/// §5 Experiments sheet. Presented at a 64pt top offset by its caller (Home's
+/// `.sheet` in this codebase, matching `.presentationDetents`/top-corner
+/// radius from the handoff).
 struct ExperimentHubView: View {
     @EnvironmentObject var appVM: AppViewModel
     @ObservedObject private var expansion = ProductExpansionStore.shared
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedExperiment: WeeklyExperiment?
     @State private var startError: String?
     @State private var isRefreshing = false
@@ -187,21 +191,28 @@ struct ExperimentHubView: View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    hubHeader
-                    summaryRow
-                    currentSection
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+
+                    if let experiment = appVM.currentWeeklyExperiment, experiment.status == .active {
+                        runningBlock(experiment)
+                            .padding(.top, 22)
+                    }
+
                     availableSection
-                    historySection
+                        .padding(.top, 26)
+
+                    if !completedHistory.isEmpty {
+                        completedSection
+                            .padding(.top, 26)
+                    }
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 12)
-                .padding(.bottom, 28)
+                .padding(.horizontal, MivoMetrics.screenPadding)
+                .padding(.top, 22)
+                .padding(.bottom, 40)
             }
             .refreshable { await refreshExperiments() }
         }
-        .navigationTitle("Experiments")
-        .navigationBarTitleDisplayMode(.inline)
         .task { await refreshExperiments() }
         .sheet(item: $selectedExperiment) { experiment in
             WeeklyExperimentSheet(experiment: experiment)
@@ -219,233 +230,234 @@ struct ExperimentHubView: View {
         }
     }
 
-    private var hubHeader: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label("ONE CHANGE AT A TIME", systemImage: "flask.fill")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(MivoColors.blue)
-            Text("Run a seven-day experiment")
-                .font(.system(size: 25, weight: .bold, design: .rounded))
-                .foregroundColor(MivoColors.textPrimary)
-            Text("Choose the rule yourself. Mivo tracks the week against your recent pattern, then shows what changed.")
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Experiments")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(MivoColors.ink)
+                Spacer()
+                Button("Done") { dismiss() }
+                    .font(.system(size: 13.5, weight: .bold))
+                    .foregroundColor(MivoColors.deep)
+            }
+            Text("One rule, seven days. Keep what works, drop what doesn't.")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(MivoColors.textSecondary)
-                .lineSpacing(4)
-        }
-    }
+                .foregroundColor(MivoColors.inkBody)
+                .padding(.top, 6)
 
-    private var summaryRow: some View {
-        HStack(spacing: 8) {
-            summaryCell("Current", currentStatus, "calendar.badge.clock")
-            summaryCell("Completed", "\(appVM.completedWeeklyExperiments.count)", "checkmark.circle.fill")
-            summaryCell("Helped", "\(helpedCount)", "chart.line.uptrend.xyaxis")
-        }
-    }
-
-    @ViewBuilder private var currentSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("Current experiment", icon: "scope")
-            if let experiment = appVM.currentWeeklyExperiment {
-                compactPanel {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: experimentIcon(experiment.type))
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(MivoColors.white)
-                            .frame(width: 40, height: 40)
-                            .background(MivoColors.blue)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(statusText(experiment))
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(MivoColors.blue)
-                            Text(experiment.title)
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundColor(MivoColors.textPrimary)
-                        }
-                        Spacer()
-                    }
-
-                    if experiment.status == .active {
-                        MivoProgressSegments(completed: experiment.dayNumber, tint: MivoColors.blue)
-                        HStack {
-                            Text("DAY \(experiment.dayNumber)")
-                            Spacer()
-                            Text("\(Int((experiment.progress() * 100).rounded()))% COMPLETE")
-                        }
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(MivoColors.blue)
-                        HStack(spacing: 8) {
-                            trackingCell("Rule", ruleSummary(experiment), "checkmark.shield")
-                            trackingCell("Tracking", metricName(experiment), "chart.bar.xaxis")
-                        }
-                        Label("Baseline: \(metricValue(experiment.baselineMetrics, for: experiment)) from \(experiment.baselineMetrics.comparableSessions) comparable sessions", systemImage: "flag.checkered")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(MivoColors.textSecondary)
-                        if let endsAt = experiment.endsAt {
-                            Label("Result available \(dateText(endsAt))", systemImage: "calendar")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(MivoColors.textSecondary)
-                        }
-                    } else {
-                        Text(currentDetail(experiment))
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(MivoColors.textSecondary)
-                            .lineSpacing(3)
-                    }
-
-                    Button {
-                        selectedExperiment = experiment
-                    } label: {
-                        HStack {
-                            Text(currentAction(experiment))
-                            Spacer()
-                            Image(systemName: "arrow.right")
-                        }
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(MivoColors.white)
-                        .padding(.horizontal, 14)
-                        .frame(height: 44)
-                        .background(MivoColors.blue)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    .buttonStyle(.plain)
-                }
-            } else {
-                statusBanner("No experiment is running. Pick one below when you are ready to test a small change.", icon: "plus.circle")
+            if appVM.currentWeeklyExperiment?.status == .proposed || appVM.currentWeeklyExperiment?.status == .completed {
+                proposedOrCompletedBanner
+                    .padding(.top, 16)
             }
         }
+    }
+
+    @ViewBuilder
+    private var proposedOrCompletedBanner: some View {
+        if let experiment = appVM.currentWeeklyExperiment {
+            Button {
+                selectedExperiment = experiment
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(experiment.status == .proposed ? "Ready for your approval" : "Result ready")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(MivoColors.deep)
+                        Text(experiment.title)
+                            .font(.system(size: 14.5, weight: .semibold))
+                            .foregroundColor(MivoColors.ink)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(MivoColors.inkMuted)
+                }
+                .padding(16)
+                .background(MivoColors.surfaceV2)
+                .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.radius))
+            }
+            .buttonStyle(MivoPressStyle())
+        }
+    }
+
+    /// The only filled surface on the screen, per the handoff.
+    private func runningBlock(_ experiment: WeeklyExperiment) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("RUNNING · DAY \(experiment.dayNumber) OF 7")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(Font.mivoTracking(0.10, at: 10))
+                .foregroundColor(Color(hex: "#96551A"))
+
+            Text(experiment.title)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(MivoColors.ink)
+
+            Text(runningSubline(experiment))
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(MivoColors.inkBody)
+
+            MivoSegmentBar(completed: experiment.dayNumber)
+                .padding(.top, 4)
+
+            Text("Kept \(keptDays(for: experiment)) of \(experiment.dayNumber) days so far")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(MivoColors.kept)
+
+            Button {
+                selectedExperiment = experiment
+            } label: {
+                HStack {
+                    Text("Track experiment")
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                }
+                .font(.system(size: 13.5, weight: .bold))
+                .foregroundColor(MivoColors.ink)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .padding(20)
+        .background(MivoColors.surfaceV2)
+        .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.radius))
     }
 
     private var availableSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("Choose an experiment", icon: "square.grid.2x2")
+        let templates = expansion.experimentTemplates(using: appVM)
+        return VStack(alignment: .leading, spacing: 0) {
+            MivoEyebrow(text: "Available")
+                .padding(.bottom, 4)
+
             if !appVM.canStartWeeklyExperiment {
                 Text("Finish reviewing the current experiment before starting another.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(MivoColors.textMuted)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .padding(.vertical, 10)
             }
-            ForEach(expansion.experimentTemplates(using: appVM)) { template in
-                experimentTemplateCard(template)
-            }
-        }
-    }
 
-    @ViewBuilder private var historySection: some View {
-        let history = appVM.sortedWeeklyExperiments.filter {
-            $0.status == .completed || $0.status == .declined
-        }
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("History", icon: "clock.arrow.circlepath")
-            if history.isEmpty {
-                Text("Completed and declined experiments will appear here.")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(MivoColors.textMuted)
-                    .padding(.vertical, 8)
-            } else {
-                ForEach(history) { experiment in
-                    compactPanel {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: historyIcon(experiment))
-                                .foregroundColor(historyColor(experiment))
-                                .frame(width: 34, height: 34)
-                                .background(historyColor(experiment).opacity(0.1))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(experiment.title)
-                                    .font(.system(size: 15, weight: .bold))
-                                    .foregroundColor(MivoColors.textPrimary)
-                                Text(historyDetail(experiment))
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(MivoColors.textSecondary)
-                            }
-                            Spacer()
-                        }
-                        if experiment.status == .completed {
-                            HStack(spacing: 8) {
-                                Button("View result") { selectedExperiment = experiment }
-                                    .font(.system(size: 12, weight: .bold))
-                                    .buttonStyle(.bordered)
-                                    .tint(MivoColors.blue)
-                                Button("Run again") { begin(repeatTemplate(for: experiment)) }
-                                    .font(.system(size: 12, weight: .bold))
-                                    .buttonStyle(.borderedProminent)
-                                    .tint(MivoColors.accent)
-                                    .disabled(!appVM.canStartWeeklyExperiment)
-                            }
-                        }
+            VStack(spacing: 0) {
+                ForEach(Array(templates.enumerated()), id: \.element.id) { index, template in
+                    availableRow(template)
+                    if index < templates.count - 1 {
+                        MivoHairline(soft: true)
                     }
                 }
             }
         }
     }
 
-    private func experimentTemplateCard(_ template: ExperimentTemplate) -> some View {
-        compactPanel {
-            HStack(alignment: .top, spacing: 13) {
-                Image(systemName: experimentIcon(template.type))
-                    .foregroundColor(MivoColors.accent)
-                    .frame(width: 36, height: 36)
-                    .background(MivoColors.accent.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(template.title)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
-                    Text(template.detail)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(MivoColors.textSecondary)
-                        .lineSpacing(3)
+    private func availableRow(_ template: ExperimentTemplate) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(template.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(MivoColors.ink)
+                Text(template.detail)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkMuted)
+            }
+            Spacer(minLength: 8)
+            Button("Start") { begin(template) }
+                .font(.system(size: 12.5, weight: .bold))
+                .foregroundColor(appVM.canStartWeeklyExperiment ? MivoColors.ink : MivoColors.inkMuted)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 13)
+                .overlay(
+                    RoundedRectangle(cornerRadius: MivoMetrics.radius)
+                        .strokeBorder(MivoColors.ink.opacity(0.20), lineWidth: 1)
+                )
+                .disabled(!appVM.canStartWeeklyExperiment)
+        }
+        .padding(.vertical, 17)
+    }
+
+    private var completedHistory: [WeeklyExperiment] {
+        appVM.sortedWeeklyExperiments.filter { $0.status == .completed }
+    }
+
+    private var completedSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            MivoEyebrow(text: "Completed")
+                .padding(.bottom, 4)
+
+            VStack(spacing: 0) {
+                ForEach(Array(completedHistory.enumerated()), id: \.element.id) { index, experiment in
+                    Button { selectedExperiment = experiment } label: {
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(experiment.title)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(MivoColors.ink)
+                                Text("\(dateText(experiment.startsAt ?? experiment.createdAt))–\(dateText(experiment.updatedAt))")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(MivoColors.inkMuted)
+                            }
+                            Spacer(minLength: 8)
+                            MivoOutcomeBadge(outcome: experiment.outcome == .helped ? .kept : .retry)
+                        }
+                        .padding(.vertical, 16)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(MivoPressStyle())
+                    if index < completedHistory.count - 1 {
+                        MivoHairline(soft: true)
+                    }
                 }
             }
-            Button {
-                begin(template)
-            } label: {
-                HStack {
-                    Text(appVM.canStartWeeklyExperiment ? "Review and start" : "Current experiment first")
-                    Spacer()
-                    Image(systemName: appVM.canStartWeeklyExperiment ? "arrow.right" : "lock.fill")
+        }
+    }
+
+    private func runningSubline(_ experiment: WeeklyExperiment) -> String {
+        switch experiment.type {
+        case .protectedWindow:
+            return "Windows open at \(hourText(experiment.rule.endHour ?? 22))."
+        case .reduceExtensions:
+            return "The original session limit stays fixed."
+        case .strongerFriction:
+            return "Repeated openings add a trigger check."
+        }
+    }
+
+    /// Per-day "kept" for the running block. There is no stored daily kept
+    /// flag, so this reads the same signal each experiment type already
+    /// enforces: a protected window is kept on a day with no session inside
+    /// it; reduce-extensions is kept on a day with no extension; stronger
+    /// friction is kept on a day where every attempt walked away.
+    private func keptDays(for experiment: WeeklyExperiment) -> Int {
+        guard let startsAt = experiment.startsAt,
+              let start = WeeklyExperiment.experimentDate(from: startsAt) else { return experiment.dayNumber }
+        let calendar = Calendar.current
+        let dayFormatter = MivoDay.formatter
+        let attemptFormatter = ISO8601DateFormatter()
+
+        var kept = 0
+        for offset in 0..<experiment.dayNumber {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: start) else { continue }
+            let sessionsThatDay = appVM.sessions.filter { dayFormatter.date(from: $0.date).map { calendar.isDate($0, inSameDayAs: day) } ?? false }
+
+            let dayKept: Bool
+            switch experiment.type {
+            case .protectedWindow:
+                let startHour = experiment.rule.startHour ?? 21
+                let endHour = experiment.rule.endHour ?? 22
+                dayKept = !sessionsThatDay.contains { session in
+                    guard let started = attemptFormatter.date(from: session.startTime) else { return false }
+                    let hour = calendar.component(.hour, from: started)
+                    return startHour <= endHour ? (hour >= startHour && hour < endHour) : (hour >= startHour || hour < endHour)
                 }
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(appVM.canStartWeeklyExperiment ? MivoColors.accent : MivoColors.textMuted)
+            case .reduceExtensions:
+                dayKept = !sessionsThatDay.contains { $0.extendedOnce }
+            case .strongerFriction:
+                let attemptsThatDay = appVM.interventionAttempts.filter {
+                    attemptFormatter.date(from: $0.occurredAt).map { calendar.isDate($0, inSameDayAs: day) } ?? false
+                }
+                dayKept = attemptsThatDay.allSatisfy { $0.continued != true } || attemptsThatDay.count <= 1
             }
-            .buttonStyle(.plain)
-            .disabled(!appVM.canStartWeeklyExperiment)
+            if dayKept { kept += 1 }
         }
-    }
-
-    private func summaryCell(_ label: String, _ value: String, _ icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: icon).font(.system(size: 12, weight: .bold)).foregroundColor(MivoColors.accent)
-            Text(value).font(.system(size: 16, weight: .bold)).foregroundColor(MivoColors.textPrimary).lineLimit(1).minimumScaleFactor(0.72)
-            Text(label).font(.system(size: 10, weight: .semibold)).foregroundColor(MivoColors.textMuted)
-        }
-        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
-        .padding(12)
-        .background(MivoColors.surfaceRaised.opacity(0.88))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MivoColors.border.opacity(0.4), lineWidth: 1))
-    }
-
-    private func trackingCell(_ label: String, _ value: String, _ icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label(label, systemImage: icon)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(MivoColors.textMuted)
-            Text(value)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(MivoColors.textPrimary)
-                .lineLimit(2)
-        }
-        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        .padding(10)
-        .background(MivoColors.background.opacity(0.75))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func sectionHeader(_ title: String, icon: String) -> some View {
-        Label(title, systemImage: icon)
-            .font(.system(size: 14, weight: .bold))
-            .foregroundColor(MivoColors.textPrimary)
+        return kept
     }
 
     private func begin(_ template: ExperimentTemplate) {
@@ -471,97 +483,6 @@ struct ExperimentHubView: View {
             detail: "Repeat the rule you previously approved for another seven days.",
             rule: experiment.rule, sourceExperimentID: experiment.id
         )
-    }
-
-    private func experimentIcon(_ type: WeeklyExperimentType) -> String {
-        switch type { case .protectedWindow: return "clock.badge.exclamationmark"; case .reduceExtensions: return "minus.circle"; case .strongerFriction: return "hand.raised.fill" }
-    }
-
-    private var helpedCount: Int {
-        appVM.completedWeeklyExperiments.filter { $0.outcome == .helped }.count
-    }
-
-    private var currentStatus: String {
-        guard let experiment = appVM.currentWeeklyExperiment else { return "Ready" }
-        switch experiment.status {
-        case .active: return "Day \(experiment.dayNumber)"
-        case .proposed: return "Review"
-        case .completed: return "Result"
-        case .declined: return "Ready"
-        }
-    }
-
-    private func statusText(_ experiment: WeeklyExperiment) -> String {
-        switch experiment.status {
-        case .active: return "DAY \(experiment.dayNumber) OF 7"
-        case .proposed: return "READY FOR YOUR APPROVAL"
-        case .completed: return "RESULT READY"
-        case .declined: return "DECLINED"
-        }
-    }
-
-    private func currentAction(_ experiment: WeeklyExperiment) -> String {
-        switch experiment.status {
-        case .active: return "Track experiment"
-        case .proposed: return "Review experiment"
-        case .completed: return "Review result"
-        case .declined: return "View experiment"
-        }
-    }
-
-    private func currentDetail(_ experiment: WeeklyExperiment) -> String {
-        if experiment.status == .proposed { return experiment.reason }
-        switch experiment.outcome {
-        case .helped: return "This experiment appears to have helped. Review the comparison and choose whether to keep it."
-        case .worsened: return "This rule may not have fit this week. Review the result before choosing what comes next."
-        default: return "Mivo did not find a clear change yet. Review the available data and choose what comes next."
-        }
-    }
-
-    private func ruleSummary(_ experiment: WeeklyExperiment) -> String {
-        switch experiment.type {
-        case .protectedWindow:
-            return "Protect \(hourText(experiment.rule.startHour ?? 21))-\(hourText(experiment.rule.endHour ?? 22))"
-        case .reduceExtensions: return "No extensions"
-        case .strongerFriction: return "Stronger repeat pause"
-        }
-    }
-
-    private func metricName(_ experiment: WeeklyExperiment) -> String {
-        switch experiment.type {
-        case .protectedWindow: return "Outside-window minutes"
-        case .reduceExtensions: return "Extension rate"
-        case .strongerFriction: return "Stops after a pause"
-        }
-    }
-
-    private func metricValue(_ metrics: ExperimentMetrics, for experiment: WeeklyExperiment) -> String {
-        switch experiment.type {
-        case .protectedWindow: return "\(metrics.outsideWindowMinutes) minutes outside windows"
-        case .reduceExtensions: return "\(Int((metrics.extensionRate * 100).rounded()))% extension rate"
-        case .strongerFriction: return "\(Int((metrics.cancellationRate * 100).rounded()))% stopped after pausing"
-        }
-    }
-
-    private func historyIcon(_ experiment: WeeklyExperiment) -> String {
-        if experiment.status == .declined { return "minus.circle" }
-        return experiment.outcome == .helped ? "checkmark.circle.fill" : "chart.bar.fill"
-    }
-
-    private func historyColor(_ experiment: WeeklyExperiment) -> Color {
-        experiment.outcome == .helped ? MivoColors.timerGreen : MivoColors.accent
-    }
-
-    private func historyDetail(_ experiment: WeeklyExperiment) -> String {
-        if experiment.status == .declined { return "Declined \(dateText(experiment.updatedAt))" }
-        let result: String
-        switch experiment.outcome {
-        case .helped: result = "Helped"
-        case .worsened: result = "Made things worse"
-        default: result = "No clear change"
-        }
-        let decision = experiment.finalDecision.map { " - \($0.rawValue.capitalized)" } ?? " - Decision needed"
-        return "\(result)\(decision) - \(dateText(experiment.updatedAt))"
     }
 
     private func dateText(_ value: String) -> String {
@@ -721,6 +642,9 @@ struct MivoPrivacyCenterView: View {
     @ObservedObject private var expansion = ProductExpansionStore.shared
     @State private var notificationsAuthorized = false
     @State private var diagnosticsEnabled = false
+    @State private var showingDeleteAccount = false
+    @State private var exportPayload: MivoDataExportPayload?
+    @State private var exportError: String?
 
     var body: some View {
         ZStack {
@@ -753,10 +677,8 @@ struct MivoPrivacyCenterView: View {
                 }
                 Section("Account controls") {
                     NavigationLink("Accountability connections") { AccountabilityPartnersView().environmentObject(appVM) }
-                    Button("Export my Mivo data") { Task { _ = await appVM.exportDataAsync() } }
-                    Button("Request account deletion", role: .destructive) {
-                        Task { try? await ProductExpansionService.ingestPrivacyRequest(type: "delete") }
-                    }
+                    Button("Export my Mivo data") { Task { await exportData() } }
+                    Button("Delete my account", role: .destructive) { showingDeleteAccount = true }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -769,6 +691,23 @@ struct MivoPrivacyCenterView: View {
                 if !expansion.isEnabled(.diagnostics) { diagnosticsEnabled = false }
             }
             notificationsAuthorized = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .authorized
+        }
+        .sheet(isPresented: $showingDeleteAccount) {
+            MivoDeleteAccountView().environmentObject(appVM)
+        }
+        .sheet(item: $exportPayload) { payload in
+            MivoActivitySheet(items: [payload.url])
+        }
+        .alert("Export failed", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+            Button("OK") { exportError = nil }
+        } message: { Text(exportError ?? "") }
+    }
+
+    private func exportData() async {
+        do {
+            exportPayload = try await MivoDataExport.write(appVM: appVM)
+        } catch {
+            exportError = error.localizedDescription
         }
     }
 
@@ -797,4 +736,212 @@ private func statusBanner(_ text: String, icon: String) -> some View {
 private func statusIcon(_ icon: String) -> some View {
     Image(systemName: icon).font(.system(size: 32, weight: .semibold)).foregroundColor(MivoColors.accent)
         .frame(width: 64, height: 64).background(MivoColors.accent.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 8))
+}
+
+// MARK: - Account data export
+
+struct MivoDataExportPayload: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+enum MivoDataExport {
+    /// Serializes the signed-in user's Mivo data and writes it to a temporary
+    /// JSON file that can be handed to a share sheet.
+    @MainActor
+    static func write(appVM: AppViewModel) async throws -> MivoDataExportPayload {
+        let json = await appVM.exportDataAsync()
+        let stamp = ISO8601DateFormatter.exportStamp.string(from: Date())
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Mivo-Data-Export-\(stamp).json")
+        try Data(json.utf8).write(to: url, options: .atomic)
+        return MivoDataExportPayload(url: url)
+    }
+}
+
+private extension ISO8601DateFormatter {
+    static let exportStamp: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withYear, .withMonth, .withDay]
+        return formatter
+    }()
+}
+
+struct MivoActivitySheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Account deletion
+
+struct MivoDeleteAccountView: View {
+    @EnvironmentObject var appVM: AppViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var acknowledged = false
+    @State private var isDeleting = false
+    @State private var errorMessage: String?
+
+    private let confirmationPhrase = "DELETE"
+    @State private var typedConfirmation = ""
+
+    private var canDelete: Bool {
+        acknowledged
+            && !password.isEmpty
+            && typedConfirmation.trimmingCharacters(in: .whitespaces).uppercased() == confirmationPhrase
+            && !isDeleting
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MivoColors.background.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        header
+                        deletedList
+                        keptList
+                        confirmationFields
+                        if let errorMessage {
+                            Text(errorMessage)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        deleteButton
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Delete account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(isDeleting)
+                }
+            }
+            .interactiveDismissDisabled(isDeleting)
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            statusIcon("exclamationmark.triangle")
+            Text("This permanently deletes your Mivo account.")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(MivoColors.textPrimary)
+            Text("This cannot be undone. Your account and its data are removed immediately — there is no recovery period and no way to restore it later.")
+                .font(.system(size: 14))
+                .foregroundColor(MivoColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var deletedList: some View {
+        compactPanel {
+            Text("Deleted permanently")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(MivoColors.textPrimary)
+            bullet("Your sign-in and \(appVM.user?.email ?? "your email address")")
+            bullet("All \(appVM.sessions.count) scroll sessions and \(appVM.truthChecks.count) truth checks")
+            bullet("Weekly experiments, reports, and your screen-time plan")
+            bullet("Referral profile, accountability partner connections, and shared summaries")
+            bullet("Everything Mivo stored on this device, including Screen Time selections")
+        }
+    }
+
+    private var keptList: some View {
+        compactPanel {
+            Text("Kept")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(MivoColors.textPrimary)
+            bullet("An anonymized record that a deletion happened, which Mivo is required to retain for audit purposes. It no longer identifies you.")
+            Text("Want a copy first? Cancel and use “Export my Mivo data” before deleting.")
+                .font(.system(size: 12))
+                .foregroundColor(MivoColors.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var confirmationFields: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Toggle(isOn: $acknowledged) {
+                Text("I understand my account and data will be permanently deleted.")
+                    .font(.system(size: 13))
+                    .foregroundColor(MivoColors.textSecondary)
+            }
+            .disabled(isDeleting)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Confirm your password")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(MivoColors.textPrimary)
+                SecureField("Password", text: $password)
+                    .textContentType(.password)
+                    .autocorrectionDisabled()
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(isDeleting)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Type \(confirmationPhrase) to confirm")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(MivoColors.textPrimary)
+                TextField(confirmationPhrase, text: $typedConfirmation)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(isDeleting)
+            }
+        }
+    }
+
+    private var deleteButton: some View {
+        Button {
+            Task { await performDelete() }
+        } label: {
+            HStack(spacing: 8) {
+                if isDeleting { ProgressView().tint(.white) }
+                Text(isDeleting ? "Deleting…" : "Delete my account permanently")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(canDelete ? Color.red : Color.red.opacity(0.35))
+            .foregroundColor(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .disabled(!canDelete)
+    }
+
+    private func performDelete() async {
+        isDeleting = true
+        errorMessage = nil
+        do {
+            try await appVM.deleteAccount(password: password)
+            // deleteAccount() signs the user out, which returns the app to the
+            // login screen behind this sheet.
+            dismiss()
+        } catch {
+            // Never close on failure — the account still exists.
+            errorMessage = error.localizedDescription
+            isDeleting = false
+        }
+    }
+
+    private func bullet(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("•").foregroundColor(MivoColors.accent)
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundColor(MivoColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
 }

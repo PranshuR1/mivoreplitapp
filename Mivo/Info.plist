@@ -57,6 +57,8 @@
 	<string>Mivo Clear uses the camera only when you choose to take a photo or video in Snapchat.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Mivo Clear uses the microphone only when you choose to record or call in Snapchat.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Mivo Still uses motion data to tell that your phone is face-down and still during a focus session. This never leaves your device.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>WKAppBoundDomains</key>
@@ -72,10 +74,13 @@
 	<array>
 		<string>fetch</string>
 		<string>processing</string>
+		<string>remote-notification</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.mivo.mivoapp.sessionrelock</string>
+		<string>com.mivo.mivoapp.stilllockend</string>
+		<string>com.mivo.mivoapp.crossdevicefocus</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>

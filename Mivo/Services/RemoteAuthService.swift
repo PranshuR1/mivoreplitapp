@@ -10,6 +10,17 @@ struct RemoteAuthUser: Codable {
     let remoteUserId: String?
     let accessToken: String?
     let refreshToken: String?
+    /// Only populated by the Supabase login/refresh paths (see
+    /// `fetchSupabaseUserState`) — lets `completeLogin` restore
+    /// `onboardingComplete` and the rest of `AppSettings` on a device that
+    /// has never locally synced them (e.g. right after a reinstall), instead
+    /// of silently falling back to "onboarding not complete" for an account
+    /// that already finished it.
+    let settings: AppSettings?
+    /// Everything else `user_state` holds beyond profile/settings — see
+    /// `RestoredUserState`. Only populated by the same Supabase login/refresh
+    /// paths as `settings` above, for the same reinstall-restore reason.
+    let restoredState: RestoredUserState?
 
     init(
         email: String,
@@ -20,7 +31,9 @@ struct RemoteAuthUser: Codable {
         adminToken: String?,
         remoteUserId: String? = nil,
         accessToken: String? = nil,
-        refreshToken: String? = nil
+        refreshToken: String? = nil,
+        settings: AppSettings? = nil,
+        restoredState: RestoredUserState? = nil
     ) {
         self.email = email
         self.name = name
@@ -31,6 +44,94 @@ struct RemoteAuthUser: Codable {
         self.remoteUserId = remoteUserId
         self.accessToken = accessToken
         self.refreshToken = refreshToken
+        self.settings = settings
+        self.restoredState = restoredState
+    }
+}
+
+/// Everything `user_state` holds beyond `profile`/`settings` — pulled back
+/// on login so a fresh install doesn't lose session history, truth checks,
+/// scroll schedules, weekly reports, intervention rules, and both summaries
+/// that were already being pushed to Supabase but never read back.
+struct RestoredUserState: Codable {
+    var profile: OnboardingProfile?
+    var settings: AppSettings?
+    var sessions: [Session]?
+    var truthChecks: [TruthCheckGuess]?
+    var dailyScrollSchedules: [DailyScrollSchedule]?
+    var weeklyReports: [WeeklyReportSnapshot]?
+    var appInterventionRules: [AppInterventionRule]?
+    var accountabilitySummary: AccountabilitySummary?
+    var widgetSharedSummary: WidgetSharedSummary?
+    var aiDataset: [String]?
+    var mivoStillSessions: [MivoStillSession]?
+    var appFrictionProfiles: [AppFrictionProfile]?
+    var userSwap: UserSwap?
+    var interventionAttempts: [InterventionAttemptRecord]?
+    var dailyScreenTimeObservations: [DailyScreenTimeObservation]?
+    var timeLoans: [TimeLoan]?
+    var intentGameHistory: [IntentGameHistoryEntry]?
+    var dropPathTimeAdjustments: [DropPathTimeAdjustment]?
+    var recallCheckIns: [RecallCheckIn]?
+    var instagramWrapperSessions: [InstagramWrapperSession]?
+    var instagramRecallPrompts: [InstagramRecallPrompt]?
+}
+
+/// A "Block my iPhone too" command written by the Mac companion app to
+/// `cross_device_focus_sessions`. See `mivomac/IPHONE_FOCUS_RECEIVER.md`
+/// for the full contract and `CrossDeviceFocusService` for how it's
+/// applied/cleared.
+struct CrossDeviceFocusCommand: Decodable {
+    let id: String
+    let sourceDevice: String
+    let intention: String
+    let mode: String
+    let startsAt: Date
+    let endsAt: Date
+    let status: String
+    let blockPhone: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case sourceDevice = "source_device"
+        case intention, mode
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
+        case status
+        case blockPhone = "block_phone"
+    }
+
+    /// `starts_at`/`ends_at` come back from Postgres as `timestamptz`, which
+    /// can include a fractional-second component — Foundation's default
+    /// `.iso8601` `JSONDecoder` strategy (what this used to rely on) can't
+    /// parse those and fails the whole decode silently (`try?` upstream in
+    /// `fetchActiveCrossDeviceFocusCommand`), which reads identically to
+    /// "no active command" — a real block from Mac would just never show up
+    /// on the phone with no error anywhere. Parsing the two date fields by
+    /// hand, with a fractional-seconds-tolerant fallback, removes that
+    /// silent-failure path entirely.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        sourceDevice = try values.decode(String.self, forKey: .sourceDevice)
+        intention = try values.decode(String.self, forKey: .intention)
+        mode = try values.decode(String.self, forKey: .mode)
+        status = try values.decode(String.self, forKey: .status)
+        blockPhone = try values.decode(Bool.self, forKey: .blockPhone)
+        let startsAtRaw = try values.decode(String.self, forKey: .startsAt)
+        let endsAtRaw = try values.decode(String.self, forKey: .endsAt)
+        guard let parsedStartsAt = Self.parseDate(startsAtRaw), let parsedEndsAt = Self.parseDate(endsAtRaw) else {
+            throw DecodingError.dataCorruptedError(forKey: .startsAt, in: values, debugDescription: "Unparseable timestamp")
+        }
+        startsAt = parsedStartsAt
+        endsAt = parsedEndsAt
+    }
+
+    private static func parseDate(_ string: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: string) { return date }
+        return ISO8601DateFormatter().date(from: string)
     }
 }
 
@@ -64,6 +165,17 @@ enum RemoteAuthService {
         let accountabilitySummary: AccountabilitySummary?
         let widgetSharedSummary: WidgetSharedSummary?
         let aiDataset: [String]
+        let mivoStillSessions: [MivoStillSession]
+        let appFrictionProfiles: [AppFrictionProfile]
+        let userSwap: UserSwap?
+        let interventionAttempts: [InterventionAttemptRecord]
+        let dailyScreenTimeObservations: [DailyScreenTimeObservation]
+        let timeLoans: [TimeLoan]
+        let intentGameHistory: [IntentGameHistoryEntry]
+        let dropPathTimeAdjustments: [DropPathTimeAdjustment]
+        let recallCheckIns: [RecallCheckIn]
+        let instagramWrapperSessions: [InstagramWrapperSession]
+        let instagramRecallPrompts: [InstagramRecallPrompt]
     }
 
     private struct AuthRequest: Codable {
@@ -146,17 +258,65 @@ enum RemoteAuthService {
         let errorCode: String?
         let message: String?
         let msg: String?
+        let errorDescription: String?
 
         enum CodingKeys: String, CodingKey {
             case code
             case errorCode = "error_code"
             case message
             case msg
+            case errorDescription = "error_description"
         }
     }
 
+    /// Mirrors every column `upsertUserState` writes into `user_state` — each
+    /// column holds the plain `JSONEncoder` output of the matching Swift
+    /// model (see `jsonObject(_:)`), so it decodes straight back into the
+    /// same model types with no separate row-mapping needed.
     private struct SupabaseUserStateRow: Decodable {
         let profile: OnboardingProfile?
+        let settings: AppSettings?
+        let sessions: [Session]?
+        let truthChecks: [TruthCheckGuess]?
+        let dailyScrollSchedules: [DailyScrollSchedule]?
+        let weeklyReports: [WeeklyReportSnapshot]?
+        let appInterventionRules: [AppInterventionRule]?
+        let accountabilitySummary: AccountabilitySummary?
+        let widgetSharedSummary: WidgetSharedSummary?
+        let aiDataset: [String]?
+        let mivoStillSessions: [MivoStillSession]?
+        let appFrictionProfiles: [AppFrictionProfile]?
+        let userSwap: UserSwap?
+        let interventionAttempts: [InterventionAttemptRecord]?
+        let dailyScreenTimeObservations: [DailyScreenTimeObservation]?
+        let timeLoans: [TimeLoan]?
+        let intentGameHistory: [IntentGameHistoryEntry]?
+        let dropPathTimeAdjustments: [DropPathTimeAdjustment]?
+        let recallCheckIns: [RecallCheckIn]?
+        let instagramWrapperSessions: [InstagramWrapperSession]?
+        let instagramRecallPrompts: [InstagramRecallPrompt]?
+
+        enum CodingKeys: String, CodingKey {
+            case profile, settings, sessions
+            case truthChecks = "truth_checks"
+            case dailyScrollSchedules = "daily_scroll_schedules"
+            case weeklyReports = "weekly_reports"
+            case appInterventionRules = "app_intervention_rules"
+            case accountabilitySummary = "accountability_summary"
+            case widgetSharedSummary = "widget_shared_summary"
+            case aiDataset = "ai_dataset"
+            case mivoStillSessions = "mivo_still_sessions"
+            case appFrictionProfiles = "app_friction_profiles"
+            case userSwap = "user_swap"
+            case interventionAttempts = "intervention_attempts"
+            case dailyScreenTimeObservations = "daily_screen_time_observations"
+            case timeLoans = "time_loans"
+            case intentGameHistory = "intent_game_history"
+            case dropPathTimeAdjustments = "drop_path_time_adjustments"
+            case recallCheckIns = "recall_check_ins"
+            case instagramWrapperSessions = "instagram_wrapper_sessions"
+            case instagramRecallPrompts = "instagram_recall_prompts"
+        }
     }
 
     private struct SupabaseDeviceBindingRow: Decodable {
@@ -166,6 +326,20 @@ enum RemoteAuthService {
         enum CodingKeys: String, CodingKey {
             case deviceID = "device_id"
             case userID = "user_id"
+        }
+    }
+
+    private struct MacActivityRow: Decodable {
+        let appName: String
+        let category: String
+        let startedAt: Date
+        let endedAt: Date
+
+        enum CodingKeys: String, CodingKey {
+            case appName = "app_name"
+            case category
+            case startedAt = "started_at"
+            case endedAt = "ended_at"
         }
     }
 
@@ -207,6 +381,36 @@ enum RemoteAuthService {
         )
     }
 
+    /// Native "Sign in with Google" — `idToken` comes from `GIDSignIn`
+    /// (see `MivoClearService.swift`'s `configureGoogleSignIn()` for the
+    /// same client-ID lookup this reuses) and is exchanged directly with
+    /// Supabase's `id_token` grant, so there's no browser redirect and no
+    /// client secret involved. Only wired for the Supabase backend — the
+    /// legacy REST backend has no equivalent endpoint.
+    static func loginWithGoogle(idToken: String) async throws -> RemoteAuthUser {
+        guard supabaseBaseURL != nil else { throw AppError.remoteAuthUnavailable }
+        return try await supabaseSignInWithGoogle(idToken: idToken)
+    }
+
+    /// Native "Sign in with Apple" — `idToken`/`nonce` come from
+    /// `LoginView`'s `SignInWithAppleButton` and are exchanged directly
+    /// with the same Supabase `id_token` grant Google above uses, just
+    /// with `provider: "apple"` and the raw nonce Supabase needs to
+    /// verify against the hash baked into the identity token.
+    static func loginWithApple(idToken: String, nonce: String) async throws -> RemoteAuthUser {
+        guard supabaseBaseURL != nil else { throw AppError.remoteAuthUnavailable }
+        return try await supabaseSignInWithApple(idToken: idToken, nonce: nonce)
+    }
+
+    /// Pushes a corrected display name to Supabase's `user_metadata` —
+    /// used when the OAuth-derived fallback name (email prefix) gets
+    /// replaced with one the user actually typed. Only wired for the
+    /// Supabase backend, same as the OAuth sign-ins above.
+    static func updateDisplayName(_ name: String, accessToken: String) async throws {
+        guard supabaseBaseURL != nil else { return }
+        try await supabaseUpdateUserMetadata(name: name, accessToken: accessToken)
+    }
+
     static func login(email: String, password: String) async throws -> RemoteAuthUser {
         if supabaseBaseURL != nil {
             return try await supabaseLogin(email: email, password: password)
@@ -231,6 +435,10 @@ enum RemoteAuthService {
     }
 
     static func claimDevice(installationID: String, user: RemoteAuthUser) async throws {
+        if DeviceBindingService.isExemptInstallation(installationID) {
+            await releaseExemptDeviceBinding(installationID: installationID, user: user)
+            return
+        }
         guard let base = supabaseBaseURL else { return }
         guard let userID = user.remoteUserId,
               let bearer = user.accessToken,
@@ -287,6 +495,182 @@ enum RemoteAuthService {
             throw AppError.deviceBoundToAnotherAccount(hint: nil)
         }
 
+    }
+
+    /// An exempt installation (see `DeviceBindingService.exemptInstallationIDs`)
+    /// must never end up bound to any account, at any point — not just
+    /// "no new bindings going forward." This actively deletes any
+    /// `device_bindings` row that might already exist for this device_id
+    /// (e.g. written before the device was exempted, or by an older build),
+    /// rather than merely skipping the write `claimDevice` would otherwise
+    /// do. RLS restricts the delete to rows the signed-in user owns, so a
+    /// row left behind by a different account only clears the next time
+    /// that same account happens to sign in from this device — best-effort,
+    /// matching every other device-binding call in this file.
+    private static func releaseExemptDeviceBinding(installationID: String, user: RemoteAuthUser) async {
+        guard let base = supabaseBaseURL,
+              let bearer = user.accessToken,
+              let encodedID = installationID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(base.absoluteString)/rest/v1/device_bindings?device_id=eq.\(encodedID)") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        applySupabaseHeaders(to: &request, bearer: bearer)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    /// General, non-admin push device registry — separate from
+    /// `ReferralCampaignService.registerAdminPushDevice`, which writes to a
+    /// purpose-built admin-alerting table. Cross-device focus commands
+    /// (see `CrossDeviceFocusService`) need every signed-in user's device
+    /// reachable, not just admins', so this writes to its own
+    /// `user_push_devices` table via the same upsert pattern as
+    /// `saveUserState` rather than reusing the admin RPC. Best-effort and
+    /// non-throwing, matching `saveUserState` — a missed registration
+    /// self-heals on the next successful call rather than needing the
+    /// caller to handle failure.
+    static func registerPushDevice(deviceToken: String, environment: String, installationID: String, record: SecureAuthRecord) async {
+        guard let base = supabaseBaseURL,
+              let userId = record.remoteUserId,
+              let token = record.remoteAccessToken else { return }
+        await upsertRows(
+            table: "user_push_devices",
+            onConflict: "user_id,installation_id",
+            rows: [[
+                "user_id": userId,
+                "installation_id": installationID,
+                "device_token": deviceToken,
+                "environment": environment,
+                "updated_at": ISO8601DateFormatter().string(from: Date())
+            ]],
+            bearer: token,
+            base: base
+        )
+    }
+
+    static func unregisterPushDevice(installationID: String, record: SecureAuthRecord) async {
+        guard let base = supabaseBaseURL,
+              let userId = record.remoteUserId,
+              let token = record.remoteAccessToken,
+              let encodedUserId = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let encodedInstallId = installationID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(base.absoluteString)/rest/v1/user_push_devices?user_id=eq.\(encodedUserId)&installation_id=eq.\(encodedInstallId)") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        applySupabaseHeaders(to: &request, bearer: token)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    /// The one active, not-yet-expired "Block my iPhone too" command for
+    /// this account, if any — RLS already restricts the query to the
+    /// caller's own `user_id`, so a non-nil result is inherently owned by
+    /// the authenticated user (see `IPHONE_FOCUS_RECEIVER.md` point 3).
+    static func fetchActiveCrossDeviceFocusCommand(record: SecureAuthRecord) async -> CrossDeviceFocusCommand? {
+        guard let base = supabaseBaseURL,
+              let userId = record.remoteUserId,
+              let token = record.remoteAccessToken,
+              let encodedUserId = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let encodedNow = ISO8601DateFormatter().string(from: Date()).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(base.absoluteString)/rest/v1/cross_device_focus_sessions?select=*&user_id=eq.\(encodedUserId)&status=eq.active&block_phone=eq.true&ends_at=gt.\(encodedNow)&order=ends_at.desc&limit=1") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applySupabaseHeaders(to: &request, bearer: token)
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else { return nil }
+
+        return try? JSONDecoder().decode([CrossDeviceFocusCommand].self, from: data).first
+    }
+
+    /// Whether this account has any Mac companion app activity synced —
+    /// the signal Settings' "Mivo for Mac" row uses to show
+    /// connected/not-connected. Deliberately just an existence check
+    /// (`limit=1`) rather than pulling real rows; this only needs a yes/no.
+    static func fetchHasMacActivity(record: SecureAuthRecord) async -> Bool {
+        guard let base = supabaseBaseURL,
+              let userId = record.remoteUserId,
+              let token = record.remoteAccessToken,
+              let encodedUserId = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(base.absoluteString)/rest/v1/mac_activity_records?select=id&user_id=eq.\(encodedUserId)&limit=1") else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applySupabaseHeaders(to: &request, bearer: token)
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return false }
+        return !rows.isEmpty
+    }
+
+    /// Today's Mac activity, aggregated client-side from the raw
+    /// `mac_activity_records` rows Mivo for Mac has synced — same table
+    /// `fetchHasMacActivity` above does its existence check against, just
+    /// pulling real rows this time so Settings' "Mivo for Mac" screen can
+    /// show what actually happened on the Mac today, not just a status.
+    static func fetchMacActivitySummary(record: SecureAuthRecord) async -> MacActivitySummary? {
+        guard let base = supabaseBaseURL,
+              let userId = record.remoteUserId,
+              let token = record.remoteAccessToken,
+              let encodedUserId = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
+
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        guard let encodedTodayStart = ISO8601DateFormatter().string(from: todayStart)
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+            let recordsURL = URL(string: "\(base.absoluteString)/rest/v1/mac_activity_records?select=app_name,category,started_at,ended_at&user_id=eq.\(encodedUserId)&started_at=gte.\(encodedTodayStart)&order=started_at.desc&limit=500"),
+            let sessionsURL = URL(string: "\(base.absoluteString)/rest/v1/mac_focus_sessions?select=id&user_id=eq.\(encodedUserId)&started_at=gte.\(encodedTodayStart)") else { return nil }
+
+        var recordsRequest = URLRequest(url: recordsURL)
+        recordsRequest.httpMethod = "GET"
+        applySupabaseHeaders(to: &recordsRequest, bearer: token)
+
+        var sessionsRequest = URLRequest(url: sessionsURL)
+        sessionsRequest.httpMethod = "GET"
+        applySupabaseHeaders(to: &sessionsRequest, bearer: token)
+
+        guard let (recordsData, recordsResponse) = try? await URLSession.shared.data(for: recordsRequest),
+              let recordsHTTP = recordsResponse as? HTTPURLResponse,
+              (200..<300).contains(recordsHTTP.statusCode) else { return nil }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let rows = try? decoder.decode([MacActivityRow].self, from: recordsData) else { return nil }
+
+        var focusSeconds: TimeInterval = 0
+        var driftSeconds: TimeInterval = 0
+        var neutralSeconds: TimeInterval = 0
+        var appSeconds: [String: TimeInterval] = [:]
+        for row in rows {
+            let duration = max(0, row.endedAt.timeIntervalSince(row.startedAt))
+            switch row.category {
+            case "focus": focusSeconds += duration
+            case "drift": driftSeconds += duration
+            default: neutralSeconds += duration
+            }
+            appSeconds[row.appName, default: 0] += duration
+        }
+        let topApps = appSeconds.sorted { $0.value > $1.value }.prefix(3)
+            .map { MacActivitySummary.AppUsage(name: $0.key, minutes: Int($0.value / 60)) }
+
+        let sessionsCount: Int
+        if let (sessionsData, sessionsResponse) = try? await URLSession.shared.data(for: sessionsRequest),
+           let sessionsHTTP = sessionsResponse as? HTTPURLResponse,
+           (200..<300).contains(sessionsHTTP.statusCode),
+           let sessionRows = try? JSONSerialization.jsonObject(with: sessionsData) as? [[String: Any]] {
+            sessionsCount = sessionRows.count
+        } else {
+            sessionsCount = 0
+        }
+
+        return MacActivitySummary(
+            totalMinutes: Int((focusSeconds + driftSeconds + neutralSeconds) / 60),
+            focusMinutes: Int(focusSeconds / 60),
+            driftMinutes: Int(driftSeconds / 60),
+            topApps: topApps,
+            focusSessionsToday: sessionsCount
+        )
     }
 
     static func accountExists(email: String) async throws -> Bool {
@@ -495,6 +879,17 @@ enum RemoteAuthService {
             payload["accountability_summary"] = snapshot.accountabilitySummary.map { jsonObject($0) } ?? NSNull()
             payload["widget_shared_summary"] = snapshot.widgetSharedSummary.map { jsonObject($0) } ?? NSNull()
             payload["ai_dataset"] = jsonObject(snapshot.aiDataset)
+            payload["mivo_still_sessions"] = jsonObject(snapshot.mivoStillSessions)
+            payload["app_friction_profiles"] = jsonObject(snapshot.appFrictionProfiles)
+            payload["user_swap"] = snapshot.userSwap.map { jsonObject($0) } ?? NSNull()
+            payload["intervention_attempts"] = jsonObject(snapshot.interventionAttempts)
+            payload["daily_screen_time_observations"] = jsonObject(snapshot.dailyScreenTimeObservations)
+            payload["time_loans"] = jsonObject(snapshot.timeLoans)
+            payload["intent_game_history"] = jsonObject(snapshot.intentGameHistory)
+            payload["drop_path_time_adjustments"] = jsonObject(snapshot.dropPathTimeAdjustments)
+            payload["recall_check_ins"] = jsonObject(snapshot.recallCheckIns)
+            payload["instagram_wrapper_sessions"] = jsonObject(snapshot.instagramWrapperSessions)
+            payload["instagram_recall_prompts"] = jsonObject(snapshot.instagramRecallPrompts)
         }
 
         await upsertRows(table: "user_state", onConflict: "user_id", rows: [payload], bearer: bearer, base: base)
@@ -686,6 +1081,69 @@ enum RemoteAuthService {
         )
     }
 
+    /// Deletes the signed-in user's own account on whichever backend is configured.
+    /// Throws if the account could not be removed remotely, so callers never report
+    /// success for an account that still exists.
+    static func deleteOwnAccount(email: String, password: String, record: SecureAuthRecord) async throws {
+        if supabaseBaseURL != nil {
+            try await supabaseDeleteOwnAccount(email: email, password: password, record: record)
+            return
+        }
+        let _: AuthResponse = try await rawRequest(
+            path: "/auth/delete-account",
+            body: AuthRequest(email: email, password: password, name: nil, onboardingProfile: nil)
+        )
+    }
+
+    private static func supabaseDeleteOwnAccount(email: String, password: String, record: SecureAuthRecord) async throws {
+        guard let base = supabaseBaseURL, !supabaseAnonKey.isEmpty else { throw AppError.remoteAuthUnavailable }
+
+        // Re-authenticate so deletion always runs on a token that is definitely
+        // valid and definitely belongs to the person typing the password, rather
+        // than a cached one that may have expired.
+        guard let tokenURL = URL(string: "\(base.absoluteString)/auth/v1/token?grant_type=password") else {
+            throw AppError.remoteAuthUnavailable
+        }
+        let session: SupabaseAuthResponse = try await supabaseAuthRequest(
+            url: tokenURL,
+            body: ["email": email, "password": password]
+        )
+        guard let bearer = session.accessToken, !bearer.isEmpty else {
+            throw AppError.invalidCredentials
+        }
+        guard session.user?.id == record.remoteUserId || record.remoteUserId == nil else {
+            throw AppError.invalidCredentials
+        }
+
+        var request = URLRequest(url: base.appendingPathComponent("rest/v1/rpc/delete_my_account"))
+        request.httpMethod = "POST"
+        applySupabaseHeaders(to: &request, bearer: bearer)
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "input_reason": "Self-serve deletion from Mivo Privacy Center"
+        ])
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw AppError.remoteAuthUnavailable
+        }
+
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 500
+        guard (200..<300).contains(status) else {
+            let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let message = (payload?["message"] as? String) ?? (payload?["error"] as? String) ?? ""
+            if message.contains("super_admin_self_delete_blocked") {
+                throw AppError.accountDeletionBlockedForAdmin
+            }
+            if message.contains("authentication_required") || status == 401 {
+                throw AppError.invalidCredentials
+            }
+            throw AppError.accountDeletionFailed(reason: message.isEmpty ? nil : message)
+        }
+    }
+
     private static func request(path: String, body: AuthRequest) async throws -> RemoteAuthUser {
         let response: AuthResponse = try await rawRequest(path: path, body: body)
         guard let user = response.user else { throw AppError.accountDataMissing }
@@ -738,18 +1196,79 @@ enum RemoteAuthService {
             throw AppError.invalidCredentials
         }
 
-        let profile = await fetchSupabaseProfile(userId: user.id, accessToken: response.accessToken)
+        let state = await fetchSupabaseUserState(userId: user.id, accessToken: response.accessToken)
         let isAdmin = await fetchSupabaseAdminRole(userId: user.id, accessToken: response.accessToken)
         return RemoteAuthUser(
             email: userEmail,
             name: user.userMetadata?["name"] ?? String(userEmail.split(separator: "@").first ?? "Mivo"),
             createdAt: user.createdAt ?? ISO8601DateFormatter().string(from: Date()),
-            onboardingProfile: profile,
+            onboardingProfile: state.profile,
             isAdmin: isAdmin,
             adminToken: nil,
             remoteUserId: user.id,
             accessToken: response.accessToken,
-            refreshToken: response.refreshToken
+            refreshToken: response.refreshToken,
+            settings: state.settings,
+            restoredState: state
+        )
+    }
+
+    private static func supabaseSignInWithGoogle(idToken: String) async throws -> RemoteAuthUser {
+        guard let base = supabaseBaseURL, !supabaseAnonKey.isEmpty else { throw AppError.remoteAuthUnavailable }
+        let url = URL(string: "\(base.absoluteString)/auth/v1/token?grant_type=id_token")!
+        let response: SupabaseAuthResponse = try await supabaseAuthRequest(
+            url: url,
+            body: ["provider": "google", "id_token": idToken],
+            surfaceServerMessageAs: googleServerRejection
+        )
+
+        guard let user = response.user, let userEmail = user.email else {
+            throw AppError.googleSignInFailed("Google signed you in but did not share an email address, so Mivo could not create the account.")
+        }
+
+        let state = await fetchSupabaseUserState(userId: user.id, accessToken: response.accessToken)
+        let isAdmin = await fetchSupabaseAdminRole(userId: user.id, accessToken: response.accessToken)
+        return RemoteAuthUser(
+            email: userEmail,
+            name: user.userMetadata?["name"] ?? String(userEmail.split(separator: "@").first ?? "Mivo"),
+            createdAt: user.createdAt ?? ISO8601DateFormatter().string(from: Date()),
+            onboardingProfile: state.profile,
+            isAdmin: isAdmin,
+            adminToken: nil,
+            remoteUserId: user.id,
+            accessToken: response.accessToken,
+            refreshToken: response.refreshToken,
+            settings: state.settings,
+            restoredState: state
+        )
+    }
+
+    private static func supabaseSignInWithApple(idToken: String, nonce: String) async throws -> RemoteAuthUser {
+        guard let base = supabaseBaseURL, !supabaseAnonKey.isEmpty else { throw AppError.remoteAuthUnavailable }
+        let url = URL(string: "\(base.absoluteString)/auth/v1/token?grant_type=id_token")!
+        let response: SupabaseAuthResponse = try await supabaseAuthRequest(
+            url: url,
+            body: ["provider": "apple", "id_token": idToken, "nonce": nonce]
+        )
+
+        guard let user = response.user, let userEmail = user.email else {
+            throw AppError.invalidCredentials
+        }
+
+        let state = await fetchSupabaseUserState(userId: user.id, accessToken: response.accessToken)
+        let isAdmin = await fetchSupabaseAdminRole(userId: user.id, accessToken: response.accessToken)
+        return RemoteAuthUser(
+            email: userEmail,
+            name: user.userMetadata?["name"] ?? String(userEmail.split(separator: "@").first ?? "Mivo"),
+            createdAt: user.createdAt ?? ISO8601DateFormatter().string(from: Date()),
+            onboardingProfile: state.profile,
+            isAdmin: isAdmin,
+            adminToken: nil,
+            remoteUserId: user.id,
+            accessToken: response.accessToken,
+            refreshToken: response.refreshToken,
+            settings: state.settings,
+            restoredState: state
         )
     }
 
@@ -800,6 +1319,29 @@ enum RemoteAuthService {
         )
     }
 
+    private static func supabaseUpdateUserMetadata(name: String, accessToken: String) async throws {
+        guard let base = supabaseBaseURL, !supabaseAnonKey.isEmpty else { throw AppError.remoteAuthUnavailable }
+        let url = base.appendingPathComponent("auth/v1/user")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        applySupabaseHeaders(to: &request, bearer: accessToken)
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["data": ["name": name]])
+
+        let response: URLResponse
+        do {
+            (_, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw AppError.remoteAuthUnavailable
+        }
+
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 500
+        guard (200..<300).contains(status) else {
+            if status == 401 || status == 403 { throw AppError.invalidCredentials }
+            throw AppError.remoteAuthUnavailable
+        }
+    }
+
     private static func supabaseRefreshSession(refreshToken: String) async throws -> RemoteAuthUser {
         guard let base = supabaseBaseURL, !supabaseAnonKey.isEmpty else { throw AppError.remoteAuthUnavailable }
         let url = URL(string: "\(base.absoluteString)/auth/v1/token?grant_type=refresh_token")!
@@ -812,26 +1354,33 @@ enum RemoteAuthService {
             throw AppError.invalidCredentials
         }
 
-        let profile = await fetchSupabaseProfile(userId: user.id, accessToken: response.accessToken)
+        let state = await fetchSupabaseUserState(userId: user.id, accessToken: response.accessToken)
         let isAdmin = await fetchSupabaseAdminRole(userId: user.id, accessToken: response.accessToken)
         return RemoteAuthUser(
             email: userEmail,
             name: user.userMetadata?["name"] ?? String(userEmail.split(separator: "@").first ?? "Mivo"),
             createdAt: user.createdAt ?? ISO8601DateFormatter().string(from: Date()),
-            onboardingProfile: profile,
+            onboardingProfile: state.profile,
             isAdmin: isAdmin,
             adminToken: nil,
             remoteUserId: user.id,
             accessToken: response.accessToken,
-            refreshToken: response.refreshToken
+            refreshToken: response.refreshToken,
+            settings: state.settings,
+            restoredState: state
         )
     }
 
-    private static func fetchSupabaseProfile(userId: String, accessToken: String?) async -> OnboardingProfile? {
+    /// Restores everything `upsertUserState` has been pushing on every save
+    /// — previously this only pulled back `profile`/`settings`, so a fresh
+    /// install + login lost session history, truth checks, scroll
+    /// schedules, weekly reports, intervention rules, and both summaries
+    /// even though they were already sitting in Supabase, unused for restore.
+    private static func fetchSupabaseUserState(userId: String, accessToken: String?) async -> RestoredUserState {
         guard let base = supabaseBaseURL,
               let token = accessToken,
               let encodedUserId = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "\(base.absoluteString)/rest/v1/user_state?select=profile&user_id=eq.\(encodedUserId)&limit=1") else { return nil }
+              let url = URL(string: "\(base.absoluteString)/rest/v1/user_state?select=profile,settings,sessions,truth_checks,daily_scroll_schedules,weekly_reports,app_intervention_rules,accountability_summary,widget_shared_summary,ai_dataset,mivo_still_sessions,app_friction_profiles,user_swap,intervention_attempts,daily_screen_time_observations,time_loans,intent_game_history,drop_path_time_adjustments,recall_check_ins,instagram_wrapper_sessions,instagram_recall_prompts&user_id=eq.\(encodedUserId)&limit=1") else { return RestoredUserState() }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -840,9 +1389,31 @@ enum RemoteAuthService {
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
-              let rows = try? JSONDecoder().decode([SupabaseUserStateRow].self, from: data) else { return nil }
+              let row = try? JSONDecoder().decode([SupabaseUserStateRow].self, from: data).first else { return RestoredUserState() }
 
-        return rows.first?.profile
+        return RestoredUserState(
+            profile: row.profile,
+            settings: row.settings,
+            sessions: row.sessions,
+            truthChecks: row.truthChecks,
+            dailyScrollSchedules: row.dailyScrollSchedules,
+            weeklyReports: row.weeklyReports,
+            appInterventionRules: row.appInterventionRules,
+            accountabilitySummary: row.accountabilitySummary,
+            widgetSharedSummary: row.widgetSharedSummary,
+            aiDataset: row.aiDataset,
+            mivoStillSessions: row.mivoStillSessions,
+            appFrictionProfiles: row.appFrictionProfiles,
+            userSwap: row.userSwap,
+            interventionAttempts: row.interventionAttempts,
+            dailyScreenTimeObservations: row.dailyScreenTimeObservations,
+            timeLoans: row.timeLoans,
+            intentGameHistory: row.intentGameHistory,
+            dropPathTimeAdjustments: row.dropPathTimeAdjustments,
+            recallCheckIns: row.recallCheckIns,
+            instagramWrapperSessions: row.instagramWrapperSessions,
+            instagramRecallPrompts: row.instagramRecallPrompts
+        )
     }
 
     private static func fetchSupabaseAdminRole(userId: String, accessToken: String?) async -> Bool {
@@ -865,7 +1436,34 @@ enum RemoteAuthService {
         return role == "super_admin" || role == "admin"
     }
 
-    private static func supabaseAuthRequest<Response: Decodable>(url: URL, body: [String: Any]) async throws -> Response {
+    /// Turns Supabase's rejection of a Google ID token into a message that names the real cause and fix,
+    /// instead of the generic "Invalid email or password." the shared handler would otherwise show.
+    private static func googleServerRejection(status: Int, serverMessage: String) -> AppError {
+        let raw = serverMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = raw.lowercased()
+        let hint: String
+        if lower.contains("audience") {
+            hint = "Supabase does not accept this app's Google client ID. In Supabase > Authentication > Providers > Google, add the iOS client ID to \"Client IDs\"."
+        } else if lower.contains("nonce") {
+            hint = "The Google token's nonce check failed. Enable \"Skip nonce checks\" for Google in Supabase, or send a nonce."
+        } else if lower.contains("provider") && (lower.contains("not enabled") || lower.contains("unsupported")) {
+            hint = "The Google provider is not enabled in Supabase."
+        } else if lower.contains("signup") && lower.contains("disabled") {
+            hint = "New signups are disabled in Supabase, so a first-time Google account cannot be created."
+        } else if lower.contains("bad id token") || lower.contains("invalid id token") || lower.contains("jwt") {
+            hint = "Supabase could not verify the Google token."
+        } else {
+            hint = "The server rejected the Google sign-in."
+        }
+        let detail = raw.isEmpty ? "HTTP \(status)" : "HTTP \(status): \(raw)"
+        return AppError.googleSignInFailed("\(hint) (\(detail))")
+    }
+
+    private static func supabaseAuthRequest<Response: Decodable>(
+        url: URL,
+        body: [String: Any],
+        surfaceServerMessageAs customError: ((Int, String) -> AppError)? = nil
+    ) async throws -> Response {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         applySupabaseHeaders(to: &request, bearer: supabaseAnonKey)
@@ -884,6 +1482,11 @@ enum RemoteAuthService {
             let supabaseError = try? JSONDecoder().decode(SupabaseErrorResponse.self, from: data)
             let errorCode = supabaseError?.errorCode?.lowercased()
             let message = (supabaseError?.message ?? supabaseError?.msg ?? "").lowercased()
+
+            if let customError {
+                let raw = supabaseError?.message ?? supabaseError?.msg ?? supabaseError?.errorDescription ?? ""
+                throw customError(status, raw)
+            }
 
             if status == 429 || errorCode == "over_email_send_rate_limit" {
                 throw AppError.signupEmailRateLimited
@@ -946,7 +1549,8 @@ enum RemoteAuthService {
             case "invalidCredentials": throw AppError.invalidCredentials
             case "noAccount": throw AppError.noAccount
             case "weakPassword": throw AppError.weakPassword
-            case "adminRequired", "cannotDeleteAdmin": throw AppError.adminRequired
+            case "adminRequired": throw AppError.adminRequired
+            case "cannotDeleteAdmin": throw AppError.accountDeletionBlockedForAdmin
             default: throw AppError.remoteAuthUnavailable
             }
         }

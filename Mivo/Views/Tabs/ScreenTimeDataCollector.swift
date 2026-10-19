@@ -20,10 +20,10 @@ class ScreenTimeDataCollector {
     private init() {}
 
     var authorizationStatus: MivoScreenTimeAuthorizationStatus {
-        guard let cached = FamilyControlsManager.shared.cachedAuthorizationStatus() else {
+        guard FamilyControlsManager.shared.cachedAuthorizationStatus() != nil else {
             return .notDetermined
         }
-        return cached ? .authorized : .denied
+        return FamilyControlsManager.shared.liveAuthorizationStatus() ? .authorized : .denied
     }
 
     var isMonitoring: Bool {

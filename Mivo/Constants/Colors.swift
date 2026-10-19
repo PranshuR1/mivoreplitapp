@@ -37,8 +37,51 @@ struct MivoColors {
     /// New blue accent for CTAs, icons, highlights - #4A6FA5
     static let blue = adaptive(light: "#4A6FA5", dark: "#7898C7")
     
+    // MARK: - v2 Redesign Tokens
+    //
+    // Added alongside the existing palette rather than replacing it, so screens
+    // can move to the redesign one at a time. The foundation pass will re-point
+    // `primary`/`surface` at `ink`/`surfaceV2` and retire the older names.
+
+    /// All headings, values and row labels. Slightly darker than `primary`.
+    /// 10.9:1 on `background`.
+    static let ink = adaptive(light: "#3D2313", dark: "#FAF3E8")
+
+    /// Body and secondary sentences. 5.4:1 on `background` — the lightest tone
+    /// permitted for prose.
+    static let inkBody = adaptive(light: "#6E5238", dark: "#C8B39B")
+
+    /// Eyebrows, meta and captions only. 2.9:1, so never used for prose.
+    static let inkMuted = adaptive(light: "#9C7A56", dark: "#A8896F")
+
+    /// Text links and tertiary buttons. 4.6:1 — the accessible stand-in for
+    /// amber text, which must never appear below 18pt on cream.
+    static let deep = adaptive(light: "#B5621E", dark: "#E29A50")
+
+    /// Facts, BETA/FOUNDER badges and founder rows. Never a call to action.
+    static let info = adaptive(light: "#4A6FA5", dark: "#7898C7")
+
+    /// Positive, "kept" and completed states, and downward-trend indicators.
+    static let kept = adaptive(light: "#5F7F63", dark: "#7C9C80")
+
+    /// Sheet emphasis blocks, avatar and app tiles, selected chips. Never
+    /// nested inside another surface.
+    static let surfaceV2 = adaptive(light: "#F3E8D5", dark: "#2A1D14")
+
+    /// Section dividers.
+    static let hairline = adaptive(light: "#3D2313", dark: "#FAF3E8").opacity(0.13)
+
+    /// Dividers between rows within one list.
+    static let hairlineSoft = adaptive(light: "#3D2313", dark: "#FAF3E8").opacity(0.10)
+
+    /// Chart bars that are not today, and progress tracks.
+    static let barTrack = adaptive(light: "#3D2313", dark: "#FAF3E8").opacity(0.16)
+
+    /// Cinematic backdrops only: the onboarding intro and the pause screen.
+    static let stage = Color(hex: "#161008")
+
     // MARK: - Computed/Derived Colors
-    
+
     /// Hero card circular arc stroke (uses accent)
     static let heroArc = accent
     

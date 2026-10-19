@@ -1,8 +1,10 @@
 import SwiftUI
+import AuthenticationServices
 
 struct RegisterView: View {
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var name = ""
     @State private var email = ""
     @State private var password = ""
@@ -11,7 +13,7 @@ struct RegisterView: View {
     @State private var loading = false
     @State private var error = ""
     @State private var accountRecoveryMessage: String?
-    @State private var ageGateCleared = false
+    @State private var appleNonce: String?
     let previewMode: Bool
 
     init(previewMode: Bool = false) {
@@ -65,6 +67,73 @@ struct RegisterView: View {
                     .disabled(loading)
                     .opacity(loading ? 0.7 : 1)
 
+                    HStack(spacing: 10) {
+                        Rectangle().fill(MivoColors.border.opacity(0.5)).frame(height: 1)
+                        Text("or")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(MivoColors.textMuted)
+                        Rectangle().fill(MivoColors.border.opacity(0.5)).frame(height: 1)
+                    }
+
+                    if previewMode || GoogleAuthService.isConfigured {
+                        Button {
+                            handleGoogleSignIn()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text("G")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundColor(MivoColors.accent)
+                                Text("Continue with Google")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(MivoColors.textPrimary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(MivoColors.surfaceRaised.opacity(0.56))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(MivoColors.border, lineWidth: 1)
+                            )
+                        }
+                        .disabled(loading)
+                        .opacity(loading ? 0.7 : 1)
+                    }
+
+                    if previewMode {
+                        Button {
+                            HapticsService.selection()
+                            error = "Founder preview only. No account was created."
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "apple.logo")
+                                Text("Continue with Apple")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundColor(MivoColors.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .disabled(loading)
+                        .opacity(loading ? 0.7 : 1)
+                    } else {
+                        SignInWithAppleButton(.continue) { request in
+                            let nonce = AppleSignInNonce.random()
+                            appleNonce = nonce
+                            request.requestedScopes = [.fullName, .email]
+                            request.nonce = AppleSignInNonce.sha256(nonce)
+                        } onCompletion: { result in
+                            handleAppleSignIn(result)
+                        }
+                        .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                        .frame(height: 50)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .disabled(loading)
+                        .opacity(loading ? 0.7 : 1)
+                    }
+
                     Button {
                         dismiss()
                     } label: {
@@ -83,12 +152,6 @@ struct RegisterView: View {
             if loading {
                 MivoLoadingOverlay(message: "Creating your account...")
                     .transition(.opacity)
-            }
-
-            if !ageGateCleared {
-                RegistrationAgeGateView(isCleared: $ageGateCleared, previewMode: previewMode)
-                    .transition(.opacity)
-                    .zIndex(10)
             }
         }
         .navigationBarBackButtonHidden()
@@ -229,6 +292,71 @@ struct RegisterView: View {
                     } else {
                         self.error = error.localizedDescription
                     }
+                    loading = false
+                }
+            }
+        }
+    }
+
+    func handleGoogleSignIn() {
+        if previewMode {
+            HapticsService.selection()
+            error = "Founder preview only. No account was created."
+            return
+        }
+        error = ""
+        loading = true
+        Task {
+            do {
+                try await appVM.loginWithGoogle()
+            } catch {
+                await MainActor.run {
+                    if error is GoogleSignInCancelled {
+                        self.error = ""
+                    } else if case AppError.deviceBoundToAnotherAccount(_) = error {
+                        self.accountRecoveryMessage = error.localizedDescription
+                        self.error = ""
+                    } else {
+                        self.error = error.localizedDescription
+                    }
+                }
+            }
+            await MainActor.run {
+                loading = false
+            }
+        }
+    }
+
+    func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .failure(let authError):
+            // User-cancelled sheets surface as ASAuthorizationError.canceled — not a real error.
+            if (authError as? ASAuthorizationError)?.code == .canceled { return }
+            error = authError.localizedDescription
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let tokenData = credential.identityToken,
+                  let idToken = String(data: tokenData, encoding: .utf8),
+                  let nonce = appleNonce else {
+                error = "Apple sign-in did not return a usable credential."
+                return
+            }
+            error = ""
+            loading = true
+            Task {
+                do {
+                    try await appVM.loginWithApple(idToken: idToken, nonce: nonce)
+                } catch {
+                    await MainActor.run {
+                        if case AppError.deviceBoundToAnotherAccount(_) = error {
+                            self.accountRecoveryMessage = error.localizedDescription
+                            self.error = ""
+                        } else {
+                            self.error = error.localizedDescription
+                        }
+                    }
+                }
+                await MainActor.run {
                     loading = false
                 }
             }

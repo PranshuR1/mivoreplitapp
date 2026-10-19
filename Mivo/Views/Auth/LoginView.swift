@@ -1,7 +1,11 @@
 import SwiftUI
+import AuthenticationServices
+import CryptoKit
+import Security
 
 struct LoginView: View {
     @EnvironmentObject var appVM: AppViewModel
+    @Environment(\.colorScheme) private var colorScheme
     @State private var email = ""
     @State private var password = ""
     @State private var showPassword = false
@@ -11,6 +15,7 @@ struct LoginView: View {
     @State private var accountRecoveryMessage: String?
     @State private var goToRegister = false
     @State private var goToForgotPassword = false
+    @State private var appleNonce: String?
     let previewMode: Bool
 
     init(previewMode: Bool = false) {
@@ -180,6 +185,74 @@ struct LoginView: View {
                             .opacity(loading ? 0.7 : 1)
                             .padding(.top, 4)
 
+                            HStack(spacing: 10) {
+                                Rectangle().fill(MivoColors.border.opacity(0.5)).frame(height: 1)
+                                Text("or")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(MivoColors.textMuted)
+                                Rectangle().fill(MivoColors.border.opacity(0.5)).frame(height: 1)
+                            }
+                            .padding(.top, 6)
+
+                            if previewMode || GoogleAuthService.isConfigured {
+                                Button {
+                                    handleGoogleSignIn()
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Text("G")
+                                            .font(.system(size: 15, weight: .bold))
+                                            .foregroundColor(MivoColors.accent)
+                                        Text("Continue with Google")
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(MivoColors.textPrimary)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(MivoColors.surfaceRaised.opacity(0.56))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .strokeBorder(MivoColors.border, lineWidth: 1)
+                                    )
+                                }
+                                .disabled(loading)
+                                .opacity(loading ? 0.7 : 1)
+                            }
+
+                            if previewMode {
+                                Button {
+                                    HapticsService.selection()
+                                    error = "Founder preview only. Your signed-in account was not changed."
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "apple.logo")
+                                        Text("Continue with Apple")
+                                            .font(.system(size: 16, weight: .semibold))
+                                    }
+                                    .foregroundColor(MivoColors.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(Color.black)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
+                                .disabled(loading)
+                                .opacity(loading ? 0.7 : 1)
+                            } else {
+                                SignInWithAppleButton(.continue) { request in
+                                    let nonce = AppleSignInNonce.random()
+                                    appleNonce = nonce
+                                    request.requestedScopes = [.fullName, .email]
+                                    request.nonce = AppleSignInNonce.sha256(nonce)
+                                } onCompletion: { result in
+                                    handleAppleSignIn(result)
+                                }
+                                .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                                .frame(height: 50)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .disabled(loading)
+                                .opacity(loading ? 0.7 : 1)
+                            }
+
                             if previewMode || DeviceBindingService.boundEmail == nil {
                                 HStack(spacing: 0) {
                                     Text("New to Mivo? ")
@@ -282,5 +355,101 @@ struct LoginView: View {
                 loading = false
             }
         }
+    }
+
+    func handleGoogleSignIn() {
+        if previewMode {
+            HapticsService.selection()
+            error = "Founder preview only. Your signed-in account was not changed."
+            return
+        }
+        error = ""
+        loading = true
+        Task {
+            do {
+                try await appVM.loginWithGoogle()
+            } catch {
+                await MainActor.run {
+                    if error is GoogleSignInCancelled {
+                        self.error = ""
+                    } else if case AppError.deviceBoundToAnotherAccount(_) = error {
+                        self.accountRecoveryMessage = error.localizedDescription
+                        self.error = ""
+                    } else {
+                        self.error = error.localizedDescription
+                    }
+                }
+            }
+            await MainActor.run {
+                loading = false
+            }
+        }
+    }
+
+    func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .failure(let authError):
+            // User-cancelled sheets surface as ASAuthorizationError.canceled — not a real error.
+            if (authError as? ASAuthorizationError)?.code == .canceled { return }
+            error = authError.localizedDescription
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let tokenData = credential.identityToken,
+                  let idToken = String(data: tokenData, encoding: .utf8),
+                  let nonce = appleNonce else {
+                error = "Apple sign-in did not return a usable credential."
+                return
+            }
+            error = ""
+            loading = true
+            Task {
+                do {
+                    try await appVM.loginWithApple(idToken: idToken, nonce: nonce)
+                } catch {
+                    await MainActor.run {
+                        if case AppError.deviceBoundToAnotherAccount(_) = error {
+                            self.accountRecoveryMessage = error.localizedDescription
+                            self.error = ""
+                        } else {
+                            self.error = error.localizedDescription
+                        }
+                    }
+                }
+                await MainActor.run {
+                    loading = false
+                }
+            }
+        }
+    }
+}
+
+/// Shared by both apps' Sign in with Apple buttons — the raw nonce is
+/// generated here (view layer, matches Apple's own sample code) and its
+/// SHA256 hash goes on the `ASAuthorizationAppleIDRequest`; the raw value
+/// is sent to Supabase alongside the identity token so it can verify the
+/// hash inside the token matches, guarding against replay.
+enum AppleSignInNonce {
+    static func random(length: Int = 32) -> String {
+        precondition(length > 0)
+        let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remainingLength = length
+        while remainingLength > 0 {
+            var randoms = [UInt8](repeating: 0, count: 16)
+            let status = SecRandomCopyBytes(kSecRandomDefault, randoms.count, &randoms)
+            precondition(status == errSecSuccess)
+            for random in randoms {
+                if remainingLength == 0 { break }
+                if random < charset.count {
+                    result.append(charset[Int(random)])
+                    remainingLength -= 1
+                }
+            }
+        }
+        return result
+    }
+
+    static func sha256(_ input: String) -> String {
+        SHA256.hash(data: Data(input.utf8)).compactMap { String(format: "%02x", $0) }.joined()
     }
 }

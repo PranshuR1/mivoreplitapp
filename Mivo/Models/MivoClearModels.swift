@@ -316,7 +316,17 @@ enum MivoClearDefaults {
                 "[aria-label='Explore']",
                 "[data-testid='clips-tab']",
                 "[data-testid='explore-tab']",
-                "div[role='button']:has([aria-label='Live'])"
+                "div[role='button']:has([aria-label='Live'])",
+                // Instagram's own in-page back arrow. From the DM inbox it
+                // leads straight out to the feed. The runtime guard also tries
+                // to strip this, but that is JavaScript Mivo injects and this
+                // is WebKit's own rule engine — keeping both means the arrow
+                // still goes away if the injected guard ever fails to run.
+                "svg[aria-label='Back']",
+                "svg[aria-label='back']",
+                "[role='button'][aria-label='Back']",
+                "a[aria-label='Back']",
+                "[data-icon='arrow-left']"
             ],
             quickActions: [
                 MivoClearQuickAction(id: "messages", title: "Messages", icon: "message.fill", path: "/direct/inbox/"),

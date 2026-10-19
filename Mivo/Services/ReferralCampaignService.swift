@@ -402,11 +402,13 @@ enum ReferralCampaignService {
         try await rpc("ambassador_dashboard", body: [:], authenticated: true)
     }
 
-    static func logEvent(_ name: String, source: String? = nil) async {
+    static func logEvent(_ name: String, source: String? = nil, metadata: [String: Any] = [:]) async {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        var payload = metadata
+        payload["app_version"] = version
         let _: EmptyRPCResponse? = try? await rpcAllowingEmpty(
             "log_analytics_event",
-            body: ["input_event_name": name, "input_source": source ?? NSNull(), "input_metadata": ["app_version": version]],
+            body: ["input_event_name": name, "input_source": source ?? NSNull(), "input_metadata": payload],
             authenticated: true
         )
     }

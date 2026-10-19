@@ -229,190 +229,651 @@ struct MivoFirstLaunchIntroView: View {
     }
 }
 
+
+// MARK: - Onboarding (v2 redesign)
+
+/// One decision per screen, progress always visible, never more than four
+/// options — a cinematic intro, six questions, then the plan.
+///
+/// Answers are written straight into `AppViewModel.onboardingProfile` so the
+/// plan, the pause and the app shield all read the same values the user chose.
 struct OnboardingWelcomeView: View {
     @EnvironmentObject private var appVM: AppViewModel
-    @State private var goToWhy = false
-    @State private var appear = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let replayMode: Bool
 
     init(replayMode: Bool = false) {
         self.replayMode = replayMode
     }
 
+    /// `-1` is the cinematic intro, `0...5` the questions, `6` the plan.
+    @State private var index = Self.initialIndex
+
+    /// Lets `-MivoPreviewOnboardingStep <n>` open a single screen directly, in
+    /// keeping with the other `-MivoPreview…` arguments RootView already reads.
+    private static var initialIndex: Int {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if let flag = arguments.firstIndex(of: "-MivoPreviewOnboardingStep"),
+           arguments.indices.contains(flag + 1),
+           let step = Int(arguments[flag + 1]) {
+            return step
+        }
+        #endif
+        return -1
+    }
+    @State private var answers: [Int: String] = [:]
+    @State private var showReferralStep = false
+    @State private var isRequestingScreenTime = false
+    @State private var glow = false
+    @State private var swapSelection: UserSwap? = nil
+
+    private var questions: [OnboardingQuestion] { OnboardingQuestion.all }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                OnboardingBackdrop()
-
-                VStack(spacing: 0) {
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: 26) {
-                            VStack(spacing: 12) {
-                                Text("Build a quieter phone")
-                                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                                    .foregroundColor(MivoColors.textPrimary)
-                                    .multilineTextAlignment(.center)
-
-                                Text("Mivo learns where your attention leaks, then helps you pause before the loop starts.")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(MivoColors.textSecondary)
-                                    .multilineTextAlignment(.center)
-                                    .lineSpacing(6)
-                                    .padding(.horizontal, 10)
-                            }
-                            .padding(.top, 22)
-                            .onboardingEntrance(appear, delay: 0.05)
-
-                            focusHero
-                                .onboardingEntrance(appear, delay: 0.16)
-
-                            VStack(spacing: 12) {
-                                ForEach(Array(pillarItems().enumerated()), id: \.offset) { index, item in
-                                    PillarCard(item: item)
-                                        .onboardingEntrance(appear, delay: 0.26 + Double(index) * 0.08)
-                                }
-                            }
-                            .padding(.top, 4)
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.top, 48)
-                        .padding(.bottom, 120)
-                    }
-
-                    OnboardingBottomBar {
-                        OnboardingPrimaryButton("Begin setup") {
-                            Image(systemName: "arrow.right")
-                        } action: {
-                            goToWhy = true
-                        }
-                        .onboardingEntrance(appear, delay: 0.42)
-                    }
+        ZStack {
+            if index < 0 {
+                intro.transition(.opacity)
+            } else if index == questions.count {
+                swapStep.transition(.opacity)
+            } else if index > questions.count {
+                planReady.transition(.opacity)
+            } else {
+                question(questions[index]).transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.24), value: index)
+        .sheet(isPresented: $showReferralStep) {
+            NavigationStack { OnboardingReferralCodeView() }
+        }
+        .overlay(alignment: .topTrailing) {
+            if replayMode {
+                Button {
+                    HapticsService.impact(style: .medium)
+                    appVM.cancelFounderOnboardingReplay()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(index < 0 ? MivoColors.heroText : MivoColors.ink)
+                        .frame(width: 42, height: 42)
                 }
+                .accessibilityLabel("Exit onboarding replay")
+                .padding(.top, 12)
+                .padding(.trailing, 14)
             }
-            .navigationDestination(isPresented: $goToWhy) {
-                OnboardingReferralCodeView()
-            }
-            .overlay(alignment: .topTrailing) {
-                if replayMode {
-                    Button {
-                        HapticsService.impact(style: .medium)
-                        appVM.cancelFounderOnboardingReplay()
-                    } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(MivoColors.textPrimary)
-                            .frame(width: 42, height: 42)
-                    }
-                    .buttonStyle(OnboardingPressStyle())
-                    .accessibilityLabel("Exit onboarding replay")
-                    .padding(.top, 12)
-                    .padding(.trailing, 14)
-                }
-            }
-            .onboardingNavigationChromeHidden(showsBackButton: false)
-            .onAppear { appear = true }
         }
     }
 
-    private var focusHero: some View {
+    // MARK: 8.1 Cinematic intro
+
+    private var intro: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 38, style: .continuous)
+            MivoColors.stage.ignoresSafeArea()
+
+            // Ambient, slower than the pause screen's breath.
+            Circle()
                 .fill(
-                    LinearGradient(
-                        colors: [MivoColors.heroBg, MivoColors.heroBg.opacity(0.85)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                    RadialGradient(
+                        colors: [MivoColors.accent.opacity(0.26), .clear],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 210
                     )
                 )
-                .frame(height: 226)
+                .frame(width: 420, height: 420)
+                .scaleEffect(glow ? 1.06 : 0.94)
+                .opacity(glow ? 1 : 0.72)
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 5).repeatForever(autoreverses: true),
+                    value: glow
+                )
 
-            Circle()
-                .stroke(MivoColors.heroText.opacity(0.18), lineWidth: 18)
-                .frame(width: 166, height: 166)
-
-            Circle()
-                .trim(from: 0.12, to: 0.86)
-                .stroke(MivoColors.heroArc, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                .frame(width: 144, height: 144)
-                .rotationEffect(.degrees(-12))
-
-            VStack(spacing: 10) {
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 26, weight: .bold))
-                    .frame(width: 64, height: 64)
-                    .background(MivoColors.heroText.opacity(0.16))
-                    .clipShape(Circle())
-                Text("A pause before autopilot")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(MivoColors.heroText)
-                Text("Reflect first. Scroll only when you mean it.")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(MivoColors.heroText.opacity(0.68))
-            }
-
-            VStack {
-                HStack {
-                    Text("Private by design")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(MivoColors.heroText.opacity(0.76))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(MivoColors.heroText.opacity(0.12))
-                        .clipShape(Capsule())
-                    Spacer()
-                }
+            VStack(spacing: 18) {
                 Spacer()
+                // Template rendering knocks the mark out to cream, per §8.1.
+                // Tinting the original would leave the dark artwork dark.
+                Image("MivoLogoMark")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 132)
+                    .foregroundColor(MivoColors.heroText)
+                    .accessibilityLabel("Mivo")
+
+                Text("Your attention, on your terms")
+                    .font(.system(size: 27, weight: .bold))
+                    .foregroundColor(MivoColors.heroText)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(27 * 0.28)
+                    .frame(maxWidth: 280)
+
+                Text("Six questions. Then a plan that fits the day you actually have.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(MivoColors.heroText.opacity(0.6))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(14 * 0.6)
+                    .frame(maxWidth: 262)
+
+                Spacer()
+
+                Button {
+                    HapticsService.impact(style: .heavy)
+                    if appVM.onboardingProfile.referralCode == nil { showReferralStep = true }
+                    index = 0
+                } label: {
+                    Text("Begin")
+                        .font(.system(size: 15.5, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(MivoColors.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .shadow(color: Color(red: 0.47, green: 0.27, blue: 0.08).opacity(0.30), radius: 2, y: 1)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 52)
             }
-            .padding(18)
+        }
+        .preferredColorScheme(.dark)
+        .onAppear { glow = true }
+    }
+
+    // MARK: 8.2 Question screens
+
+    private func question(_ item: OnboardingQuestion) -> some View {
+        ZStack {
+            MivoColors.background.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 0) {
+                topBar
+                    .padding(.top, 56)
+
+                Text(item.title)
+                    .font(.system(size: 27, weight: .bold))
+                    .tracking(27 * -0.025)
+                    .foregroundColor(MivoColors.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 290, alignment: .leading)
+                    .padding(.top, 34)
+
+                Text(item.subtitle)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .lineSpacing(13.5 * 0.55)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 295, alignment: .leading)
+                    .padding(.top, 10)
+
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 9) {
+                        ForEach(item.options) { option in
+                            optionRow(option, in: item)
+                        }
+                    }
+                    .padding(.top, 28)
+                }
+
+                Spacer(minLength: 0)
+
+                if let footnote = item.footnote {
+                    Text(footnote)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundColor(MivoColors.inkMuted)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.bottom, 10)
+                }
+
+                primaryButton(
+                    title: item.ctaTitle,
+                    enabled: item.requiresAnswer ? answers[index] != nil : true,
+                    loading: isRequestingScreenTime,
+                    action: advance
+                )
+                .padding(.bottom, 30)
+            }
+            .padding(.horizontal, 24)
         }
     }
 
-    private func pillarItems() -> [PillarCard.Item] {
-        [
-            .init(systemImage: "eye", title: "See the pattern", description: "Spot the moments your phone becomes automatic."),
-            .init(systemImage: "pause.circle", title: "Add friction", description: "A short pause helps you choose before you scroll."),
-            .init(systemImage: "chart.line.uptrend.xyaxis", title: "Improve gently", description: "Clear reports make progress feel visible.")
+    private var topBar: some View {
+        HStack(spacing: 14) {
+            Button {
+                HapticsService.selection()
+                index -= 1
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .frame(width: 44, height: 44, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Go back")
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(MivoColors.ink.opacity(0.12))
+                    Capsule()
+                        .fill(MivoColors.accent)
+                        .frame(width: proxy.size.width * progress)
+                }
+            }
+            .frame(height: 4)
+            .animation(.timingCurve(0.22, 0.7, 0.3, 1, duration: 0.42), value: index)
+
+            Text("\(min(index + 1, questions.count)) / \(questions.count)")
+                .font(.system(size: 10, weight: .bold).monospacedDigit())
+                .foregroundColor(MivoColors.inkMuted)
+                .accessibilityLabel("Question \(min(index + 1, questions.count)) of \(questions.count)")
+        }
+    }
+
+    private var progress: CGFloat {
+        guard !questions.isEmpty else { return 0 }
+        return CGFloat(min(index + 1, questions.count)) / CGFloat(questions.count)
+    }
+
+    private func optionRow(_ option: OnboardingOption, in item: OnboardingQuestion) -> some View {
+        let selected = answers[index] == option.id
+        return Button {
+            HapticsService.impact(style: .medium)
+            answers[index] = option.id
+            persist(option, for: item)
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(option.label)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(MivoColors.ink)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 8)
+                if let note = option.note {
+                    Text(note)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(selected ? Color(hex: "#96551A") : MivoColors.inkMuted)
+                        .fixedSize()
+                }
+            }
+            .padding(18)
+            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? MivoColors.surfaceV2 : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(
+                        selected ? MivoColors.deep.opacity(0.5) : MivoColors.ink.opacity(0.14),
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    // MARK: 8.2b Swap step
+    //
+    // Cold turkey (just removing the reward) rarely holds. Habit substitution
+    // does — same cue, same physical routine, a different, real reward. This
+    // asks the user to pre-commit to theirs now, before any urge is actually
+    // happening, so there's nothing left to decide in the moment. Existing
+    // users who signed up before this shipped get the same choice once via
+    // `AppViewModel.evaluateSwapPrompt()`; both write to the same
+    // `userSwap`, and it stays editable in Settings after this.
+    private var swapStep: some View {
+        ZStack {
+            MivoColors.background.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 0) {
+                topBar
+                    .padding(.top, 56)
+
+                Text("Pick your swap")
+                    .font(.system(size: 27, weight: .bold))
+                    .tracking(27 * -0.025)
+                    .foregroundColor(MivoColors.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 290, alignment: .leading)
+                    .padding(.top, 34)
+
+                Text("Cold turkey rarely works. Swapping the reward does — pick one real, physical thing to reach for instead of the app. Not sure? Any of these work.")
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .lineSpacing(13.5 * 0.55)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 295, alignment: .leading)
+                    .padding(.top, 10)
+
+                ScrollView(showsIndicators: false) {
+                    SwapPickerRows(selection: $swapSelection)
+                        .padding(.top, 28)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    HapticsService.selection()
+                    index += 1
+                } label: {
+                    Text("I'll decide later")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(MivoColors.inkMuted)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
+
+                primaryButton(title: "Continue", enabled: swapSelection != nil, loading: false) {
+                    guard let swapSelection else { return }
+                    appVM.saveUserSwap(swapSelection)
+                    HapticsService.success()
+                    index += 1
+                }
+                .padding(.bottom, 30)
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    // MARK: 8.3 Plan ready
+
+    private var planReady: some View {
+        ZStack {
+            MivoColors.background.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text("YOUR PLAN")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
+                    .tracking(10 * 0.13)
+                    .foregroundColor(MivoColors.inkMuted)
+                    .padding(.top, 66)
+
+                Text(planHeadline)
+                    .font(.system(size: 30, weight: .bold))
+                    .tracking(30 * -0.03)
+                    .foregroundColor(MivoColors.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 280, alignment: .leading)
+                    .padding(.top, 10)
+
+                Text(planExplanation)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .lineSpacing(13.5 * 0.55)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 14)
+
+                VStack(spacing: 0) {
+                    ForEach(planRows, id: \.label) { row in
+                        Rectangle().fill(MivoColors.hairline).frame(height: 1)
+                        HStack {
+                            Text(row.label)
+                                .font(.system(size: 14.5, weight: .semibold))
+                                .foregroundColor(row.emphasised ? MivoColors.deep : MivoColors.ink)
+                            Spacer()
+                            Text(row.value)
+                                .font(.system(size: 14.5, weight: row.emphasised ? .heavy : .bold).monospacedDigit())
+                                .foregroundColor(row.emphasised ? MivoColors.deep : MivoColors.ink)
+                        }
+                        .padding(.vertical, 15)
+                    }
+                    Rectangle().fill(MivoColors.hairline).frame(height: 1)
+                }
+                .padding(.top, 26)
+
+                Text("You can change any of this later. Nothing here is a promise you have to keep perfectly.")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 18)
+
+                Spacer(minLength: 0)
+
+                primaryButton(title: "Start my plan", enabled: true, loading: false) {
+                    HapticsService.success()
+                    appVM.completeOnboarding()
+                }
+
+                Button {
+                    HapticsService.selection()
+                    answers = [:]
+                    index = -1
+                } label: {
+                    Text("Replay onboarding")
+                        .font(.system(size: 13.5, weight: .bold))
+                        .foregroundColor(MivoColors.inkMuted)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 24)
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    private var goalMinutes: Int { appVM.onboardingProfile.dailyScrollGoalMinutes ?? 45 }
+
+    /// The measured baseline when Screen Time has reported, otherwise the
+    /// planning default. Never presented as measured when it is not.
+    private var baselineMinutes: Int? { appVM.onboardingProfile.scrollEstimateMinutes }
+
+    private var planHeadline: String {
+        "Four windows, \(goalMinutes) minutes"
+    }
+
+    private var planExplanation: String {
+        guard let baseline = baselineMinutes, baseline > goalMinutes else {
+            return "Mivo will watch your first three days, then build a plan that trims a few minutes each week until you land at \(formatted(goalMinutes)). Then it holds."
+        }
+        return "Starting from your \(formatted(baseline)) baseline, Mivo trims a few minutes each week until you land at \(formatted(goalMinutes)). Then it holds."
+    }
+
+    private struct PlanRow { let label: String; let value: String; let emphasised: Bool }
+
+    private var planRows: [PlanRow] {
+        let baseline = baselineMinutes ?? max(goalMinutes * 3, 146)
+        let days = AIService.daysUntilGoalReached(baseline: baseline, goal: goalMinutes)
+        return [
+            PlanRow(
+                label: "Week 1 target",
+                value: formatted(AIService.personalizedTargetMinutes(dayIndex: 1, baseline: baseline, floor: goalMinutes)),
+                emphasised: false
+            ),
+            PlanRow(
+                label: "Week 3 target",
+                value: formatted(AIService.personalizedTargetMinutes(dayIndex: 15, baseline: baseline, floor: goalMinutes)),
+                emphasised: false
+            ),
+            PlanRow(label: "Day \(days) · goal", value: formatted(goalMinutes), emphasised: true)
         ]
+    }
+
+    private func formatted(_ minutes: Int) -> String {
+        minutes < 60 ? "\(minutes)m" : String(format: "%dh %02dm", minutes / 60, minutes % 60)
+    }
+
+    // MARK: Shared
+
+    private func primaryButton(
+        title: String,
+        enabled: Bool,
+        loading: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Group {
+                if loading {
+                    ProgressView().tint(.white)
+                } else {
+                    Text(title).font(.system(size: 15.5, weight: .bold))
+                }
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .background(enabled ? MivoColors.accent : MivoColors.accent.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .shadow(
+                color: Color(red: 0.47, green: 0.27, blue: 0.08).opacity(enabled ? 0.30 : 0),
+                radius: 2, y: 1
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled || loading)
+    }
+
+    private func advance() {
+        guard index < questions.count else { return }
+        let item = questions[index]
+        if item.requestsScreenTime {
+            requestScreenTime()
+            return
+        }
+        HapticsService.selection()
+        index += 1
+    }
+
+    private func requestScreenTime() {
+        isRequestingScreenTime = true
+        FamilyControlsManager.shared.requestAuthorization { granted in
+            Task { @MainActor in
+                isRequestingScreenTime = false
+                if granted {
+                    HapticsService.success()
+                    adoptMeasuredBaseline()
+                }
+                index += 1
+            }
+        }
+    }
+
+    /// The spec's copy promises nothing is self-reported, so the baseline comes
+    /// from Apple's own figure once access is granted. Left unset when there is
+    /// no report yet — the plan text adapts rather than inventing a number.
+    private func adoptMeasuredBaseline() {
+        appVM.refreshScreenTimeData()
+        guard let measured = appVM.screenTimeToday.minutes, measured > 0 else { return }
+        var profile = appVM.onboardingProfile
+        profile.scrollEstimateMinutes = measured
+        appVM.saveOnboardingProfile(profile)
+    }
+
+    private func persist(_ option: OnboardingOption, for item: OnboardingQuestion) {
+        var profile = appVM.onboardingProfile
+        switch item.field {
+        case .tone:
+            break
+        case .app:
+            profile.preferredApps = option.id == "other" ? [] : [option.label]
+        case .timeOfDay:
+            profile.primaryIntention = option.intention
+            if let intention = option.intention, !profile.intentions.contains(intention) {
+                profile.intentions.append(intention)
+            }
+        case .goal:
+            profile.dailyScrollGoalMinutes = option.minutes
+        case .pause:
+            profile.pauseStyle = option.pauseStyle
+        case .permission:
+            break
+        }
+        appVM.saveOnboardingProfile(profile)
     }
 }
 
-private struct PillarCard: View {
-    struct Item {
-        let systemImage: String
-        let title: String
-        let description: String
-    }
+// MARK: - Question content
 
-    let item: Item
+private enum OnboardingField {
+    case tone, app, timeOfDay, goal, pause, permission
+}
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: item.systemImage)
-                .font(.system(size: 17, weight: .semibold))
-                .frame(width: 44, height: 44)
-                .background(MivoColors.surface)
-                .foregroundColor(MivoColors.secondary)
-                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+private struct OnboardingOption: Identifiable {
+    let id: String
+    let label: String
+    var note: String? = nil
+    var minutes: Int? = nil
+    var pauseStyle: PauseStyle? = nil
+    var intention: Intention? = nil
+}
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text(item.title)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(MivoColors.textPrimary)
-                Text(item.description)
-                    .font(.system(size: 13))
-                    .foregroundColor(MivoColors.textSecondary)
-                    .lineSpacing(3)
-            }
+private struct OnboardingQuestion: Identifiable {
+    let id: Int
+    let field: OnboardingField
+    let title: String
+    let subtitle: String
+    let options: [OnboardingOption]
+    var footnote: String? = nil
+    var ctaTitle: String = "Continue"
+    var requiresAnswer: Bool = true
+    var requestsScreenTime: Bool = false
 
-            Spacer()
-        }
-        .padding(15)
-        .background(Color.white.opacity(0.62))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.55), lineWidth: 1)
+    static let all: [OnboardingQuestion] = [
+        OnboardingQuestion(
+            id: 0, field: .tone,
+            title: "How does your phone feel right now?",
+            subtitle: "This sets the tone, not a diagnosis.",
+            options: [
+                OnboardingOption(id: "fine", label: "Mostly fine", note: "small tune-up"),
+                OnboardingOption(id: "loud", label: "A bit loud", note: "most people"),
+                OnboardingOption(id: "hand", label: "Out of hand", note: "let's go slow"),
+                OnboardingOption(id: "unsure", label: "Not sure yet")
+            ],
+            footnote: "Answers stay on your device."
+        ),
+        OnboardingQuestion(
+            id: 1, field: .app,
+            title: "Which app pulls hardest?",
+            subtitle: "We'll start with one and add more later.",
+            options: [
+                OnboardingOption(id: "instagram", label: "Instagram"),
+                OnboardingOption(id: "tiktok", label: "TikTok"),
+                OnboardingOption(id: "youtube", label: "YouTube"),
+                OnboardingOption(id: "other", label: "Something else")
+            ]
+        ),
+        OnboardingQuestion(
+            id: 2, field: .timeOfDay,
+            title: "When does scrolling cost you most?",
+            subtitle: "Mivo will guard this stretch first.",
+            options: [
+                OnboardingOption(id: "morning", label: "First thing in the morning", intention: .killTime),
+                OnboardingOption(id: "afternoon", label: "Mid-afternoon slump", intention: .bored),
+                OnboardingOption(id: "night", label: "Late at night", note: "most common", intention: .relax),
+                OnboardingOption(id: "allday", label: "All day, honestly", intention: .killTime)
+            ]
+        ),
+        OnboardingQuestion(
+            id: 3, field: .goal,
+            title: "How much scrolling feels right per day?",
+            subtitle: "Pick something you'd be glad to hit, not proud to survive.",
+            options: [
+                OnboardingOption(id: "30", label: "30 minutes", note: "ambitious", minutes: 30),
+                OnboardingOption(id: "45", label: "45 minutes", note: "recommended", minutes: 45),
+                OnboardingOption(id: "70", label: "70 minutes", note: "gentle start", minutes: 70),
+                OnboardingOption(id: "90", label: "90 minutes", note: "just less", minutes: 90)
+            ]
+        ),
+        OnboardingQuestion(
+            id: 4, field: .pause,
+            title: "How should Mivo meet you at the door?",
+            subtitle: "A pause before the app opens is the one thing that reliably works.",
+            options: [
+                OnboardingOption(id: "five", label: "5-second pause", note: "recommended", pauseStyle: .fiveSecond),
+                OnboardingOption(id: "ten", label: "10-second pause", note: "firmer", pauseStyle: .tenSecond),
+                OnboardingOption(id: "reason", label: "Ask my reason too", note: "slowest", pauseStyle: .askReason),
+                OnboardingOption(id: "count", label: "Just count it", note: "no friction", pauseStyle: .countOnly)
+            ]
+        ),
+        OnboardingQuestion(
+            id: 5, field: .permission,
+            title: "Screen Time access",
+            subtitle: "Mivo reads your totals from Apple Screen Time so nothing has to be self-reported. Usage never leaves your iPhone.",
+            options: [],
+            footnote: "You can revoke this in Settings at any time.",
+            ctaTitle: "Allow access",
+            requiresAnswer: false,
+            requestsScreenTime: true
         )
-        .shadow(color: Color.black.opacity(0.035), radius: 12, y: 6)
-    }
+    ]
 }

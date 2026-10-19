@@ -28,8 +28,13 @@ struct HomeView: View {
     @State private var showReferralHub = false
     @State private var showExperimentHub = false
     @State private var showMivoClear = false
+    @State private var showMivoStill = false
+    @State private var showAttentionReceipt = false
+    @State private var showSchedule = false
+    @ObservedObject private var stillStore = MivoStillStore.shared
     @ObservedObject private var expansion = ProductExpansionStore.shared
     @State private var showRecoveryMode = false
+    @State private var isRequestingScreenTime = false
     private let screenTimePoller = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     #if canImport(FamilyControls)
     @State private var impulseSelection = FamilyActivitySelection()
@@ -38,34 +43,69 @@ struct HomeView: View {
 
     var body: some View {
         ZStack {
-            homeBackdrop
+            MivoColors.background.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 26) {
-                    header
-                    heroCard
-                    metricsRow
-                    adaptivePlanCard
-                    ExperimentsHomeCard(
-                        experiment: appVM.currentWeeklyExperiment,
-                        completedCount: appVM.completedWeeklyExperiments.count,
-                        open: { showExperimentHub = true }
-                    )
+                VStack(alignment: .leading, spacing: 0) {
+                    MivoGreetingBar(name: firstName)
+                        .padding(.top, 6)
+
+                    screenTimeHero
+                    MivoHairline()
+
+                    ComebackHomeSection()
+
+                    if hasScreenTimeAccess {
+                        scrollingPlanSection
+                        MivoHairline()
+                    }
+
+                    // Everything Mivo offers beyond the plan itself, grouped
+                    // instead of one long run of identical rows. Features that
+                    // used to be buried in Settings (schedule, referrals, the
+                    // 30-day forecast) surface here.
+                    groupHeader("Practice")
+
+                    experimentRow
+                    MivoHairline()
+
+                    // Draws nothing (hairline included) until Companion is on.
+                    CompanionHomeRow()
+
+                    // Focus Break (formerly Intent Games) moved off Home and
+                    // behind its own opt-in toggle on Protect — it now reads
+                    // as an explicit trial someone chooses, not a feature
+                    // advertised alongside Still and Clear.
+                    if expansion.isEnabled(.mivoStill) {
+                        MivoStillRow {
+                            HapticsService.selection()
+                            showMivoStill = true
+                        }
+                        MivoHairline()
+                    }
+
                     if expansion.isEnabled(.mivoClear) {
-                        MivoClearHomeCard { showMivoClear = true }
+                        mivoClearRow
+                        MivoHairline()
                     }
-                    if referralSummary?.campaign != nil {
-                        ReferralHomeCard(
-                            summary: referralSummary,
-                            isLoading: referralLoading,
-                            openHub: { showReferralHub = true }
-                        )
+
+                    groupHeader("Reflect & plan")
+
+                    attentionReceiptRow
+                    MivoHairline()
+
+                    scheduleRow
+                    MivoHairline()
+
+                    if let plan = displayedPlan, !plan.collecting {
+                        forecastRow
+                        MivoHairline()
                     }
+
+                    referralRow
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 12)
-                .padding(.bottom, 40)
-                .mivoReadableWidth()
+                .padding(.horizontal, MivoMetrics.screenPadding)
+                .padding(.bottom, MivoMetrics.scrollBottomPadding)
             }
         }
         .navigationBarHidden(true)
@@ -75,20 +115,39 @@ struct HomeView: View {
             if #available(iOS 16.0, *) {
                 impulseSelection = FamilyControlsManager.shared.loadFamilyActivitySelection()
                 FamilyControlsManager.shared.applyImpulseProtectionIfNeeded()
+                Task { await CrossDeviceFocusService.shared.reconcile() }
             }
             #endif
             appVM.refreshScreenTimeData()
+            // Local, synchronous, cheap — no reason to route these through
+            // the Task below.
+            IntentGameService.shared.prepare(for: appVM)
+            TimeLoanService.shared.prepare(for: appVM)
             Task {
-                await expansion.prepare(for: appVM)
-                await MivoClearStore.shared.prepare(for: appVM)
+                // These six don't depend on each other's results (each
+                // writes its own slice of state), so they run concurrently
+                // instead of one after another. Sequential awaits here
+                // used to mean Home's total load time was the *sum* of
+                // every network call (feature flags, Mivo Clear, Mivo
+                // Still, the AI-personalized plan, admin role, weekly
+                // experiments) on every single appearance — including
+                // every tab switch back to Home. Running them together
+                // caps it at whichever one is slowest instead.
+                async let expansionPrepare: Void = expansion.prepare(for: appVM)
+                async let clearPrepare: Void = MivoClearStore.shared.prepare(for: appVM)
+                async let stillPrepare: Void = MivoStillStore.shared.prepare(for: appVM)
                 async let plan: Void = refreshAdaptivePlan()
-                async let referral: Void = refreshReferralSummary()
-                await appVM.refreshServerAdminRole()
-                _ = await (plan, referral)
-                await appVM.refreshWeeklyExperiments()
+                async let adminRole: Void = appVM.refreshServerAdminRole()
+                async let weeklyExperiments: Void = appVM.refreshWeeklyExperiments()
+                _ = await (expansionPrepare, clearPrepare, stillPrepare, plan, adminRole, weeklyExperiments)
             }
         }
         .onChange(of: appVM.sessions.count) { _, _ in
+            Task { await refreshAdaptivePlan() }
+        }
+        // The plan is cached in `adaptivePlan`, so a fresh start has to push a
+        // refresh or Home keeps showing the old target and windows.
+        .onChange(of: appVM.comebackAnchor) { _, _ in
             Task { await refreshAdaptivePlan() }
         }
         .onChange(of: appVM.truthChecks.count) { _, _ in
@@ -115,12 +174,6 @@ struct HomeView: View {
             }
         }
         #endif
-        .sheet(isPresented: $showReferralHub, onDismiss: {
-            Task { await refreshReferralSummary() }
-        }) {
-            ReferralHubView()
-                .environmentObject(appVM)
-        }
         .sheet(isPresented: $showExperimentHub) {
             NavigationStack {
                 ExperimentHubView()
@@ -144,535 +197,474 @@ struct HomeView: View {
             MivoClearHubView()
                 .environmentObject(appVM)
         }
-    }
-
-    private func handleTodayGuideAction() {
-        let guide = expansion.todayGuide(using: appVM)
-        switch guide.kind {
-        case .rescue:
-            showRecoveryMode = true
-        case .experiment:
-            showExperimentHub = true
-        case .nextWindow:
-            appVM.deepLinkInterventionRequested = true
-        case .dailySchedule:
-            appVM.evaluateDailyScrollSchedulePrompt()
-        case .truthCheck:
-            appVM.evaluateTimeTruthPrompt()
-        case .expiredSession, .complete:
-            break
+        .fullScreenCover(isPresented: $showMivoStill) {
+            MivoStillFlowView()
+                .environmentObject(appVM)
         }
-    }
-
-    @MainActor
-    private func refreshReferralSummary() async {
-        referralLoading = true
-        referralSummary = try? await appVM.loadReferralSummary()
-        referralLoading = false
-    }
-
-    private var homeBackdrop: some View {
-        MivoColors.background.ignoresSafeArea()
-    }
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            MivoLogo(size: 42)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("\(greeting()), \(firstName)")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundColor(MivoColors.screenTimeInk)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-                Text(dateLabel)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(MivoColors.textSecondary)
-            }
-
-            Spacer()
-
-            Button {
-                setImpulseProtection(!protectionEnabled)
-            } label: {
-                Image(systemName: protectionEnabled ? "shield.fill" : "shield")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(protectionEnabled ? MivoColors.accent : MivoColors.textSecondary)
-                    .frame(width: 42, height: 42)
-                    .background(MivoColors.card)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
+        .fullScreenCover(isPresented: $showAttentionReceipt) {
+            AttentionReceiptView()
+                .environmentObject(appVM)
         }
-    }
-
-    private var heroCard: some View {
-        NavigationLink {
-            if #available(iOS 16.0, *) {
-                ScreenTimeUsageView()
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Label(hasScreenTimeAccess ? "Live Screen Time" : "Awaiting access", systemImage: "waveform.path.ecg")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(MivoColors.heroText)
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .background(MivoColors.heroBg)
-                        .clipShape(Capsule())
-
-                    Spacer()
-
-                    Text(statusLabel)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(MivoColors.textMuted)
-                }
-
-                if hasScreenTimeAccess {
-                    screenTimeReportSyncSurface
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 190)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                } else {
-                    connectScreenTimeBlock
-                        .frame(minHeight: 132, alignment: .topLeading)
-                }
-
-                HStack(spacing: 10) {
-                    miniHeroStat(
-                        icon: "lock.open.fill",
-                        value: "\(appVM.todaysSessions.count)",
-                        label: appVM.todaysSessions.count == 1 ? "unlock" : "unlocks"
-                    )
-                    miniHeroStat(icon: trendIcon, value: trendText, label: "week")
-                }
-            }
-            .padding(18)
-            .background(MivoColors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(MivoColors.border.opacity(0.55), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var connectScreenTimeBlock: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text("Connect Screen Time")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundColor(MivoColors.screenTimeInk)
-                .lineLimit(2)
-                .minimumScaleFactor(0.82)
-            Text("Mivo will show Apple’s real Screen Time report here. No placeholder totals.")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(MivoColors.textSecondary)
-                .lineSpacing(3)
-        }
-    }
-
-    private func miniHeroStat(icon: String, value: String, label: String) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(MivoColors.accent)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(value)
-                    .font(.system(size: 15, weight: .bold).monospacedDigit())
-                    .foregroundColor(MivoColors.screenTimeInk)
-                Text(label)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(MivoColors.textSecondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(11)
-        .background(MivoColors.background.opacity(0.72))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private var metricsRow: some View {
-        HStack(spacing: 10) {
-            metricCard(icon: "target", value: "\(appVM.todaysSessions.count)", label: "Sessions")
-            metricCard(icon: "chart.line.uptrend.xyaxis", value: trendText, label: "vs last week", tint: trendTint)
-            metricCard(icon: "brain.head.profile", value: "\(appVM.truthChecks.count)", label: "Truth checks")
-        }
-    }
-
-    private func metricCard(
-        icon: String,
-        value: String,
-        label: String,
-        tint: Color = MivoColors.secondary
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(tint)
-            Text(value)
-                .font(.system(size: 20, weight: .bold).monospacedDigit())
-                .foregroundColor(MivoColors.screenTimeInk)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(MivoColors.textSecondary)
-                .lineLimit(2)
-        }
-        .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
-        .padding(13)
-        .background(MivoColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(MivoColors.border.opacity(0.35), lineWidth: 1)
-        }
-    }
-
-    @ViewBuilder
-    private var screenTimeReportSyncSurface: some View {
-        #if canImport(DeviceActivity) && canImport(FamilyControls) && canImport(ManagedSettings)
-        if #available(iOS 16.0, *) {
-            MivoScreenTimeUsageLiveReport()
-        }
-        #else
-        EmptyView()
-        #endif
-    }
-
-    private var adaptivePlanCard: some View {
-        let plan = displayPlan(adaptivePlan ?? appVM.adaptiveScreenTimePlan())
-
-        return Group {
-            if plan.collecting {
-                observationProgressSection(plan)
-            } else {
-                personalizedPlanTimeline(plan)
-            }
+        .sheet(isPresented: $showReferralHub) {
+            ReferralHubView()
+                .environmentObject(appVM)
         }
         .sheet(isPresented: $showMonthlyForecast) {
-            MonthlyPlanForecastView(plan: plan).environmentObject(appVM)
-        }
-    }
-
-    private func displayPlan(_ plan: ScreenTimeReductionPlan) -> ScreenTimeReductionPlan {
-        guard let schedule = appVM.dailyScrollSchedule(), !schedule.windows.isEmpty else {
-            return plan
-        }
-
-        return ScreenTimeReductionPlan(
-            id: "\(plan.id)-locked-\(schedule.date)",
-            collecting: plan.collecting,
-            daysCollected: plan.daysCollected,
-            daysNeeded: plan.daysNeeded,
-            dayIndex: plan.dayIndex,
-            baselineMinutes: plan.baselineMinutes,
-            targetMinutes: plan.targetMinutes,
-            strictnessPercent: plan.strictnessPercent,
-            summary: plan.collecting
-                ? "Today’s scroll windows are locked. Mivo is still observing without enforcing a cap."
-                : "Today’s scroll windows are locked from your daily check. Mivo trims your target from your blended baseline.",
-            decisionReason: plan.collecting
-                ? "These are the times you chose for today. Days 1-3 stay in observation mode."
-                : "These windows are the schedule you locked for today. You can choose again tomorrow morning.",
-            windows: schedule.windows
-        )
-    }
-
-    private func observationProgressSection(_ plan: ScreenTimeReductionPlan) -> some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack(spacing: 10) {
-                Image(systemName: "clock.badge.checkmark")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(MivoColors.blue)
-                Text("3-day observation · Day \(min(plan.daysCollected + 1, plan.daysNeeded))")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundColor(MivoColors.screenTimeInk)
-                Spacer()
-                Text("No cap")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(MivoColors.blue)
+            if let plan = displayedPlan {
+                MonthlyPlanForecastView(plan: plan)
+                    .environmentObject(appVM)
             }
-
-            HStack(spacing: 7) {
-                ForEach(0..<plan.daysNeeded, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(index < plan.daysCollected ? MivoColors.blue : MivoColors.surface)
-                        .frame(height: 8)
-                }
-            }
-
-            Text("Mivo is observing your real Screen Time first. Your personalized plan appears only after all three observation days are complete.")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(MivoColors.textSecondary)
-                .lineSpacing(3)
         }
-        .padding(.vertical, 18)
-        .overlay(alignment: .top) {
-            Rectangle().fill(MivoColors.border.opacity(0.34)).frame(height: 1)
-        }
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(MivoColors.border.opacity(0.34)).frame(height: 1)
+        .navigationDestination(isPresented: $showSchedule) {
+            SettingsView(page: .schedule)
         }
     }
 
-    private func personalizedPlanTimeline(_ plan: ScreenTimeReductionPlan) -> some View {
-        let windows = plan.windows.sorted {
-            if $0.startHour == $1.startHour { return $0.endHour < $1.endHour }
-            return $0.startHour < $1.startHour
-        }
+    // MARK: - 1.2 Screen Time hero
+    //
+    // The primary metric, as plain type on the ground — not a card. The eyebrow
+    // is load-bearing: it has to say this is total *device* Screen Time from
+    // Apple, not Mivo-tracked scrolling.
 
-        return VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(MivoColors.white)
-                    .frame(width: 42, height: 42)
-                    .background(MivoColors.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    private var screenTimeHero: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            MivoEyebrow(
+                text: "Today · Total device screen time",
+                accessibilityText: "Today's total device screen time, read from Apple Screen Time"
+            )
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Personalized meter")
-                        .font(.system(size: 19, weight: .bold, design: .rounded))
-                        .foregroundColor(MivoColors.screenTimeInk)
-                    Text("Day \(plan.dayIndex) · \(plan.strictnessPercent)% stricter")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(MivoColors.accent)
+            if hasScreenTimeAccess {
+                // Direct and visible, the way this looked before the hidden,
+                // near-zero-opacity host was introduced to keep this off
+                // Home's face — that hiding is very likely what stopped the
+                // extension from running at all (RunningBoard reported it
+                // stuck at `running-suspended-NotVisible`, and a
+                // DeviceActivityReport is a UI extension that may only get
+                // real execution time while its host is genuinely on
+                // screen). Showing Apple's own report card plainly gives up
+                // the custom big-number treatment, but a report that's
+                // actually visible to iOS beats a prettier one that never
+                // computes.
+                #if canImport(DeviceActivity) && canImport(FamilyControls) && canImport(ManagedSettings)
+                if #available(iOS 16.0, *) {
+                    MivoScreenTimeUsageLiveReport()
+                        .frame(height: 210)
+                        .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.radius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: MivoMetrics.radius, style: .continuous)
+                                .strokeBorder(MivoColors.hairline, lineWidth: 1)
+                        )
+                        .padding(.top, 14)
                 }
+                #endif
+
+                if let sparkline = screenTimeSparkline {
+                    HomeSparkline(values: sparkline)
+                        .padding(.top, 14)
+                }
+
+                if let comparison = screenTimeComparison {
+                    comparisonRow(comparison)
+                        .padding(.top, 14)
+                }
+
+                if let average = weeklyAverageMinutes {
+                    Text("Weekly average \(formatDuration(average))")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(MivoColors.inkBody)
+                        .padding(.top, 7)
+                }
+
+                Text(screenTimeFreshnessText)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .padding(.top, 9)
+            } else {
+                Text("Not connected")
+                    .font(.system(size: 27, weight: .bold))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .padding(.top, 12)
+
+                MivoPrimaryButton(
+                    label: isRequestingScreenTime ? "Opening Screen Time…" : "Connect Apple Screen Time",
+                    disabled: isRequestingScreenTime
+                ) {
+                    requestScreenTimeAccess()
+                }
+                .padding(.top, 18)
+            }
+        }
+        .padding(.top, 30)
+        .padding(.bottom, 24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func comparisonRow(_ comparison: HomeScreenTimeComparison) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: comparison.isDown ? "arrow.down" : "arrow.up")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(comparison.tint)
+                .frame(width: 18, height: 18)
+                .background(comparison.tint.opacity(0.16))
+                .clipShape(Circle())
+
+            Text(comparison.magnitudeText)
+                .font(.system(size: 13.5, weight: .semibold))
+                .foregroundColor(comparison.tint)
+                .fixedSize()
+
+            Text(comparison.referenceText)
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundColor(MivoColors.inkBody)
+                .fixedSize()
+
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - 1.3 Today's scrolling plan
+
+    @ViewBuilder
+    private var scrollingPlanSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("Today's scrolling plan")
+                    .font(.system(size: 20, weight: .bold))
+                    .tracking(Font.mivoTracking(-0.02, at: 20))
+                    .foregroundColor(MivoColors.ink)
 
                 Spacer(minLength: 8)
 
-                Button {
-                    HapticsService.selection()
-                    showMonthlyForecast = true
-                } label: {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(MivoColors.accent)
-                        .frame(width: 38, height: 38)
-                        .background(MivoColors.background)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                if let usage = planUsageText {
+                    Text(usage)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(MivoColors.deep)
+                        .fixedSize()
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("View full personalized plan")
             }
 
-            Text(plan.summary)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(MivoColors.textSecondary)
-                .lineSpacing(3)
+            if let plan = displayedPlan, plan.collecting {
+                observationLine(plan)
+            } else if planWindows.isEmpty {
+                Text("Your plan appears once today's windows are chosen.")
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .padding(.top, 7)
 
-            HStack(spacing: 0) {
-                personalizedPlanMetric("BASELINE", value: formatDuration(plan.baselineMinutes))
-                Rectangle()
-                    .fill(MivoColors.border.opacity(0.28))
-                    .frame(width: 1, height: 42)
-                personalizedPlanMetric("TARGET", value: formatDuration(plan.targetMinutes))
-                Rectangle()
-                    .fill(MivoColors.border.opacity(0.28))
-                    .frame(width: 1, height: 42)
-                personalizedPlanMetric("SESSIONS", value: "\(windows.count)")
-            }
-            .padding(.vertical, 12)
-            .background(MivoColors.background.opacity(0.72))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-            Rectangle()
-                .fill(MivoColors.border.opacity(0.28))
-                .frame(height: 1)
-
-            if windows.isEmpty {
-                HStack(spacing: 10) {
-                    Image(systemName: "calendar.badge.plus")
-                        .foregroundColor(MivoColors.accent)
-                    Text("Choose today’s scroll windows to place them on your plan.")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(MivoColors.textSecondary)
+                MivoPrimaryButton(label: "Choose today's windows") {
+                    appVM.evaluateDailyScrollSchedulePrompt()
                 }
-                .padding(.vertical, 22)
+                .padding(.top, 28)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(windows.enumerated()), id: \.element.id) { index, window in
-                        planWindowRow(
-                            window,
-                            state: planWindowState(at: index, windows: windows),
-                            isLast: index == windows.count - 1
-                        )
-                    }
-                }
-            }
-
-            Text(plan.decisionReason)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(MivoColors.textMuted)
-                .lineSpacing(3)
-
-            Button {
-                HapticsService.selection()
-                showMonthlyForecast = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "hand.tap.fill")
-                    Text("View your full personalized plan")
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                }
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(MivoColors.accent)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(18)
-        .background(MivoColors.surfaceRaised.opacity(0.68))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(MivoColors.border.opacity(0.34), lineWidth: 1)
-        }
-    }
-
-    private func personalizedPlanMetric(_ title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(MivoColors.textMuted)
-            Text(value)
-                .font(.system(size: 17, weight: .bold, design: .rounded))
-                .foregroundColor(MivoColors.screenTimeInk)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-    }
-
-    private func planWindowRow(
-        _ window: ScreenScrollWindow,
-        state: HomePlanWindowState,
-        isLast: Bool
-    ) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack(alignment: .top) {
-                if !isLast {
-                    Rectangle()
-                        .fill(state == .complete ? MivoColors.accent : MivoColors.border.opacity(0.55))
-                        .frame(width: 1)
-                        .padding(.top, 23)
-                }
-                planWindowMarker(state)
-            }
-            .frame(width: 24)
-            .frame(maxHeight: .infinity, alignment: .top)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(fullWindowTimeText(window))
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundColor(MivoColors.screenTimeInk)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-
-                Text(windowPeriodLabel(window))
+                Text(planSubline)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(MivoColors.accent)
+                    .foregroundColor(MivoColors.inkBody)
+                    .padding(.top, 7)
 
-                Text("\(window.minutes) min available")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(MivoColors.textMuted)
+                HomePlanTimeline(
+                    windows: planWindows,
+                    state: { planWindowState(at: $0, windows: planWindows) },
+                    title: { $0.title.isEmpty ? windowPeriodLabel($0) : $0.title },
+                    meta: { "\(fullWindowTimeText($0)) · \($0.minutes) min allowed" }
+                )
+                .padding(.top, 22)
+
+                MivoPrimaryButton(label: primaryActionLabel) {
+                    HapticsService.selection()
+                    appVM.deepLinkInterventionRequested = true
+                }
+                .padding(.top, 28)
+
+                MivoTertiaryButton(label: "or open an app on purpose") {
+                    HapticsService.selection()
+                    appVM.deepLinkInterventionRequested = true
+                }
+                .padding(.top, 6)
             }
-
-            Spacer(minLength: 8)
-            planWindowStatusChip(state)
         }
-        .padding(.vertical, 15)
-        .frame(minHeight: 104, alignment: .top)
-        .overlay(alignment: .bottomTrailing) {
-            if !isLast {
-                Rectangle()
-                    .fill(MivoColors.border.opacity(0.25))
-                    .frame(height: 1)
-                    .padding(.leading, 36)
+        .padding(.top, 26)
+        .padding(.bottom, 26)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Days 1–3 replace the timeline with a single line and a 3-segment bar
+    /// rather than showing a cap that does not exist yet.
+    private func observationLine(_ plan: ScreenTimeReductionPlan) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Day \(plan.daysCollected) of \(plan.daysNeeded) · observing, no cap yet")
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundColor(MivoColors.inkBody)
+
+            MivoSegmentBar(
+                completed: plan.daysCollected,
+                total: max(1, plan.daysNeeded),
+                height: 5,
+                fill: MivoColors.info
+            )
+
+            Text("Your plan appears after \(plan.daysNeeded) days.")
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundColor(MivoColors.inkBody)
+        }
+        .padding(.top, 12)
+    }
+
+    // MARK: - 1.4 / 1.5 Rows
+
+    private var experimentRow: some View {
+        MivoNavigationRow {
+            HapticsService.selection()
+            showExperimentHub = true
+        } content: {
+            MivoEyebrow(text: experimentEyebrow)
+            Text(appVM.currentWeeklyExperiment?.title ?? "Start a 7-day experiment")
+                .font(.system(size: 15.5, weight: .semibold))
+                .foregroundColor(MivoColors.ink)
+                .multilineTextAlignment(.leading)
+            if let experiment = appVM.currentWeeklyExperiment {
+                MivoSegmentBar(completed: experiment.dayNumber)
+                    .frame(width: 7 * 22 + 6 * 5)
+                    .padding(.top, 3)
             }
         }
     }
 
-    @ViewBuilder
-    private func planWindowMarker(_ state: HomePlanWindowState) -> some View {
-        switch state {
-        case .complete:
-            Image(systemName: "checkmark")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(MivoColors.white)
-                .frame(width: 24, height: 24)
-                .background(MivoColors.accent)
-                .clipShape(Circle())
-        case .next:
-            Circle()
-                .fill(MivoColors.background)
-                .frame(width: 22, height: 22)
-                .overlay(Circle().strokeBorder(MivoColors.accent, lineWidth: 2))
-        case .later:
-            Circle()
-                .fill(MivoColors.background)
-                .frame(width: 22, height: 22)
-                .overlay(Circle().strokeBorder(MivoColors.border.opacity(0.75), lineWidth: 2))
+    private var mivoClearRow: some View {
+        MivoNavigationRow {
+            HapticsService.selection()
+            showMivoClear = true
+        } content: {
+            Text("Mivo Clear")
+                .font(.system(size: 15.5, weight: .semibold))
+                .foregroundColor(MivoColors.ink)
+            Text(mivoClearMeta)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(MivoColors.inkMuted)
         }
     }
 
-    private func planWindowStatusChip(_ state: HomePlanWindowState) -> some View {
-        let title: String
-        let icon: String
-        let foreground: Color
-        let background: Color
+    private func groupHeader(_ text: String) -> some View {
+        MivoEyebrow(text: text)
+            .padding(.top, 26)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-        switch state {
-        case .complete:
-            title = "Complete"
-            icon = "checkmark.circle.fill"
-            foreground = Color(hex: "#37682F")
-            background = Color(hex: "#E8F0E2")
-        case .next:
-            title = "Next"
-            icon = "circle"
-            foreground = MivoColors.accent
-            background = MivoColors.accent.opacity(0.09)
-        case .later:
-            title = "Later"
-            icon = "circle"
-            foreground = MivoColors.textSecondary
-            background = MivoColors.surface.opacity(0.62)
+    private var scheduleRow: some View {
+        MivoNavigationRow {
+            HapticsService.selection()
+            showSchedule = true
+        } content: {
+            Text("Today's schedule")
+                .font(.system(size: 15.5, weight: .semibold))
+                .foregroundColor(MivoColors.ink)
+            Text(appVM.todayScrollScheduleStatusText)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(MivoColors.inkMuted)
+                .multilineTextAlignment(.leading)
         }
+    }
 
-        return HStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .bold))
-            Text(title)
-                .font(.system(size: 11, weight: .bold))
+    private var forecastRow: some View {
+        MivoNavigationRow {
+            HapticsService.selection()
+            showMonthlyForecast = true
+        } content: {
+            Text("30-day forecast")
+                .font(.system(size: 15.5, weight: .semibold))
+                .foregroundColor(MivoColors.ink)
+            Text("Where your plan is headed, day by day")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(MivoColors.inkMuted)
         }
-        .foregroundColor(foreground)
-        .padding(.horizontal, 10)
-        .frame(height: 34)
-        .background(background)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var referralRow: some View {
+        MivoNavigationRow {
+            HapticsService.selection()
+            showReferralHub = true
+        } content: {
+            Text("Invite friends")
+                .font(.system(size: 15.5, weight: .semibold))
+                .foregroundColor(MivoColors.ink)
+            Text("Your code, link, and referral progress")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(MivoColors.inkMuted)
+        }
+    }
+
+    private var attentionReceiptRow: some View {
+        MivoNavigationRow {
+            HapticsService.selection()
+            showAttentionReceipt = true
+        } content: {
+            Text("Receipt")
+                .font(.system(size: 15.5, weight: .semibold))
+                .foregroundColor(MivoColors.ink)
+            Text("What today actually cost you")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(MivoColors.inkMuted)
+        }
+    }
+
+    // MARK: - Derived values
+
+    private var displayedPlan: ScreenTimeReductionPlan? {
+        adaptivePlan.map(displayPlan)
+    }
+
+    private var planWindows: [ScreenScrollWindow] {
+        (displayedPlan?.windows ?? []).sorted {
+            if $0.startHour == $1.startHour { return $0.endHour < $1.endHour }
+            return $0.startHour < $1.startHour
+        }
+    }
+
+    private var planSubline: String {
+        let count = planWindows.count
+        guard count > 0 else { return "" }
+        return "\(count) \(count == 1 ? "window" : "windows"), shaped around your calmest hours."
+    }
+
+    private var planUsageText: String? {
+        guard !planWindows.isEmpty else { return nil }
+        let allowed = planWindows.reduce(0) { $0 + $1.minutes }
+        guard allowed > 0 else { return nil }
+        return "\(minutesUsedTowardPlan) of \(allowed) min used"
+    }
+
+    /// Minutes already spent in today's windows. This is Mivo-tracked session
+    /// time, not device Screen Time — the plan is about the windows themselves.
+    private var minutesUsedTowardPlan: Int {
+        appVM.todaysSessions.reduce(0) { $0 + $1.actualDuration }
+    }
+
+    private var primaryActionLabel: String {
+        let index = planWindows.indices.first { planWindowState(at: $0, windows: planWindows) == .next }
+        let name = index.map { planWindows[$0] }.map { $0.title.isEmpty ? windowPeriodLabel($0) : $0.title }
+        let subject = (name ?? "window").lowercased()
+        return appVM.pendingResumedActiveSession == nil ? "Start \(subject)" : "Resume \(subject)"
+    }
+
+    private var experimentEyebrow: String {
+        guard let experiment = appVM.currentWeeklyExperiment else {
+            return "7-day experiment · none running"
+        }
+        return "7-day experiment · day \(experiment.dayNumber) of 7"
+    }
+
+    private var mivoClearMeta: String {
+        let minutes = MivoClearStore.shared.minutesToday
+        let prefix = minutes > 0 ? "\(minutes)m today" : "Not used today"
+        return "\(prefix) · messages and profiles, no feed"
+    }
+
+    // MARK: - Screen Time figures
+    //
+    // Every figure here comes from `dailyScreenTimeObservations`, which is the
+    // only record of total device Screen Time per day. When there is not enough
+    // history the sparkline, comparison and average are omitted rather than
+    // estimated — a plausible-looking wrong total teaches the wrong thing.
+
+    private var observationsByDay: [String: Int] {
+        Dictionary(
+            appVM.dailyScreenTimeObservations.map { ($0.date, $0.minutes) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    /// Today plus the six days before it, oldest first. Nil when any day in the
+    /// window has no observation.
+    private var screenTimeSparkline: [Int]? {
+        let byDay = observationsByDay
+        var values: [Int] = []
+        for offset in stride(from: 6, through: 0, by: -1) {
+            guard let day = MivoDay.calendar.date(byAdding: .day, value: -offset, to: Date()) else { return nil }
+            let key = MivoDay.key(day)
+            if offset == 0 {
+                guard let today = appVM.deviceActivityMinutesToday ?? byDay[key] else { return nil }
+                values.append(today)
+            } else {
+                guard let minutes = byDay[key] else { return nil }
+                values.append(minutes)
+            }
+        }
+        return values.contains(where: { $0 > 0 }) ? values : nil
+    }
+
+    private var weeklyAverageMinutes: Int? {
+        guard let values = screenTimeSparkline, !values.isEmpty else { return nil }
+        return values.reduce(0, +) / values.count
+    }
+
+    private var screenTimeComparison: HomeScreenTimeComparison? {
+        guard let today = appVM.deviceActivityMinutesToday,
+              let lastWeek = MivoDay.calendar.date(byAdding: .day, value: -7, to: Date()),
+              let previous = observationsByDay[MivoDay.key(lastWeek)],
+              previous > 0 else { return nil }
+        let delta = previous - today
+        guard abs(delta) >= 1 else { return nil }
+        let weekday = DateFormatter()
+        weekday.dateFormat = "EEEE"
+        return HomeScreenTimeComparison(
+            isDown: delta > 0,
+            magnitudeText: "\(formatDuration(abs(delta))) \(delta > 0 ? "less" : "more")",
+            referenceText: "than last \(weekday.string(from: lastWeek))"
+        )
+    }
+
+    private var screenTimeFreshnessText: String {
+        guard let generated = appVM.deviceActivityReportGeneratedAt else {
+            return "Read live from Apple Screen Time"
+        }
+        let elapsed = Int(Date().timeIntervalSince(generated) / 60)
+        if elapsed < 1 { return "Read live from Apple Screen Time · updated just now" }
+        return "Read live from Apple Screen Time · updated \(elapsed) min ago"
+    }
+
+    private func requestScreenTimeAccess() {
+        HapticsService.selection()
+        #if canImport(FamilyControls)
+        if #available(iOS 16.0, *) {
+            // The button previously gave no feedback between the tap and
+            // Apple's own system sheet appearing — with no OS-level latency
+            // to compare it to, that gap read as the app itself hanging.
+            // This can't make the system sheet appear faster, but it makes
+            // the tap register immediately instead of feeling ignored.
+            isRequestingScreenTime = true
+            FamilyControlsManager.shared.requestAuthorization { _ in
+                DispatchQueue.main.async {
+                    isRequestingScreenTime = false
+                }
+            }
+        }
+        #endif
+    }
+
+    // MARK: - Retained helpers
+
+    private var firstName: String {
+        appVM.user?.name.split(separator: " ").first.map(String.init) ?? "there"
+    }
+
+    private var hasScreenTimeAccess: Bool {
+        if #available(iOS 16.0, *) {
+            return ScreenTimeDataCollector.shared.authorizationStatus == .authorized
+        }
+        return false
     }
 
     private func planWindowState(
         at index: Int,
         windows: [ScreenScrollWindow],
         now: Date = Date()
-    ) -> HomePlanWindowState {
+    ) -> HomePlanTimeline<ScreenScrollWindow>.WindowState {
         let calendar = Calendar.current
         let currentMinute = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
         let nextIndex = windows.firstIndex { currentMinute < normalizedEndMinute($0) }
 
-        if currentMinute >= normalizedEndMinute(windows[index]) {
-            return .complete
-        }
-        if index == nextIndex {
-            return .next
-        }
+        if currentMinute >= normalizedEndMinute(windows[index]) { return .done }
+        if index == nextIndex { return .next }
         return .later
     }
 
@@ -692,6 +684,47 @@ struct HomeView: View {
         }
     }
 
+
+    private func displayPlan(_ plan: ScreenTimeReductionPlan) -> ScreenTimeReductionPlan {
+        guard let schedule = appVM.dailyScrollSchedule(), !schedule.windows.isEmpty else {
+            return plan
+        }
+
+        return ScreenTimeReductionPlan(
+            id: "\(plan.id)-locked-\(schedule.date)",
+            collecting: plan.collecting,
+            daysCollected: plan.daysCollected,
+            daysNeeded: plan.daysNeeded,
+            dayIndex: plan.dayIndex,
+            baselineMinutes: plan.baselineMinutes,
+            targetMinutes: plan.targetMinutes,
+            strictnessPercent: plan.strictnessPercent,
+            summary: plan.collecting
+                ? "Today’s scroll windows are locked. Mivo is still observing without enforcing a cap."
+                : (appVM.comebackAnchor != nil
+                    ? plan.summary
+                    : "Today’s scroll windows are locked from your daily check. Mivo trims your target from your blended baseline."),
+            decisionReason: plan.collecting
+                ? "These are the times you chose for today. Days 1-3 stay in observation mode."
+                : "These windows are the schedule you locked for today. You can choose again tomorrow morning.",
+            windows: schedule.windows
+        )
+    }
+
+    private func refreshAdaptivePlan() async {
+        let plan = await AIService.makeScreenTimeReductionPlanOnline(
+            sessions: appVM.sessions,
+            truthChecks: appVM.truthChecks,
+            todayScreenTimeMinutes: appVM.deviceActivityMinutesToday,
+            profile: appVM.onboardingProfile,
+            dailyObservations: appVM.dailyScreenTimeObservations,
+            comeback: appVM.comebackAnchor
+        )
+        await MainActor.run {
+            adaptivePlan = plan
+        }
+    }
+
     private func fullWindowTimeText(_ window: ScreenScrollWindow) -> String {
         let calendar = Calendar.current
         let startHour = ((window.startHour % 24) + 24) % 24
@@ -707,276 +740,8 @@ struct HomeView: View {
         endFormatter.dateFormat = "h:mm a"
         return "\(startFormatter.string(from: startDate)) – \(endFormatter.string(from: endDate))"
     }
-
-    private var insightCard: some View {
-        let personalized = appVM.personalizedPatternInsights(limit: 1).first
-        let hasHistory = appVM.sessions.count >= 2 || appVM.truthChecks.count >= 3
-
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: personalized?.icon ?? "lightbulb.fill")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(MivoColors.accent)
-                    .frame(width: 24, height: 24)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Mivo noticed")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundColor(MivoColors.screenTimeInk)
-                    Text(hasHistory ? (personalized?.title ?? insightText) : "Mivo is still learning your pattern.")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(MivoColors.screenTimeInk)
-                        .lineSpacing(3)
-                    Text(personalized?.detail ?? "Complete a few sessions and truth checks to unlock a supported insight.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(MivoColors.textSecondary)
-                        .lineSpacing(3)
-                }
-            }
-
-            if let personalized {
-                Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
-                HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: "target")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(MivoColors.accent)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("TRY THIS NEXT")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(MivoColors.accent)
-                        Text(personalized.tomorrowExperiment)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(MivoColors.screenTimeInk)
-                            .lineLimit(3)
-                    }
-                    Spacer(minLength: 6)
-                    Button { showExperimentHub = true } label: {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(MivoColors.blue)
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open experiments")
-                }
-            }
-        }
-        .padding(.vertical, 18)
-        .overlay(alignment: .top) {
-            Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
-        }
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
-        }
-    }
-
-    private var firstName: String {
-        appVM.user?.name.split(separator: " ").first.map(String.init) ?? "there"
-    }
-
-    private var dateLabel: String {
-        let fmt = DateFormatter()
-        fmt.dateStyle = .full
-        return fmt.string(from: Date())
-    }
-
-    private var trendText: String {
-        "\(appVM.patternPercent >= 0 ? "+" : "")\(appVM.patternPercent)%"
-    }
-
-    private var trendIcon: String {
-        appVM.patternPercent <= 0 ? "arrow.down.right" : "arrow.up.right"
-    }
-
-    private var trendTint: Color {
-        appVM.patternPercent <= 0 ? MivoColors.secondary : MivoColors.timerRed
-    }
-
-    private var statusLabel: String {
-        if hasScreenTimeAccess {
-            return "Live"
-        }
-        return "Connect"
-    }
-
-    private var statusTint: Color {
-        switch statusLabel {
-        case "Quiet start", "On track": return MivoColors.secondary
-        case "Watchful": return MivoColors.accent
-        default: return MivoColors.timerRed
-        }
-    }
-
-    private var insightText: String {
-        if hasScreenTimeAccess {
-            return "The Screen Time card above is Apple’s live Device Activity report. Mivo is not filling it with session history or estimates."
-        }
-        if appVM.patternPercent > 20 {
-            return "Your usage is trending higher than last week. A short focus session now can keep the day from drifting."
-        }
-        if appVM.patternPercent < -10 {
-            return "You’re trending lower than last week. Keep the same friction in place and let the quiet compound."
-        }
-        return "Your day is still shapeable. Use a pause before opening the apps you selected during onboarding."
-    }
-
-    private var insightTags: [String] {
-        [
-            protectionEnabled ? "Protected" : "Ready",
-            hasScreenTimeAccess ? "Live Screen Time" : "No device report yet",
-            appVM.todaysSessions.isEmpty ? "No sessions" : "\(appVM.todaysSessions.count) sessions"
-        ]
-    }
-
-    private var hasScreenTimeAccess: Bool {
-        if #available(iOS 16.0, *) {
-            return ScreenTimeDataCollector.shared.authorizationStatus == .authorized
-        }
-        return false
-    }
-
-    private func setImpulseProtection(_ enabled: Bool) {
-        HapticsService.selection()
-        #if canImport(FamilyControls)
-        guard #available(iOS 16.0, *) else {
-            protectionEnabled = false
-            return
-        }
-
-        if enabled {
-            guard FamilyControlsManager.shared.hasImpulseSelection() else {
-                protectionEnabled = false
-                FamilyControlsManager.shared.setImpulseProtectionEnabled(false)
-                showImpulsePicker = true
-                return
-            }
-
-            protectionEnabled = true
-            FamilyControlsManager.shared.setImpulseProtectionEnabled(true)
-        } else {
-            protectionEnabled = false
-            FamilyControlsManager.shared.setImpulseProtectionEnabled(false)
-        }
-        #else
-        protectionEnabled = false
-        #endif
-    }
-
-    private func refreshAdaptivePlan() async {
-        let plan = await AIService.makeScreenTimeReductionPlanOnline(
-            sessions: appVM.sessions,
-            truthChecks: appVM.truthChecks,
-            todayScreenTimeMinutes: appVM.deviceActivityMinutesToday,
-            profile: appVM.onboardingProfile,
-            dailyObservations: appVM.dailyScreenTimeObservations
-        )
-        await MainActor.run {
-            adaptivePlan = plan
-        }
-    }
-
-    private func greeting() -> String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        switch hour {
-        case 0..<12: return "Good morning"
-        case 12..<17: return "Good afternoon"
-        default: return "Good evening"
-        }
-    }
-    
-    private func formatDuration(_ minutes: Int) -> String {
-        let hours = minutes / 60
-        let mins = minutes % 60
-
-        if hours > 0 {
-            return "\(hours)h \(mins)m"
-        } else {
-            return "\(mins)m"
-        }
-    }
 }
 
-private struct ExperimentsHomeCard: View {
-    let experiment: WeeklyExperiment?
-    let completedCount: Int
-    let open: () -> Void
-
-    var body: some View {
-        Button(action: open) {
-            VStack(alignment: .leading, spacing: 11) {
-                HStack(spacing: 13) {
-                    Image(systemName: icon)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(MivoColors.blue)
-                        .frame(width: 38, height: 38)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Experiments")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(MivoColors.screenTimeInk)
-                            .multilineTextAlignment(.leading)
-                        Text(experiment == nil ? "Try one small change for seven days" : title)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(MivoColors.textSecondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    HStack(spacing: 7) {
-                        Text(statusLabel)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(MivoColors.blue)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.82)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(MivoColors.textMuted)
-                    }
-                    .fixedSize(horizontal: true, vertical: false)
-                }
-
-                if let experiment, experiment.status == .active {
-                    MivoProgressSegments(completed: experiment.dayNumber, tint: MivoColors.blue)
-                }
-            }
-            .padding(.vertical, 15)
-            .overlay(alignment: .top) {
-                Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
-            }
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
-            }
-        }
-        .buttonStyle(MivoPressStyle())
-    }
-
-    private var statusLabel: String {
-        guard let experiment else {
-            return completedCount == 1 ? "1 COMPLETE" : "\(completedCount) COMPLETE"
-        }
-        switch experiment.status {
-        case .proposed: return "READY FOR REVIEW"
-        case .active: return "DAY \(experiment.dayNumber) OF 7"
-        case .completed: return "RESULT READY"
-        case .declined: return "EXPERIMENTS"
-        }
-    }
-    private var title: String {
-        experiment?.title ?? "Try one change for seven days"
-    }
-    private var detail: String {
-        guard let experiment else {
-            return "Choose an experiment, approve its exact rule, and let Mivo track what changes."
-        }
-        if experiment.status == .proposed { return experiment.reason }
-        switch experiment.outcome {
-        case .helped: return "Your result is ready. This change appears to have helped."
-        case .worsened: return "Your result is ready. This rule may not have fit this week."
-        default: return "Your result is ready to review before choosing what comes next."
-        }
-    }
-    private var icon: String { experiment?.status == .completed ? "chart.bar.fill" : "flask.fill" }
-}
 
 struct WeeklyExperimentSheet: View {
     @EnvironmentObject private var appVM: AppViewModel
@@ -1705,10 +1470,11 @@ struct MonthlyPlanForecastView: View {
                 continue
             }
             let planDay = startingDayIndex + (offset - remainingObservation)
-            let minutes = AIService.personalizedTargetMinutes(
+            let minutes = AIService.projectedTargetMinutes(
                 dayIndex: planDay,
                 baseline: pastAverage,
-                floor: floorMinutes
+                floor: floorMinutes,
+                comeback: appVM.comebackAnchor
             )
             // First day the plan reaches the goal — flag it once.
             let isFirstGoalHit = (minutes == floorMinutes) && !goalHit
@@ -1759,7 +1525,7 @@ struct MonthlyPlanForecastView: View {
                     return ("Goal week", MivoColors.timerGreen)
                 }
                 if idx == 0 {
-                    return ("Lenient", MivoColors.accent)
+                    return (appVM.comebackAnchor != nil ? "Fresh start" : "Lenient", MivoColors.accent)
                 }
                 return (nil, .clear)
             }()
@@ -1789,7 +1555,11 @@ struct MonthlyPlanForecastView: View {
             return "\(days)d"
         }
         // Goal not reached within window — extrapolate
-        let total = AIService.daysUntilGoalReached(baseline: plan.baselineMinutes, goal: floorMinutes)
+        let total = AIService.projectedDaysUntilGoal(
+            baseline: plan.baselineMinutes,
+            goal: floorMinutes,
+            comeback: appVM.comebackAnchor
+        )
         return "\(total)d"
     }
 

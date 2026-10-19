@@ -6,7 +6,27 @@ import UserNotifications
 import FamilyControls
 #endif
 
+/// The pages this screen can render. `.root` is the Settings tab itself; the
+/// rest are the sub-pages that used to hang off it, now reachable from the
+/// tab that owns the feature (Protect, Home) as well as from Settings. Each
+/// page is the same screen with the same state and FamilyControls logic —
+/// only the entry point moved.
+enum SettingsPage: String {
+    case root
+    /// Protect tab: status, protected apps, app rules, Screen Time access.
+    case protection
+    /// Home: today's scroll windows, plus Start fresh.
+    case schedule
+    /// Protect tab: sleep protection.
+    case lateNight
+    case notifications
+    case accountability
+    case accountAdvanced
+}
+
 struct SettingsView: View {
+    var page: SettingsPage = .root
+
     @EnvironmentObject var appVM: AppViewModel
     @ObservedObject private var expansion = ProductExpansionStore.shared
     @State private var notificationsOn = false
@@ -24,7 +44,10 @@ struct SettingsView: View {
     @State private var showScreenTimeGuide: Bool = false
     @State private var provisioningDiagnostics: String? = nil
     @State private var showProvisioningDiagnosticsSheet: Bool = false
+    @State private var exportPayload: MivoDataExportPayload?
     @State private var impulseProtectionEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
+    @State private var instagramWrapperEnabled = FamilyControlsManager.shared.isInstagramWrapperEnabled()
+    @State private var focusBreakTrialOptedIn = FocusBreakTrial.isOptedIn
     @State private var aiProtectedAppRecommendation: ProtectedAppRecommendation?
     @State private var aiProtectedAppLoading = false
     @State private var interventionSelectionSummaryText = "Checking selected apps..."
@@ -57,238 +80,38 @@ struct SettingsView: View {
     private let localImpactGenerator = UIImpactFeedbackGenerator(style: .medium)
 
     var body: some View {
-        ZStack {
-            MivoColors.background.ignoresSafeArea()
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 22) {
-                    settingsHeader
-
-                    NavigationLink {
-                        accountAdvancedSettingsPage
-                    } label: {
-                        accountSummaryRow
-                    }
-                    .buttonStyle(SettingsRowButtonStyle())
-
-                    settingsStatusStrip
-
-                    settingsSection("Your plan") {
-                        settingsCategoryRow(
-                            icon: "calendar.badge.clock",
-                            color: MivoColors.accent,
-                            title: "Daily schedule",
-                            subtitle: "Reminders and today’s scroll windows",
-                            destination: { dailyPlanSettingsPage }
-                        )
-                        rowSeparator()
-                        settingsCategoryRow(
-                            icon: "moon.stars.fill",
-                            color: MivoColors.accent,
-                            title: "Late-night protection",
-                            subtitle: "Wake time, longer pauses, and last scroll",
-                            destination: { dailyPlanSettingsPage }
-                        )
-                        rowSeparator()
-                        settingsCategoryRow(
-                            icon: "person.2.fill",
-                            color: MivoColors.orange,
-                            title: "Accountability",
-                            subtitle: "Private weekly summaries and partners",
-                            destination: { dailyPlanSettingsPage }
-                        )
-                    }
-
-                    settingsSection("Protection") {
-                        settingsCategoryRow(
-                            icon: "shield.lefthalf.filled",
-                            color: MivoColors.accent,
-                            title: "Selected apps",
-                            subtitle: interventionSelectionSummaryText,
-                            destination: { protectionSettingsPage }
-                        )
-                        rowSeparator()
-                        settingsCategoryRow(
-                            icon: "slider.horizontal.3",
-                            color: MivoColors.blue,
-                            title: "App-specific rules",
-                            subtitle: "Adaptive friction and intervention behavior",
-                            destination: { protectionSettingsPage }
-                        )
-                        if expansion.isEnabled(.mivoClear) {
-                            rowSeparator()
-                            settingsCategoryRow(
-                                icon: "sparkles.rectangle.stack.fill",
-                                color: MivoColors.accent,
-                                title: "Mivo Clear BETA",
-                                subtitle: "Focused Instagram, TikTok, and YouTube",
-                                destination: { protectionSettingsPage }
-                            )
-                        }
-                    }
-
-                    settingsSection("Progress & tools") {
-                        settingsCategoryRow(
-                            icon: "flask.fill",
-                            color: MivoColors.blue,
-                            title: "Experiments",
-                            subtitle: "Start, track, and review seven-day changes",
-                            destination: { toolsSettingsPage }
-                        )
-                        rowSeparator()
-                        settingsCategoryRow(
-                            icon: "calendar.badge.chartbar",
-                            color: MivoColors.accent,
-                            title: "Weekly report",
-                            subtitle: "Swipe through your recap and weekly statistics",
-                            destination: { weeklyReportSettingsPage }
-                        )
-                        rowSeparator()
-                        settingsCategoryRow(
-                            icon: "hand.raised.square.fill",
-                            color: MivoColors.blue,
-                            title: "Privacy Center",
-                            subtitle: "Permissions, synced data, export, and deletion",
-                            destination: { toolsSettingsPage }
-                        )
-                    }
-
-                    settingsSection("Preferences") {
-                        appearancePreferenceRow
-                    }
-
-                    settingsSection("Account") {
-                        settingsCategoryRow(
-                            icon: "bell.fill",
-                            color: MivoColors.accent,
-                            title: "Notifications",
-                            subtitle: notificationsOn ? "Daily reminders are on" : "Manage reminders and alerts",
-                            destination: { dailyPlanSettingsPage }
-                        )
-                        rowSeparator()
-                        settingsCategoryRow(
-                            icon: "arrow.down.to.line",
-                            color: MivoColors.accent,
-                            title: "Data & advanced",
-                            subtitle: "Export, diagnostics, sign out, and reset",
-                            destination: { accountAdvancedSettingsPage }
-                        )
-                        rowSeparator()
-                        settingsCategoryRow(
-                            icon: "questionmark.circle.fill",
-                            color: MivoColors.accent,
-                            title: "Help & feedback",
-                            subtitle: "Report a bug or request a feature",
-                            destination: { toolsSettingsPage }
-                        )
-                    }
-
-                    if appVM.canAccessSuperAdminCenter {
-                        settingsSection("Super Admin") {
-                            settingsNavigationRow(
-                                icon: "rectangle.3.group.fill",
-                                title: "Super Admin Center",
-                                subtitle: "Full access to users, analytics, campaigns, and security"
-                            ) {
-                                MivoAdminCenterView()
-                                    .environmentObject(appVM)
-                            }
-                            rowSeparator()
-                            settingsNavigationRow(
-                                icon: "bell.badge.fill",
-                                title: "Announcement drafts",
-                                subtitle: "Create, review, publish, or archive announcements"
-                            ) {
-                                AnnouncementAdminView()
-                            }
-                            rowSeparator()
-                            settingsNavigationRow(
-                                icon: "person.3.fill",
-                                title: "User database",
-                                subtitle: "Search users, review progress, and manage roles"
-                            ) {
-                                AdminUserDatabaseView()
-                            }
-                            rowSeparator()
-                            settingsActionRow(
-                                icon: "app.badge.fill",
-                                title: "New-account alerts",
-                                subtitle: adminPushStatus
-                            ) {
-                                if let url = URL(string: UIApplication.openSettingsURLString) {
-                                    UIApplication.shared.open(url)
-                                }
-                            }
-                            if appVM.canReplayFounderOnboarding {
-                                rowSeparator()
-                                settingsActionRow(
-                                    icon: "person.crop.circle.badge.questionmark",
-                                    title: "Preview before sign-in",
-                                    subtitle: "View the first-open story, sign in, registration, and recovery screens"
-                                ) {
-                                    showPreSignInPreview = true
-                                }
-                                rowSeparator()
-                                settingsActionRow(
-                                    icon: "arrow.counterclockwise.circle.fill",
-                                    title: "Re-run onboarding",
-                                    subtitle: "Experience all 12 steps again without deleting your data"
-                                ) {
-                                    appVM.startFounderOnboardingReplay()
-                                }
-                            }
-                        }
-                    } else if appVM.canManageAnnouncements {
-                        settingsSection("Admin") {
-                            settingsNavigationRow(
-                                icon: "bell.badge.fill",
-                                title: "Announcement drafts",
-                                subtitle: "Prepare drafts for founder approval"
-                            ) {
-                                AnnouncementAdminView()
-                            }
-                        }
-                    }
-
-                    if appVM.isAmbassadorUser {
-                        settingsSection("Ambassador") {
-                            settingsNavigationRow(
-                                icon: "person.2.badge.gearshape.fill",
-                                title: "Your referrals",
-                                subtitle: "People who entered your assigned ambassador name"
-                            ) {
-                                AmbassadorDashboardView()
-                            }
-                        }
-                    }
-
-                    Text("Mivo \(appVersionText) · Data stays on your device")
-                        .font(.system(size: 12))
-                        .foregroundColor(MivoColors.textMuted)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.bottom, 100)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .mivoReadableWidth()
-            }
-        }
-        .navigationBarHidden(true)
-        .fullScreenCover(isPresented: $appVM.onboardingReplayActive) {
+        pageContent
+        .navigationBarHidden(page == .root)
+        // Only the Settings tab itself presents these; the sub-pages can be
+        // on screen alongside it, and two presenters of one flag would fight.
+        .fullScreenCover(isPresented: page == .root ? $appVM.onboardingReplayActive : .constant(false)) {
             OnboardingWelcomeView(replayMode: true)
                 .environmentObject(appVM)
         }
-        .fullScreenCover(isPresented: $showPreSignInPreview) {
+        .fullScreenCover(isPresented: page == .root ? $showPreSignInPreview : .constant(false)) {
             FounderPreSignInPreviewView()
                 .environmentObject(appVM)
         }
         .onAppear {
             refreshSettingsSnapshot()
-            applyImpulseProtectionAfterRender()
-            refreshProtectedAppRecommendation()
-            Task {
-                await appVM.refreshServerAdminRole()
-                await refreshAdminPushStatus()
+            if page == .root || page == .protection {
+                applyImpulseProtectionAfterRender()
             }
+            if page == .protection {
+                refreshProtectedAppRecommendation()
+            }
+            if page == .root {
+                Task {
+                    await appVM.refreshServerAdminRole()
+                    await refreshAdminPushStatus()
+                }
+            }
+        }
+        // "Start fresh" is launched from this screen, which stays mounted
+        // underneath the flow, so the cached schedule has to be re-read when the
+        // restart lands.
+        .onChange(of: appVM.comebackAnchor) { _, _ in
+            syncScrollScheduleState()
         }
         #if canImport(FamilyControls)
         .familyActivityPicker(isPresented: $showImpulsePicker, selection: $impulseSelection)
@@ -432,6 +255,9 @@ struct SettingsView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        .sheet(item: $exportPayload) { payload in
+            MivoActivitySheet(items: [payload.url])
+        }
         .sheet(isPresented: $showProvisioningDiagnosticsSheet) {
             VStack(spacing: 16) {
                 Text("Provisioning Diagnostics")
@@ -543,21 +369,263 @@ struct SettingsView: View {
         .buttonStyle(SettingsRowButtonStyle())
     }
 
-    private var dailyPlanSettingsPage: AnyView {
-        AnyView(settingsSubpage(title: "Daily Plan", subtitle: "Shape when Mivo checks in and when scrolling is available.") {
+    // MARK: - Pages
+
+    @ViewBuilder
+    private var pageContent: some View {
+        switch page {
+        case .root: rootPage
+        case .protection: protectionSettingsPage
+        case .schedule: scheduleSettingsPage
+        case .lateNight: lateNightSettingsPage
+        case .notifications: notificationsSettingsPage
+        case .accountability: accountabilitySettingsPage
+        case .accountAdvanced: accountAdvancedSettingsPage
+        }
+    }
+
+    /// The Settings tab: account, preferences, privacy, connections, help.
+    /// Anything that configures protection or the daily plan lives on Protect
+    /// and Home now, next to the thing it changes.
+    private var rootPage: some View {
+        ZStack {
+            MivoColors.background.ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 22) {
+                    settingsHeader
+
+                    NavigationLink {
+                        SettingsView(page: .accountAdvanced)
+                    } label: {
+                        accountSummaryRow
+                    }
+                    .buttonStyle(SettingsRowButtonStyle())
+
+                    settingsSection("Preferences") {
+                        appearancePreferenceRow
+                        rowSeparator()
+                        settingsCategoryRow(
+                            icon: "bell.fill",
+                            color: MivoColors.accent,
+                            title: "Notifications",
+                            subtitle: "Daily reminders and alerts",
+                            destination: { AnyView(SettingsView(page: .notifications)) }
+                        )
+                        rowSeparator()
+                        settingsCategoryRow(
+                            icon: "pawprint.fill",
+                            color: MivoColors.accent,
+                            title: "Companion",
+                            subtitle: "A small character that keeps you company in pauses",
+                            destination: { AnyView(CompanionEntryView()) }
+                        )
+                    }
+
+                    settingsSection("Privacy & sharing") {
+                        settingsCategoryRow(
+                            icon: "hand.raised.square.fill",
+                            color: MivoColors.blue,
+                            title: "Privacy Center",
+                            subtitle: "Permissions, synced data, export, and deletion",
+                            destination: { AnyView(MivoPrivacyCenterView().environmentObject(appVM)) }
+                        )
+                        if expansion.isEnabled(.accountabilityPartners) {
+                            rowSeparator()
+                            settingsCategoryRow(
+                                icon: "person.2.fill",
+                                color: MivoColors.orange,
+                                title: "Accountability partner",
+                                subtitle: "Share a private weekly summary",
+                                destination: { AnyView(AccountabilityPartnersView().environmentObject(appVM)) }
+                            )
+                        }
+                        rowSeparator()
+                        settingsCategoryRow(
+                            icon: "person.2.wave.2.fill",
+                            color: MivoColors.orange,
+                            title: "Accountability summary",
+                            subtitle: "Create a private weekly share text",
+                            destination: { AnyView(SettingsView(page: .accountability)) }
+                        )
+                    }
+
+                    settingsSection("Connected") {
+                        settingsCategoryRow(
+                            icon: "laptopcomputer",
+                            color: MivoColors.accent,
+                            title: "Mivo for Mac",
+                            subtitle: "Connect your Mac with this account",
+                            destination: { AnyView(MacPairingSettingsView()) }
+                        )
+                    }
+
+                    settingsSection("Help") {
+                        settingsActionRow(
+                            icon: "play.rectangle.fill",
+                            title: "Replay app tour",
+                            subtitle: "Practice Mivo’s newest tools again"
+                        ) {
+                            appVM.restartTutorial()
+                        }
+                        rowSeparator()
+                        settingsNavigationRow(
+                            icon: "bubble.left.fill",
+                            title: "Send feedback",
+                            subtitle: "Report a bug or request a feature"
+                        ) {
+                            FeedbackSubmissionView()
+                        }
+                    }
+
+                    settingsSection("Account") {
+                        settingsCategoryRow(
+                            icon: "arrow.down.to.line",
+                            color: MivoColors.accent,
+                            title: "Data & advanced",
+                            subtitle: "Export, diagnostics, sign out, and reset",
+                            destination: { AnyView(SettingsView(page: .accountAdvanced)) }
+                        )
+                    }
+
+                    adminSections
+
+                    Text("Mivo \(appVersionText) · Data stays on your device")
+                        .font(.system(size: 12))
+                        .foregroundColor(MivoColors.textMuted)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.bottom, 100)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .mivoReadableWidth()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var adminSections: some View {
+        if appVM.canAccessSuperAdminCenter {
+            settingsSection("Super Admin") {
+                settingsNavigationRow(
+                    icon: "rectangle.3.group.fill",
+                    title: "Super Admin Center",
+                    subtitle: "Full access to users, analytics, campaigns, and security"
+                ) {
+                    MivoAdminCenterView()
+                        .environmentObject(appVM)
+                }
+                rowSeparator()
+                settingsNavigationRow(
+                    icon: "bell.badge.fill",
+                    title: "Announcement drafts",
+                    subtitle: "Create, review, publish, or archive announcements"
+                ) {
+                    AnnouncementAdminView()
+                }
+                rowSeparator()
+                settingsNavigationRow(
+                    icon: "person.3.fill",
+                    title: "User database",
+                    subtitle: "Search users, review progress, and manage roles"
+                ) {
+                    AdminUserDatabaseView()
+                }
+                rowSeparator()
+                settingsActionRow(
+                    icon: "app.badge.fill",
+                    title: "New-account alerts",
+                    subtitle: adminPushStatus
+                ) {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                if appVM.canReplayFounderOnboarding {
+                    rowSeparator()
+                    settingsActionRow(
+                        icon: "person.crop.circle.badge.questionmark",
+                        title: "Preview before sign-in",
+                        subtitle: "View the first-open story, sign in, registration, and recovery screens"
+                    ) {
+                        showPreSignInPreview = true
+                    }
+                    rowSeparator()
+                    settingsActionRow(
+                        icon: "arrow.counterclockwise.circle.fill",
+                        title: "Re-run onboarding",
+                        subtitle: "Experience all 12 steps again without deleting your data"
+                    ) {
+                        appVM.startFounderOnboardingReplay()
+                    }
+                }
+            }
+        } else if appVM.canManageAnnouncements {
+            settingsSection("Admin") {
+                settingsNavigationRow(
+                    icon: "bell.badge.fill",
+                    title: "Announcement drafts",
+                    subtitle: "Prepare drafts for founder approval"
+                ) {
+                    AnnouncementAdminView()
+                }
+            }
+        }
+
+        if appVM.isAmbassadorUser {
+            settingsSection("Ambassador") {
+                settingsNavigationRow(
+                    icon: "person.2.badge.gearshape.fill",
+                    title: "Your referrals",
+                    subtitle: "People who entered your assigned ambassador name"
+                ) {
+                    AmbassadorDashboardView()
+                }
+            }
+        }
+    }
+
+    /// Home's "Edit today's schedule" destination.
+    private var scheduleSettingsPage: some View {
+        settingsSubpage(title: "Today's schedule", subtitle: "Choose when scrolling is available today.") {
+            settingsSection("Scroll schedule") {
+                scrollScheduleRows
+            }
+            settingsSection("Plan") {
+                settingsActionRow(
+                    icon: "arrow.counterclockwise.circle.fill",
+                    title: "Start fresh",
+                    subtitle: appVM.comebackAnchor == nil
+                        ? "Restart your plan from where you are today"
+                        : "Change your fresh-start pace"
+                ) {
+                    appVM.presentComebackFlow()
+                }
+            }
+        }
+    }
+
+    private var lateNightSettingsPage: some View {
+        settingsSubpage(title: "Late-night protection", subtitle: "Wake time, longer pauses, and one last scroll.") {
+            settingsSection("Protect sleep") {
+                lateNightProtectionRows
+            }
+        }
+    }
+
+    private var notificationsSettingsPage: some View {
+        settingsSubpage(title: "Notifications", subtitle: "Choose which reminders Mivo sends.") {
             settingsSection("Reminders") {
                 dailyReminderRow
             }
-            settingsSection("Late-Night Protection") {
-                lateNightProtectionRows
-            }
-            settingsSection("Accountability") {
+        }
+    }
+
+    private var accountabilitySettingsPage: some View {
+        settingsSubpage(title: "Accountability", subtitle: "A private weekly summary you can share with someone you trust.") {
+            settingsSection("Weekly summary") {
                 accountabilityRow
             }
-            settingsSection("Scroll Schedule") {
-                scrollScheduleRows
-            }
-        })
+        }
     }
 
     private var appearancePreferenceRow: some View {
@@ -592,13 +660,16 @@ struct SettingsView: View {
         .padding(.horizontal, 2)
     }
 
-    private var protectionSettingsPage: AnyView {
-        AnyView(settingsSubpage(title: "App Protection", subtitle: "Manage protected apps, intervention behavior, and Screen Time access.") {
+    /// Protect tab's "Apps & Screen Time" page.
+    private var protectionSettingsPage: some View {
+        settingsSubpage(title: "Apps & Screen Time", subtitle: "Manage protected apps, intervention behavior, and Screen Time access.") {
+            settingsStatusStrip
+
             if expansion.isEnabled(.mivoClear) {
                 settingsSection("Focused Social") {
                     settingsNavigationRow(
                         icon: "sparkles.rectangle.stack.fill",
-                        title: "Mivo Clear BETA",
+                        title: "Mivo Clear",
                         subtitle: "Map Instagram, TikTok, and YouTube"
                     ) {
                         MivoClearSettingsView().environmentObject(appVM)
@@ -611,6 +682,11 @@ struct SettingsView: View {
             settingsSection("App Rules") {
                 appRulesRows
             }
+            if expansion.isEnabled(.intentGames) {
+                settingsSection("Trials") {
+                    focusBreakTrialRow
+                }
+            }
             settingsSection("Screen Time") {
                 screenTimeAccessRow
                 rowSeparator()
@@ -618,79 +694,14 @@ struct SettingsView: View {
                 rowSeparator()
                 blockerSelfTestRow
             }
-        })
+        }
     }
 
-    private var toolsSettingsPage: AnyView {
-        AnyView(settingsSubpage(title: "Mivo Tools", subtitle: "Review progress, run experiments, and get support.") {
-            settingsSection("Progress & Change") {
-                if expansion.isEnabled(.monthlyEffectReport) {
-                    settingsNavigationRow(icon: "chart.line.uptrend.xyaxis", title: "Mivo Effect", subtitle: "Your monthly pattern and estimated change") {
-                        MonthlyEffectReportView().environmentObject(appVM)
-                    }
-                }
-                if expansion.isEnabled(.monthlyEffectReport) && expansion.isEnabled(.experimentLibrary) {
-                    rowSeparator()
-                }
-                if expansion.isEnabled(.experimentLibrary) {
-                    settingsNavigationRow(icon: "flask.fill", title: "Experiments", subtitle: "Start, track, and review seven-day experiments") {
-                        ExperimentLibraryView().environmentObject(appVM)
-                    }
-                }
-                if expansion.isEnabled(.experimentLibrary) && expansion.isEnabled(.appPersonalities) {
-                    rowSeparator()
-                }
-                if expansion.isEnabled(.appPersonalities) {
-                    settingsNavigationRow(icon: "slider.horizontal.3", title: "App personalities", subtitle: "Set device-local friction for each app") {
-                        AppPersonalitiesView().environmentObject(appVM)
-                    }
-                }
-            }
-
-            settingsSection("Privacy & Guidance") {
-                if expansion.isEnabled(.accountabilityPartners) {
-                    settingsNavigationRow(icon: "person.2.fill", title: "Accountability partner", subtitle: "Share a private weekly summary") {
-                        AccountabilityPartnersView().environmentObject(appVM)
-                    }
-                    rowSeparator()
-                }
-                settingsNavigationRow(icon: "hand.raised.square.fill", title: "Privacy Center", subtitle: "Permissions, synced data, export, and deletion") {
-                    MivoPrivacyCenterView().environmentObject(appVM)
-                }
-                rowSeparator()
-                settingsActionRow(icon: "play.rectangle.fill", title: "Replay app tour", subtitle: "Practice Mivo’s newest tools again") {
-                    appVM.restartTutorial()
-                }
-            }
-
-            settingsSection("Reports & Support") {
-                settingsNavigationRow(icon: "calendar", title: "Weekly report", subtitle: "Five-page recap with comparisons and charts") {
-                    WeeklyReportView()
-                }
-                rowSeparator()
-                settingsNavigationRow(icon: "shield", title: "Intervention preview", subtitle: "Practice the 5-second pause") {
-                    InterventionView(intention: nil, duration: nil)
-                }
-                rowSeparator()
-                settingsNavigationRow(icon: "bubble.left.fill", title: "Send feedback", subtitle: "Report a bug or request a feature") {
-                    FeedbackSubmissionView()
-                }
-            }
-        })
-    }
-
-    private var weeklyReportSettingsPage: AnyView {
-        AnyView(
-            WeeklyReportView()
-                .environmentObject(appVM)
-        )
-    }
-
-    private var accountAdvancedSettingsPage: AnyView {
-        AnyView(settingsSubpage(title: "Account & Advanced", subtitle: "Manage data, diagnostics, and account access.") {
+    private var accountAdvancedSettingsPage: some View {
+        settingsSubpage(title: "Account & Advanced", subtitle: "Manage data, diagnostics, and account access.") {
             settingsSection("Your Data") {
-                settingsActionRow(icon: "arrow.down.to.line", title: "Export data", subtitle: "Prepare your local Mivo data") {
-                    Task { await exportDataAsync() }
+                settingsActionRow(icon: "arrow.down.to.line", title: "Export data", subtitle: "Save or share a copy of your Mivo data") {
+                    Task { await exportData() }
                 }
             }
 
@@ -713,7 +724,7 @@ struct SettingsView: View {
                     showResetAlert = true
                 }
             }
-        })
+        }
     }
 
     private func settingsSubpage<Content: View>(
@@ -733,7 +744,7 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
-                .padding(.bottom, 36)
+                .padding(.bottom, MivoMetrics.scrollBottomPadding)
             }
         }
         .navigationTitle(title)
@@ -748,7 +759,7 @@ struct SettingsView: View {
                 Text("Settings")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundColor(MivoColors.textPrimary)
-                Text("Your account, plan, and protection.")
+                Text("Your account, preferences, and privacy.")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(MivoColors.textSecondary)
             }
@@ -835,6 +846,36 @@ struct SettingsView: View {
         @unknown default:
             adminPushStatus = "Status unavailable"
         }
+    }
+
+    /// Focus Break (formerly "Intent Games") only ever offers itself in the
+    /// unlock flow when this is on — off by default, so trying it is a
+    /// choice rather than something everyone with the feature flag sees.
+    /// Turning it on/off logs which, so opt-out itself is one more real
+    /// signal about whether the trial is worth keeping.
+    private var focusBreakTrialRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            settingsIcon("sparkles", color: MivoColors.accent)
+            rowText(
+                title: "Focus Break",
+                subtitle: "A quick game sets your unlock time instead of picking a number. Mivo logs outcomes to see if it's worth keeping."
+            )
+            Spacer()
+            Toggle("", isOn: $focusBreakTrialOptedIn)
+                .tint(MivoColors.accent)
+                .labelsHidden()
+                .onChange(of: focusBreakTrialOptedIn) { _, newValue in
+                    FocusBreakTrial.isOptedIn = newValue
+                    HapticsService.selection()
+                    Task {
+                        await ReferralCampaignService.logEvent(
+                            "focus_break_trial_opt_changed",
+                            metadata: ["opted_in": newValue]
+                        )
+                    }
+                }
+        }
+        .padding(15)
     }
 
     private var dailyReminderRow: some View {
@@ -960,6 +1001,25 @@ struct SettingsView: View {
             .padding(15)
         }
         .buttonStyle(SettingsRowButtonStyle())
+
+        rowSeparator()
+
+        HStack(alignment: .top, spacing: 12) {
+            settingsIcon("camera.viewfinder", color: MivoColors.blue)
+            rowText(
+                title: "Open Instagram inside Mivo",
+                subtitle: "Tapping Instagram opens Mivo's own view instead — same feed, but Mivo can measure real scrolling."
+            )
+            Spacer()
+            Toggle("", isOn: $instagramWrapperEnabled)
+                .tint(MivoColors.accent)
+                .labelsHidden()
+                .onChange(of: instagramWrapperEnabled) { _, enabled in
+                    FamilyControlsManager.shared.setInstagramWrapperEnabled(enabled)
+                    HapticsService.selection()
+                }
+        }
+        .padding(15)
     }
 
     private var protectedAppRecommendationRow: some View {
@@ -1395,9 +1455,14 @@ struct SettingsView: View {
     }
 
     private func syncScrollScheduleState() {
-        let windows = appVM.dailyScrollSchedule()?.windows
+        var windows = appVM.dailyScrollSchedule()?.windows
             ?? appVM.onboardingProfile.preferredScrollWindows
             ?? appVM.adaptiveScreenTimePlan().windows
+        // After a fresh start the saved windows carry minutes from older days'
+        // targets; size them to today's before they can be locked in.
+        if appVM.comebackAnchor != nil, appVM.dailyScrollSchedule() == nil, !windows.isEmpty {
+            windows = MivoComeback.fit(windows, toTarget: appVM.adaptiveScreenTimePlan().targetMinutes)
+        }
         guard !windows.isEmpty else { return }
         scrollScheduleWindows = windows
     }
@@ -1617,7 +1682,7 @@ struct SettingsView: View {
             let selection = FamilyControlsManager.shared.loadFamilyActivitySelection()
             let count = selection.applicationTokens.count + selection.categoryTokens.count + selection.webDomainTokens.count
             if count == 0 {
-                return "No apps selected yet. Choose apps here or on the Interventions page."
+                return "No apps selected yet. Choose which apps get a pause below."
             }
             let itemLabel = count == 1 ? "selection" : "selections"
             return impulseProtectionEnabled ? "\(count) \(itemLabel) protected with a pause." : "\(count) \(itemLabel) saved, currently off."
@@ -2063,10 +2128,13 @@ struct SettingsView: View {
         UIPasteboard.general.string = provisioningDiagnostics ?? diagnosticsFromEmbeddedProvisioning()
     }
 
-    private func exportDataAsync() async {
-        // Perform data export asynchronously
-        // For now, just show a placeholder message
-        lastActionLog = "Data export initiated. Check console for file path."
+    private func exportData() async {
+        do {
+            exportPayload = try await MivoDataExport.write(appVM: appVM)
+            lastActionLog = "Data export ready"
+        } catch {
+            lastActionLog = "Data export failed: \(error.localizedDescription)"
+        }
     }
 
 }
@@ -2700,7 +2768,7 @@ struct AdminAnalyticsView: View {
     private func load() async { isLoading = true; do { try await appVM.prepareAuthenticatedCampaignSession(); dashboard = try await ReferralCampaignService.loadProductDashboard() } catch { errorMessage = error.localizedDescription }; isLoading = false }
 }
 
-private struct FeedbackSubmissionView: View {
+struct FeedbackSubmissionView: View {
     @EnvironmentObject private var appVM: AppViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var type = "feedback"

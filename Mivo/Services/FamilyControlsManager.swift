@@ -233,15 +233,55 @@ final class FamilyControlsManager: ObservableObject {
     }
 
     func activateMivoSession(durationSeconds: Int) -> Result<Void, SessionStartError> {
-        sessionRelockWorkItem?.cancel()
-        sessionRelockWorkItem = nil
-
         guard durationSeconds > 0 else {
+            sessionRelockWorkItem?.cancel()
+            sessionRelockWorkItem = nil
             if #available(iOS 16.0, *) {
                 applyImpulseProtectionIfNeeded()
             }
             return .failure(.noTimeRemaining)
         }
+
+        // Re-affirming an already-active session — as opposed to genuinely
+        // starting or extending one — must be a no-op. Every app foreground
+        // calls this indirectly via `recoverExpiredRunningSessionIfNeeded()`
+        // (passing back whatever `mivoSessionRemainingSeconds()` currently
+        // reads), and a successful mid-scroll check-in does the same thing
+        // from `MidScrollCheckInView.resume()`. Both are asking to "keep this
+        // session going," not "start a new one" — but everything below this
+        // point tears down and reschedules every DeviceActivity monitor,
+        // notification, BG task, and Live Activity from scratch, which
+        // otherwise fought the very belt-and-suspenders reliability those
+        // exist for (rapid stop/restart cycles, flickering Live Activity) and
+        // silently reset the mid-scroll check-in cadence's schedule anchor —
+        // read as the *session itself* getting cancelled/restarted. A caller
+        // asking to keep going computes an end time within a second or two of
+        // the one already stored; a real extension (e.g. "add 10 minutes"
+        // from the session-end screen) lands well outside that tolerance and
+        // still goes through the full path below.
+        let requestedEndsAt = Date().addingTimeInterval(TimeInterval(durationSeconds))
+        if isMivoSessionActive() {
+            let existingEndsAt = userDefaults?.double(forKey: mivoSessionEndsAtKey) ?? 0
+            // Also require the actual DeviceActivity relock monitor to
+            // still be registered, not just the stored timestamp to match —
+            // otherwise a session whose *original* scheduling silently
+            // failed (network hiccup, DeviceActivity quota, etc.) would
+            // never get a second chance: every later re-affirming call
+            // would keep taking this early-return and the session would
+            // simply never re-lock at the end. Checking reality here, not
+            // just the stored end time, means a genuinely broken schedule
+            // self-heals on the next foreground instead of silently
+            // skipping forever.
+            if existingEndsAt > 0,
+               abs(existingEndsAt - requestedEndsAt.timeIntervalSince1970) < 5,
+               isMonitoring(activityName: sessionRelockActivityName) {
+                logger.info("Intervention start: skipping re-activation, session already running with the same end time")
+                return .success(())
+            }
+        }
+
+        sessionRelockWorkItem?.cancel()
+        sessionRelockWorkItem = nil
 
         logger.info("Intervention start: durationSeconds=\(durationSeconds)")
         clearPendingInterventionSetup()
@@ -391,6 +431,303 @@ final class FamilyControlsManager: ObservableObject {
             applyImpulseProtectionIfNeeded()
         }
         endSessionLiveActivity()
+    }
+
+    // MARK: - Mivo Still Lock Mode
+
+    /// Separate from the normal intervention shield store — Lock Mode blocks
+    /// every app on the device via `.applicationCategories = .all()`,
+    /// independent of whatever the user has (or hasn't) chosen as
+    /// "protected." Kept as its own store so the two never interfere: normal
+    /// relock/unlock logic elsewhere only ever touches `makeInterventionStore()`
+    /// and the legacy default store.
+    @available(iOS 16.0, *)
+    private var stillLockStore: ManagedSettingsStore {
+        ManagedSettingsStore(named: ManagedSettingsStore.Name("mivo.stillLock"))
+    }
+    private var stillLockUnlockWorkItem: DispatchWorkItem?
+
+    @available(iOS 16.0, *)
+    func activateStillLock(durationSeconds: Int = 15 * 60) {
+        // Nothing should be sitting unlocked underneath the new block.
+        _ = setMivoSessionActive(false)
+
+        stillLockStore.shield.applicationCategories = .all()
+
+        let endsAt = Date().addingTimeInterval(TimeInterval(durationSeconds))
+        userDefaults?.set(true, forKey: MivoScreenTimeKeys.stillLockActive)
+        userDefaults?.set(endsAt.timeIntervalSince1970, forKey: MivoScreenTimeKeys.stillLockEndsAt)
+        userDefaults?.set(
+            max(1, Int((Double(durationSeconds) / 60).rounded())),
+            forKey: MivoScreenTimeKeys.stillLockPlannedMinutes
+        )
+        userDefaults?.synchronize()
+
+        // Four independent triggers to reliably lift the block, mirroring the
+        // same belt-and-suspenders relock pattern this class already uses in
+        // reverse (apply now, clear later, instead of clear now, apply later).
+        scheduleStillLockDeviceActivityUnlock(after: TimeInterval(durationSeconds))
+        scheduleStillLockBGTask(after: TimeInterval(durationSeconds))
+        scheduleStillLockNotification(after: TimeInterval(durationSeconds))
+        scheduleStillLockForegroundUnlock(after: TimeInterval(durationSeconds))
+
+        logger.info("Still Lock activated for \(durationSeconds)s")
+    }
+
+    /// Self-expiring, same shape as `isMivoSessionActive()` — past
+    /// `stillLockEndsAt`, it clears the flag and returns false.
+    @available(iOS 16.0, *)
+    func isStillLockActive(now: Date = Date()) -> Bool {
+        guard userDefaults?.bool(forKey: MivoScreenTimeKeys.stillLockActive) == true else { return false }
+        let endsAt = userDefaults?.double(forKey: MivoScreenTimeKeys.stillLockEndsAt) ?? 0
+        if endsAt > 0 && endsAt < now.timeIntervalSince1970 {
+            endStillLock()
+            return false
+        }
+        return true
+    }
+
+    @available(iOS 16.0, *)
+    func stillLockRemainingMinutes(now: Date = Date()) -> Int {
+        guard isStillLockActive(now: now) else { return 0 }
+        let endsAt = userDefaults?.double(forKey: MivoScreenTimeKeys.stillLockEndsAt) ?? 0
+        return max(0, Int(ceil((endsAt - now.timeIntervalSince1970) / 60)))
+    }
+
+    /// Seconds-precision remaining, so a Lock Mode countdown that is restored
+    /// after the app was closed picks up where the clock actually is instead
+    /// of rounding up to the next whole minute.
+    @available(iOS 16.0, *)
+    func stillLockRemainingSeconds(now: Date = Date()) -> Double {
+        guard isStillLockActive(now: now) else { return 0 }
+        let endsAt = userDefaults?.double(forKey: MivoScreenTimeKeys.stillLockEndsAt) ?? 0
+        return max(0, endsAt - now.timeIntervalSince1970)
+    }
+
+    /// The full length the active Lock Mode run was started with, used to
+    /// label a restored session correctly.
+    @available(iOS 16.0, *)
+    func stillLockPlannedMinutes() -> Int {
+        max(1, userDefaults?.integer(forKey: MivoScreenTimeKeys.stillLockPlannedMinutes) ?? 0)
+    }
+
+    @available(iOS 16.0, *)
+    func endStillLock() {
+        stillLockUnlockWorkItem?.cancel()
+        stillLockUnlockWorkItem = nil
+        stillLockStore.shield.applicationCategories = nil
+
+        userDefaults?.set(false, forKey: MivoScreenTimeKeys.stillLockActive)
+        userDefaults?.removeObject(forKey: MivoScreenTimeKeys.stillLockEndsAt)
+        userDefaults?.removeObject(forKey: MivoScreenTimeKeys.stillLockPlannedMinutes)
+        userDefaults?.synchronize()
+
+        stopStillLockDeviceActivity()
+        cancelStillLockBGTask()
+        cancelStillLockNotification()
+        logger.info("Still Lock ended")
+    }
+
+    /// Safe to call unconditionally — a no-op unless a lock is active and its
+    /// end time has already passed. Used by the BGAppRefreshTask fallback.
+    func endStillLockIfExpired() {
+        if #available(iOS 16.0, *) {
+            _ = isStillLockActive()
+        }
+    }
+
+    /// Re-arms the in-process unlock timer for a lock that outlived the
+    /// process that started it.
+    ///
+    /// `scheduleStillLockForegroundUnlock` is a `DispatchWorkItem`, so it dies
+    /// with the app. After a relaunch mid-lock, the only remaining triggers
+    /// were the DeviceActivity extension and a BGTask — precisely the two the
+    /// system is free to delay, which is how a lock ends up outstaying its
+    /// timer. Call this on launch and on foreground so the reliable trigger
+    /// exists again.
+    @available(iOS 16.0, *)
+    func rearmStillLockUnlockIfNeeded(now: Date = Date()) {
+        guard isStillLockActive(now: now) else { return }
+        let remaining = stillLockRemainingSeconds(now: now)
+        guard remaining > 0 else {
+            endStillLock()
+            return
+        }
+        scheduleStillLockForegroundUnlock(after: remaining)
+    }
+
+    @available(iOS 16.0, *)
+    private func scheduleStillLockDeviceActivityUnlock(after delay: TimeInterval) {
+        #if canImport(DeviceActivity)
+        let center = DeviceActivityCenter()
+        let activity = DeviceActivityName(MivoScreenTimeKeys.stillLockActivityName)
+        center.stopMonitoring([activity])
+
+        let calendar = Calendar.current
+        let now = Date()
+        // intervalStart = the exact unlock time — iOS reliably fires
+        // intervalDidStart, waking the extension even if Mivo isn't running.
+        let start = now.addingTimeInterval(max(30, delay))
+        let end = start.addingTimeInterval(7200)
+
+        let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: start),
+            intervalEnd: calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: end),
+            repeats: false
+        )
+
+        do {
+            try center.startMonitoring(activity, during: schedule)
+            logger.info("Still Lock unlock scheduled via DeviceActivity for \(start)")
+        } catch {
+            logger.warning("Still Lock DeviceActivity scheduling failed: \(error.localizedDescription)")
+        }
+        #endif
+    }
+
+    private func stopStillLockDeviceActivity() {
+        #if canImport(DeviceActivity)
+        guard #available(iOS 16.0, *) else { return }
+        DeviceActivityCenter().stopMonitoring([DeviceActivityName(MivoScreenTimeKeys.stillLockActivityName)])
+        #endif
+    }
+
+    private func scheduleStillLockBGTask(after delay: TimeInterval) {
+        let request = BGAppRefreshTaskRequest(identifier: MivoScreenTimeKeys.stillLockBGTaskIdentifier)
+        request.earliestBeginDate = Date().addingTimeInterval(max(delay, 30))
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    private func cancelStillLockBGTask() {
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: MivoScreenTimeKeys.stillLockBGTaskIdentifier)
+    }
+
+    private func scheduleStillLockNotification(after delay: TimeInterval) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["mivo.still.lock.ended"])
+
+        let content = UNMutableNotificationContent()
+        content.title = "Mivo Still lock ended"
+        content.body = "Your apps are unlocked again."
+        content.sound = .default
+        if #available(iOS 15.0, *) {
+            content.interruptionLevel = .timeSensitive
+        }
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(delay, 1), repeats: false)
+        let request = UNNotificationRequest(identifier: "mivo.still.lock.ended", content: content, trigger: trigger)
+        center.add(request, withCompletionHandler: nil)
+    }
+
+    private func cancelStillLockNotification() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["mivo.still.lock.ended"])
+    }
+
+    @available(iOS 16.0, *)
+    private func scheduleStillLockForegroundUnlock(after delay: TimeInterval) {
+        stillLockUnlockWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.endStillLock()
+        }
+        stillLockUnlockWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    // MARK: - Always block drifting apps (Home screen commitment toggle)
+
+    /// Shields the user's own protected-apps selection — not every category
+    /// like Still Lock — because this is framed as "stop the apps that
+    /// pull me off track," not a full lockdown. Kept in its own store so
+    /// arming/clearing it can never step on Still Lock, cross-device focus,
+    /// or normal intervention shielding.
+    @available(iOS 16.0, *)
+    private var alwaysBlockDriftStore: ManagedSettingsStore {
+        ManagedSettingsStore(named: ManagedSettingsStore.Name("mivo.alwaysBlockDrift"))
+    }
+
+    private static func todayDateString(_ date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = .current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.string(from: date)
+    }
+
+    /// Self-expiring by calendar date, not a timer — arming it at 11:58pm
+    /// should still clear at midnight, not run for a nearly-full 24 hours.
+    /// Checking "is the armed date still today?" on every call (rather than
+    /// scheduling a duration from the moment it was armed) is what makes
+    /// that true regardless of when in the day the user turned it on.
+    @available(iOS 16.0, *)
+    func isAlwaysBlockDriftActive(now: Date = Date()) -> Bool {
+        guard userDefaults?.bool(forKey: MivoScreenTimeKeys.alwaysBlockDriftActive) == true else { return false }
+        guard userDefaults?.string(forKey: MivoScreenTimeKeys.alwaysBlockDriftArmedDate) == Self.todayDateString(now) else {
+            endAlwaysBlockDrift()
+            return false
+        }
+        return true
+    }
+
+    /// No corresponding "disable" entry point is exposed to the UI on
+    /// purpose — the only way this clears before the day rolls over is
+    /// `isAlwaysBlockDriftActive` noticing the date changed, or the
+    /// midnight DeviceActivity alarm below.
+    @available(iOS 16.0, *)
+    func enableAlwaysBlockDriftForRestOfToday() {
+        apply(selection: loadFamilyActivitySelection(), to: alwaysBlockDriftStore)
+        userDefaults?.set(true, forKey: MivoScreenTimeKeys.alwaysBlockDriftActive)
+        userDefaults?.set(Self.todayDateString(), forKey: MivoScreenTimeKeys.alwaysBlockDriftArmedDate)
+        userDefaults?.synchronize()
+        scheduleAlwaysBlockDriftMidnightClear()
+        logger.info("Always-block-drift armed for the rest of today")
+    }
+
+    @available(iOS 16.0, *)
+    private func endAlwaysBlockDrift() {
+        clearShieldStore(alwaysBlockDriftStore)
+        userDefaults?.set(false, forKey: MivoScreenTimeKeys.alwaysBlockDriftActive)
+        userDefaults?.removeObject(forKey: MivoScreenTimeKeys.alwaysBlockDriftArmedDate)
+        userDefaults?.synchronize()
+        stopAlwaysBlockDriftDeviceActivity()
+        logger.info("Always-block-drift ended (day rolled over)")
+    }
+
+    /// Same trick as `scheduleStillLockDeviceActivityUnlock`: intervalStart
+    /// = the clear moment, so iOS reliably wakes the monitor extension even
+    /// with Mivo fully killed overnight.
+    @available(iOS 16.0, *)
+    private func scheduleAlwaysBlockDriftMidnightClear() {
+        #if canImport(DeviceActivity)
+        let center = DeviceActivityCenter()
+        let activity = DeviceActivityName(MivoScreenTimeKeys.alwaysBlockDriftActivityName)
+        center.stopMonitoring([activity])
+
+        let calendar = Calendar.current
+        guard let midnight = calendar.nextDate(
+            after: Date(),
+            matching: DateComponents(hour: 0, minute: 0, second: 0),
+            matchingPolicy: .nextTime
+        ) else { return }
+        let end = midnight.addingTimeInterval(7200)
+
+        let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: midnight),
+            intervalEnd: calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: end),
+            repeats: false
+        )
+        do {
+            try center.startMonitoring(activity, during: schedule)
+            logger.info("Always-block-drift midnight clear scheduled for \(midnight)")
+        } catch {
+            logger.warning("Always-block-drift DeviceActivity scheduling failed: \(error.localizedDescription)")
+        }
+        #endif
+    }
+
+    private func stopAlwaysBlockDriftDeviceActivity() {
+        #if canImport(DeviceActivity)
+        guard #available(iOS 16.0, *) else { return }
+        DeviceActivityCenter().stopMonitoring([DeviceActivityName(MivoScreenTimeKeys.alwaysBlockDriftActivityName)])
+        #endif
     }
 
     // MARK: - Live Activity management
@@ -797,6 +1134,15 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
         #endif
     }
 
+    /// Seconds left in the current Mivo session, 0 if none is active. Used to
+    /// resume the same session (not restart a fresh one) after a mid-scroll
+    /// check-in confirms the user still wants to keep going.
+    func mivoSessionRemainingSeconds(now: Date = Date()) -> Int {
+        guard isMivoSessionActive() else { return 0 }
+        let endsAt = userDefaults?.double(forKey: mivoSessionEndsAtKey) ?? 0
+        return max(0, Int(endsAt - now.timeIntervalSince1970))
+    }
+
     func isMivoSessionActive() -> Bool {
         guard userDefaults?.bool(forKey: mivoSessionActiveKey) == true else { return false }
         let endsAt = userDefaults?.double(forKey: mivoSessionEndsAtKey) ?? 0
@@ -824,6 +1170,19 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
     func clearPendingInterventionSetup() {
         userDefaults?.set(false, forKey: pendingInterventionSetupKey)
         userDefaults?.removeObject(forKey: pendingInterventionSetupAtKey)
+        userDefaults?.synchronize()
+    }
+
+    /// Whether tapping the real Instagram app should redirect into Mivo's own
+    /// wrapper instead of the normal intervention flow. Read by both the app
+    /// (Settings toggle) and the ShieldAction extension (which can't import
+    /// this class, so it reads the same app-group key directly).
+    func isInstagramWrapperEnabled() -> Bool {
+        userDefaults?.bool(forKey: MivoScreenTimeKeys.instagramWrapperEnabled) ?? false
+    }
+
+    func setInstagramWrapperEnabled(_ enabled: Bool) {
+        userDefaults?.set(enabled, forKey: MivoScreenTimeKeys.instagramWrapperEnabled)
         userDefaults?.synchronize()
     }
 
@@ -898,8 +1257,138 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
     private func makeInterventionStore() -> ManagedSettingsStore {
         ManagedSettingsStore(named: ManagedSettingsStore.Name(MivoScreenTimeKeys.shieldStoreName))
     }
+
+    /// Dedicated store for shields applied by a "Block my iPhone too"
+    /// command from the Mac companion app (see `CrossDeviceFocusService`).
+    /// Kept separate from `makeInterventionStore()`/the legacy default
+    /// store/Still Lock's store so ending a cross-device command can never
+    /// clear an unrelated shield, and vice versa.
+    @available(iOS 16.0, *)
+    private func crossDeviceFocusStore() -> ManagedSettingsStore {
+        ManagedSettingsStore(named: ManagedSettingsStore.Name("mivo.crossDeviceFocus"))
+    }
+
+    /// "Block my iPhone too" is a full lockdown, same as Mivo Still
+    /// (`activateStillLock` — `.applicationCategories = .all()`), not a
+    /// shield limited to the user's own tracked-apps selection. The Mac
+    /// side already frames it as "lock down like Focus Lock does," so the
+    /// iPhone side should match that expectation rather than silently
+    /// shielding a narrower set.
+    ///
+    /// `endsAt` is recorded alongside the shield (same pattern as
+    /// `activateStillLock`'s `stillLockEndsAtKey`) so
+    /// `MivoShieldConfigurationExtension` can show "Focus mode on your Mac"
+    /// with a real countdown instead of falling through to its generic
+    /// default copy, which told the user to "Open Mivo" — misleading here,
+    /// since only ending the session on Mac clears this shield.
+    @available(iOS 16.0, *)
+    func applyCrossDeviceFocusShield(endsAt: Date) {
+        crossDeviceFocusStore().shield.applicationCategories = .all()
+        userDefaults?.set(true, forKey: MivoScreenTimeKeys.crossDeviceFocusActive)
+        userDefaults?.set(endsAt.timeIntervalSince1970, forKey: MivoScreenTimeKeys.crossDeviceFocusEndsAt)
+        userDefaults?.synchronize()
+        // Guarantees the clear even if Mivo never reopens again before the
+        // Mac session ends — otherwise this shield could only ever be
+        // lifted by a reconcile() call, and one relies entirely on the app
+        // being foregrounded at some point after endsAt.
+        scheduleCrossDeviceFocusDeviceActivityClear(endsAt: endsAt)
+    }
+
+    @available(iOS 16.0, *)
+    func clearCrossDeviceFocusShield() {
+        clearShieldStore(crossDeviceFocusStore())
+        userDefaults?.set(false, forKey: MivoScreenTimeKeys.crossDeviceFocusActive)
+        userDefaults?.removeObject(forKey: MivoScreenTimeKeys.crossDeviceFocusEndsAt)
+        userDefaults?.synchronize()
+        stopCrossDeviceFocusDeviceActivity()
+    }
+
+    /// Reliable clear trigger, same trick as `scheduleStillLockDeviceActivityUnlock`:
+    /// intervalStart = the exact end time, so iOS fires `intervalDidStart` in
+    /// `MivoDeviceActivityMonitorExtension` and clears the shield even with
+    /// Mivo fully killed. intervalEnd is a 2-hour window purely because
+    /// `DeviceActivitySchedule` requires one; `intervalDidEnd` is a backup
+    /// trigger for the same clear.
+    @available(iOS 16.0, *)
+    private func scheduleCrossDeviceFocusDeviceActivityClear(endsAt: Date) {
+        #if canImport(DeviceActivity)
+        let center = DeviceActivityCenter()
+        let activity = DeviceActivityName(MivoScreenTimeKeys.crossDeviceFocusActivityName)
+        center.stopMonitoring([activity])
+
+        let calendar = Calendar.current
+        let start = max(endsAt, Date().addingTimeInterval(30))
+        let end = start.addingTimeInterval(7200)
+
+        let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: start),
+            intervalEnd: calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: end),
+            repeats: false
+        )
+
+        do {
+            try center.startMonitoring(activity, during: schedule)
+            logger.info("Cross-device focus clear scheduled via DeviceActivity for \(start)")
+        } catch {
+            logger.warning("Cross-device focus DeviceActivity scheduling failed: \(error.localizedDescription)")
+        }
+        #endif
+    }
+
+    @available(iOS 16.0, *)
+    private func stopCrossDeviceFocusDeviceActivity() {
+        #if canImport(DeviceActivity)
+        DeviceActivityCenter().stopMonitoring([DeviceActivityName(MivoScreenTimeKeys.crossDeviceFocusActivityName)])
+        #endif
+    }
+
+    // MARK: - Cross-device focus background discovery
+    //
+    // There is no push channel yet for "the Mac just started a session," so
+    // this is the only way the phone can find a new command while the app
+    // isn't foregrounded. iOS schedules BGAppRefreshTask opportunistically —
+    // this is best-effort, not a guarantee — but it's the same mechanism
+    // already used for session relock and Still Lock's unlock fallback, and
+    // it re-arms itself every time it runs.
+    @available(iOS 16.0, *)
+    func scheduleCrossDeviceFocusBackgroundCheck() {
+        let request = BGAppRefreshTaskRequest(identifier: MivoScreenTimeKeys.crossDeviceFocusBGTaskIdentifier)
+        request.earliestBeginDate = Date().addingTimeInterval(15 * 60)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    /// Starts (or re-arms) the DeviceActivity-based poll chain that
+    /// `MivoDeviceActivityMonitorExtension` uses to actually discover a new
+    /// Mac command while backgrounded/locked — see the doc comment on
+    /// `MivoScreenTimeKeys.crossDeviceFocusPollActivityName`. Idempotent:
+    /// `startMonitoring` on an activity that's already scheduled just
+    /// replaces it, so calling this from every `reconcile()` is harmless
+    /// and keeps the chain alive as long as the app is opened at all.
+    /// If the extension's own re-arming (after it fires) is working, this
+    /// call is mostly a safety net for the very first poll and for the
+    /// case where the chain died for some reason.
+    @available(iOS 16.0, *)
+    func scheduleCrossDeviceFocusPoll(after interval: TimeInterval = 5 * 60) {
+        #if canImport(DeviceActivity)
+        let center = DeviceActivityCenter()
+        let activity = DeviceActivityName(MivoScreenTimeKeys.crossDeviceFocusPollActivityName)
+        guard !center.activities.contains(activity) else { return }
+
+        let calendar = Calendar.current
+        let start = Date().addingTimeInterval(max(30, interval))
+        let end = start.addingTimeInterval(7200)
+        let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: start),
+            intervalEnd: calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: end),
+            repeats: false
+        )
+        try? center.startMonitoring(activity, during: schedule)
+        #endif
+    }
     #else
     func isImpulseProtectionEnabled() -> Bool { false }
+    func applyCrossDeviceFocusShield(endsAt: Date) {}
+    func clearCrossDeviceFocusShield() {}
     #endif
 
     // Save a raw JSON summary from the extension (the extension should write the report JSON into the same app group)
@@ -955,6 +1444,30 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
         guard let ud = userDefaults else { return nil }
         if ud.object(forKey: authFlagKey) == nil { return nil }
         return ud.bool(forKey: authFlagKey)
+    }
+
+    /// The cached flag above is written once, at the moment the system prompt
+    /// is answered, and never revisited — but Family Controls authorization
+    /// can silently change afterward (user revokes it in Settings, or a
+    /// fresh dev install/entitlement change resets it at the OS level). When
+    /// that happens the cached flag keeps reporting `true` while Apple's own
+    /// `AuthorizationCenter` has actually reverted to `.notDetermined`, so
+    /// `DeviceActivityReport` silently renders nothing (no error — it just
+    /// never calls the report extension), which is what left Home's screen
+    /// time total stuck on "—" indefinitely even after the extension-hosting
+    /// fixes. This reads Apple's live status and self-heals the cache so
+    /// every caller of `cachedAuthorizationStatus()` sees the truth again.
+    func liveAuthorizationStatus() -> Bool {
+        #if canImport(FamilyControls)
+        guard #available(iOS 16.0, *) else { return cachedAuthorizationStatus() ?? false }
+        let approved = AuthorizationCenter.shared.authorizationStatus == .approved
+        if cachedAuthorizationStatus() != approved {
+            saveAuthorizationFlag(approved)
+        }
+        return approved
+        #else
+        return cachedAuthorizationStatus() ?? false
+        #endif
     }
 
     // Clear the cached authorization flag (useful to force a fresh request attempt)

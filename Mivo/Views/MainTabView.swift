@@ -15,188 +15,30 @@ struct MainTabView: View {
     @State private var completedExperimentForReview: WeeklyExperiment?
     @State private var deferredExperimentReviewID: String?
 
+    init(initialTab: Int = 0) {
+        _selectedTab = State(initialValue: initialTab)
+    }
+
     private let currentTutorialVersion = 3
     private let pendingInterventionPoller = Timer.publish(every: 0.75, on: .main, in: .common).autoconnect()
+    // These two were previously written inline inside .onReceive, which
+    // creates a brand new Timer.publish (and the real system Timer behind
+    // it) on every single body re-evaluation rather than once. MainTabView
+    // re-renders on every appVM.@Published change — screen time updates,
+    // session state, admin role refreshes — so that recreated a live timer
+    // continuously across the whole app session, not just here.
+    private let adminRolePoller = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    /// Re-reads Mivo's existing Screen Time state for the companion. A no-op
+    /// while Companion is off.
+    private let companionTicker = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    private let minutePoller = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     private var tutorialSteps: [AppTutorialStep] {
         AppTutorialStep.steps(for: appVM.accountRole)
     }
 
     var body: some View {
-        ZStack {
-            TabView(selection: $selectedTab) {
-                NavigationStack {
-                    HomeView()
-                }
-                .tabItem {
-                    Label("Home", systemImage: "house")
-                }
-                .tag(0)
-
-                NavigationStack {
-                    PatternsView()
-                }
-                .tabItem {
-                    Label("Patterns", systemImage: "calendar")
-                }
-                .tag(1)
-
-                NavigationStack {
-                    InterventionsView {
-                        selectedTab = 0
-                    }
-                }
-                .tabItem {
-                    Label("Interventions", systemImage: "timer")
-                }
-                .tag(2)
-
-                NavigationStack {
-                    SettingsView()
-                }
-                .tabItem {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .tag(3)
-            }
-
-            if shouldShowTutorial {
-                AppTutorialOverlay(
-                    step: currentTutorialStep,
-                    stepIndex: tutorialStep,
-                    totalSteps: tutorialSteps.count,
-                    isRequestingScreenTime: isRequestingScreenTime,
-                    message: tutorialMessage,
-                    demoCompleted: completedTutorialDemos.contains(currentTutorialStep.id),
-                    demoAction: performTutorialDemo,
-                    backAction: tutorialStep == 0 ? nil : retreatTutorial,
-                    skipAction: skipTutorial,
-                    nextAction: advanceTutorial
-                )
-                .transition(.opacity)
-            }
-
-        }
-        .accentColor(MivoColors.accent)
-        .onChange(of: selectedTab) { oldValue, newValue in
-            guard oldValue != newValue else { return }
-            HapticsService.selection()
-        }
-        .onAppear {
-            MivoDiagnosticsService.shared.startForActiveUser()
-            let appearance = UITabBarAppearance()
-            appearance.configureWithOpaqueBackground()
-            appearance.backgroundColor = UIColor(MivoColors.background)
-            UITabBar.appearance().standardAppearance = appearance
-            UITabBar.appearance().scrollEdgeAppearance = appearance
-            appVM.scheduleTimeTruthNotification()
-            appVM.scheduleDailyScrollScheduleNotification()
-            appVM.evaluateDailyScrollSchedulePrompt()
-            appVM.evaluateTimeTruthPrompt()
-            appVM.evaluateGoalForecastPrompt()
-            appVM.refreshWeeklyExperimentLifecycle()
-            presentCompletedExperimentReviewIfNeeded()
-            appVM.recoverExpiredRunningSessionIfNeeded()
-            cleanupSessionEndedNotificationsIfNeeded()
-            appVM.validateCurrentRemoteAccount()
-            Task {
-                await ProductExpansionStore.shared.prepare(for: appVM)
-                await appVM.refreshServerAdminRole()
-                await ReferralCampaignService.logEvent("app_open")
-                await loadAnnouncement()
-            }
-            routePendingAdminNotification()
-            appVM.checkPendingMivoClearRoute()
-
-            if shouldShowTutorial {
-                selectedTab = currentTutorialStep.tab
-            } else {
-                routeForForegroundOpen()
-            }
-        }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active, !shouldShowTutorial else { return }
-            // Defense in depth: every time Mivo becomes active, re-check whether
-            // the session has expired in the background and apply shields immediately.
-            // This catches the case where iOS didn't wake the DeviceActivityMonitor
-            // extension at session end (common in release/App Store builds when the
-            // app isn't being debugged from Xcode).
-            if #available(iOS 16.0, *) {
-                FamilyControlsManager.shared.applyImpulseProtectionIfNeeded()
-            }
-            appVM.recoverExpiredRunningSessionIfNeeded()
-            cleanupSessionEndedNotificationsIfNeeded()
-            appVM.validateCurrentRemoteAccount()
-            appVM.checkDeepLinkInterventionFlag()   // pick up flag written by shield extension
-            appVM.checkPendingMivoClearRoute()
-            routeForForegroundOpen()
-            appVM.scheduleTimeTruthNotification()
-            appVM.scheduleDailyScrollScheduleNotification()
-            appVM.evaluateDailyScrollSchedulePrompt()
-            appVM.evaluateTimeTruthPrompt()
-            appVM.evaluateGoalForecastPrompt()
-            appVM.refreshWeeklyExperimentLifecycle()
-            presentCompletedExperimentReviewIfNeeded()
-            Task {
-                await ProductExpansionStore.shared.prepare(for: appVM)
-                await appVM.refreshServerAdminRole()
-                await ReferralCampaignService.logEvent("app_open")
-                await loadAnnouncement()
-            }
-            routePendingAdminNotification()
-        }
-        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
-            guard scenePhase == .active, !shouldShowTutorial else { return }
-            Task { await appVM.refreshServerAdminRole() }
-        }
-        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-            guard !shouldShowTutorial else { return }
-            appVM.evaluateDailyScrollSchedulePrompt()
-            appVM.evaluateTimeTruthPrompt()
-            appVM.evaluateGoalForecastPrompt()
-            appVM.refreshWeeklyExperimentLifecycle()
-            presentCompletedExperimentReviewIfNeeded()
-            Task {
-                await ProductExpansionStore.shared.prepare(for: appVM)
-                await MivoClearStore.shared.prepare(for: appVM)
-            }
-        }
-        .onReceive(pendingInterventionPoller) { _ in
-            guard scenePhase == .active, !shouldShowTutorial else { return }
-            routeToPendingInterventionIfNeeded()
-        }
-        .onChange(of: appVM.deepLinkInterventionRequested) { _, requested in
-            guard requested, !shouldShowTutorial else { return }
-            routeToDeepLinkedInterventionIfNeeded()
-        }
-        .onChange(of: appVM.liveActivityDeepLinkAction) { _, action in
-            guard action != nil, !shouldShowTutorial else { return }
-            routeToLiveActivityActionIfNeeded()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("mivoClearRequested"))) { _ in
-            guard !shouldShowTutorial else { return }
-            appVM.checkPendingMivoClearRoute()
-        }
-        .onChange(of: tutorialStep) { _, newValue in
-            let safeIndex = min(max(0, newValue), tutorialSteps.count - 1)
-            selectedTab = tutorialSteps[safeIndex].tab
-            tutorialMessage = nil
-        }
-        .onChange(of: appVM.accountRole) { _, _ in
-            if tutorialStep >= tutorialSteps.count {
-                tutorialStep = max(0, tutorialSteps.count - 1)
-            }
-        }
-        .onChange(of: appVM.completedWeeklyExperimentAwaitingFeedback?.id) { _, _ in
-            presentCompletedExperimentReviewIfNeeded()
-        }
-        .onChange(of: appVM.settings.tutorialComplete) { _, complete in
-            guard complete == false else { return }
-            tutorialStep = 0
-            completedTutorialDemos.removeAll()
-            tutorialMessage = nil
-            selectedTab = tutorialSteps[0].tab
-        }
+        mainContent
         .fullScreenCover(item: $appVM.pendingExpiredRunningSession) { running in
             SessionEndedReviewView(
                 running: running,
@@ -242,10 +84,43 @@ struct MainTabView: View {
                 .environmentObject(appVM)
                 .interactiveDismissDisabled()
         }
+        .fullScreenCover(item: $appVM.pendingComebackPrompt) { prompt in
+            ComebackFlowView(prompt: prompt)
+                .environmentObject(appVM)
+        }
+        .fullScreenCover(item: $appVM.pendingScrollGoalPrompt) { prompt in
+            ScrollGoalPromptView(prompt: prompt)
+                .environmentObject(appVM)
+                .interactiveDismissDisabled()
+        }
         .fullScreenCover(item: $appVM.pendingGoalForecastPrompt) { prompt in
             GoalForecastPromptView(prompt: prompt)
                 .environmentObject(appVM)
                 .interactiveDismissDisabled()
+        }
+        .fullScreenCover(isPresented: $appVM.pendingMidScrollCheckIn) {
+            MidScrollCheckInView(seconds: FamilyControlsManager.shared.shieldPauseDuration())
+                .environmentObject(appVM)
+        }
+        .fullScreenCover(isPresented: $appVM.pendingInstagramWrapper) {
+            InstagramWrapperView()
+                .environmentObject(appVM)
+        }
+        .sheet(isPresented: $appVM.showRatingPrompt) {
+            MivoRatingPromptView()
+                .environmentObject(appVM)
+                .presentationDetents([.height(360)])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $appVM.showNamePrompt) {
+            NamePromptView()
+                .environmentObject(appVM)
+                .presentationDetents([.height(360)])
+                .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(isPresented: $appVM.showSwapPrompt) {
+            SwapPromptView()
+                .environmentObject(appVM)
         }
         .fullScreenCover(item: $appVM.pendingResumedActiveSession) { session in
             NavigationStack {
@@ -311,6 +186,210 @@ struct MainTabView: View {
         .animation(.easeInOut(duration: 0.22), value: shouldShowTutorial)
     }
 
+    private var mainContent: some View {
+        ZStack {
+            // The native bar is hidden rather than restyled — its metrics cannot
+            // match the redesign — but TabView is kept so each tab retains its
+            // own navigation state and stays lazily loaded.
+            TabView(selection: $selectedTab) {
+                NavigationStack {
+                    HomeView()
+                }
+                .toolbar(.hidden, for: .tabBar)
+                .tag(0)
+
+                NavigationStack {
+                    PatternsView()
+                }
+                .toolbar(.hidden, for: .tabBar)
+                .tag(1)
+
+                NavigationStack {
+                    InterventionsView {
+                        selectedTab = 0
+                    }
+                }
+                .toolbar(.hidden, for: .tabBar)
+                .tag(2)
+
+                NavigationStack {
+                    SettingsView()
+                }
+                .toolbar(.hidden, for: .tabBar)
+                .tag(3)
+            }
+            .overlay(alignment: .bottom) {
+                MivoTabBar(selection: $selectedTab)
+            }
+
+            if shouldShowTutorial {
+                AppTutorialOverlay(
+                    step: currentTutorialStep,
+                    stepIndex: tutorialStep,
+                    totalSteps: tutorialSteps.count,
+                    isRequestingScreenTime: isRequestingScreenTime,
+                    message: tutorialMessage,
+                    demoCompleted: completedTutorialDemos.contains(currentTutorialStep.id),
+                    demoAction: performTutorialDemo,
+                    backAction: tutorialStep == 0 ? nil : retreatTutorial,
+                    skipAction: skipTutorial,
+                    nextAction: advanceTutorial
+                )
+                .transition(.opacity)
+            }
+
+        }
+        .accentColor(MivoColors.accent)
+        .onChange(of: selectedTab) { oldValue, newValue in
+            guard oldValue != newValue else { return }
+            HapticsService.selection()
+        }
+        .onAppear {
+            MivoDiagnosticsService.shared.startForActiveUser()
+            appVM.scheduleTimeTruthNotification()
+            appVM.scheduleDailyScrollScheduleNotification()
+            // First, so a returning user is offered a fresh start before any
+            // of the prompts below, which all stand down while it is pending.
+            appVM.evaluateComebackPrompt()
+            appVM.evaluateDailyScrollSchedulePrompt()
+            appVM.evaluateTimeTruthPrompt()
+            appVM.evaluateScrollGoalPrompt()
+            appVM.evaluateGoalForecastPrompt()
+            appVM.evaluateSwapPrompt()
+            appVM.evaluateNamePrompt()
+            appVM.refreshWeeklyExperimentLifecycle()
+            presentCompletedExperimentReviewIfNeeded()
+            appVM.recoverExpiredRunningSessionIfNeeded()
+            cleanupSessionEndedNotificationsIfNeeded()
+            appVM.validateCurrentRemoteAccount()
+            Task {
+                await ProductExpansionStore.shared.prepare(for: appVM)
+                await appVM.refreshServerAdminRole()
+                await ReferralCampaignService.logEvent("app_open")
+                await loadAnnouncement()
+            }
+            routePendingAdminNotification()
+            appVM.checkPendingMivoClearRoute()
+
+            if shouldShowTutorial {
+                selectedTab = currentTutorialStep.tab
+            } else {
+                routeForForegroundOpen()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, !shouldShowTutorial else { return }
+            // Defense in depth: every time Mivo becomes active, re-check whether
+            // the session has expired in the background and apply shields immediately.
+            // This catches the case where iOS didn't wake the DeviceActivityMonitor
+            // extension at session end (common in release/App Store builds when the
+            // app isn't being debugged from Xcode).
+            if #available(iOS 16.0, *) {
+                FamilyControlsManager.shared.applyImpulseProtectionIfNeeded()
+                Task { await CrossDeviceFocusService.shared.reconcile() }
+            }
+            appVM.recoverExpiredRunningSessionIfNeeded()
+            cleanupSessionEndedNotificationsIfNeeded()
+            appVM.validateCurrentRemoteAccount()
+            appVM.checkDeepLinkInterventionFlag()   // pick up flag written by shield extension
+            appVM.checkMidScrollCheckInFlag()
+            appVM.checkPendingInstagramWrapperFlag()
+            appVM.checkPendingMivoClearRoute()
+            routeForForegroundOpen()
+            appVM.scheduleTimeTruthNotification()
+            appVM.scheduleDailyScrollScheduleNotification()
+            appVM.evaluateComebackPrompt()
+            appVM.evaluateDailyScrollSchedulePrompt()
+            appVM.evaluateTimeTruthPrompt()
+            appVM.evaluateScrollGoalPrompt()
+            appVM.evaluateGoalForecastPrompt()
+            appVM.evaluateSwapPrompt()
+            appVM.evaluateNamePrompt()
+            appVM.refreshWeeklyExperimentLifecycle()
+            presentCompletedExperimentReviewIfNeeded()
+            Task {
+                await ProductExpansionStore.shared.prepare(for: appVM)
+                await appVM.refreshServerAdminRole()
+                await ReferralCampaignService.logEvent("app_open")
+                await loadAnnouncement()
+            }
+            routePendingAdminNotification()
+        }
+        .onReceive(adminRolePoller) { _ in
+            guard scenePhase == .active, !shouldShowTutorial else { return }
+            Task { await appVM.refreshServerAdminRole() }
+            // Reconcile also needs to run while the app stays foregrounded,
+            // not just on foreground transitions — otherwise starting
+            // "Block my iPhone too" on the Mac while the phone is already
+            // unlocked and open never gets picked up until the next
+            // background/foreground cycle.
+            if #available(iOS 16.0, *) {
+                Task { await CrossDeviceFocusService.shared.reconcile() }
+            }
+        }
+        .onReceive(minutePoller) { _ in
+            guard !shouldShowTutorial else { return }
+            appVM.evaluateDailyScrollSchedulePrompt()
+            appVM.evaluateTimeTruthPrompt()
+            appVM.evaluateScrollGoalPrompt()
+            appVM.evaluateGoalForecastPrompt()
+            appVM.evaluateRatingPrompt()
+            appVM.evaluateSwapPrompt()
+            appVM.evaluateNamePrompt()
+            appVM.refreshWeeklyExperimentLifecycle()
+            presentCompletedExperimentReviewIfNeeded()
+            Task {
+                await ProductExpansionStore.shared.prepare(for: appVM)
+                await MivoClearStore.shared.prepare(for: appVM)
+            }
+        }
+        .onReceive(pendingInterventionPoller) { _ in
+            guard scenePhase == .active, !shouldShowTutorial else { return }
+            routeToPendingInterventionIfNeeded()
+        }
+        .companionDeepLinkSheet()
+        .onAppear { CompanionDeviceActivityAdapter.sync(with: appVM) }
+        .onChange(of: scenePhase) { _, phase in
+            CompanionDeviceActivityAdapter.sync(with: appVM, appInForeground: phase == .active)
+        }
+        .onReceive(companionTicker) { _ in
+            guard scenePhase == .active else { return }
+            CompanionDeviceActivityAdapter.sync(with: appVM)
+        }
+        .onChange(of: appVM.deepLinkInterventionRequested) { _, requested in
+            guard requested, !shouldShowTutorial else { return }
+            routeToDeepLinkedInterventionIfNeeded()
+        }
+        .onChange(of: appVM.liveActivityDeepLinkAction) { _, action in
+            guard action != nil, !shouldShowTutorial else { return }
+            routeToLiveActivityActionIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("mivoClearRequested"))) { _ in
+            guard !shouldShowTutorial else { return }
+            appVM.checkPendingMivoClearRoute()
+        }
+        .onChange(of: tutorialStep) { _, newValue in
+            let safeIndex = min(max(0, newValue), tutorialSteps.count - 1)
+            selectedTab = tutorialSteps[safeIndex].tab
+            tutorialMessage = nil
+        }
+        .onChange(of: appVM.accountRole) { _, _ in
+            if tutorialStep >= tutorialSteps.count {
+                tutorialStep = max(0, tutorialSteps.count - 1)
+            }
+        }
+        .onChange(of: appVM.completedWeeklyExperimentAwaitingFeedback?.id) { _, _ in
+            presentCompletedExperimentReviewIfNeeded()
+        }
+        .onChange(of: appVM.settings.tutorialComplete) { _, complete in
+            guard complete == false else { return }
+            tutorialStep = 0
+            completedTutorialDemos.removeAll()
+            tutorialMessage = nil
+            selectedTab = tutorialSteps[0].tab
+        }
+    }
+
     private var shouldShowTutorial: Bool {
         appVM.settings.onboardingComplete
             && (appVM.settings.tutorialComplete != true
@@ -338,6 +417,7 @@ struct MainTabView: View {
               appVM.pendingSessionFeedback == nil,
               appVM.pendingTimeTruthPrompt == nil,
               appVM.pendingDailyScrollSchedulePrompt == nil,
+              appVM.pendingScrollGoalPrompt == nil,
               appVM.pendingGoalForecastPrompt == nil,
               let experiment = appVM.completedWeeklyExperimentAwaitingFeedback,
               deferredExperimentReviewID != experiment.id,
@@ -380,6 +460,8 @@ struct MainTabView: View {
     
     private func routeForForegroundOpen() {
         appVM.checkDeepLinkInterventionFlag()
+        appVM.checkMidScrollCheckInFlag()
+        appVM.checkPendingInstagramWrapperFlag()
         if routeToDeepLinkedReferralHubIfNeeded() {
             return
         }
@@ -1585,7 +1667,7 @@ private struct AppTutorialStep: Identifiable {
             buttonTitle: "Continue", requiresDemo: false, demoCompletion: nil, requiresScreenTimeAccess: false
         ),
         AppTutorialStep(
-            id: 3, tab: 2, icon: "hand.raised.fill", eyebrow: "Interventions", title: "Pause before opening",
+            id: 3, tab: 2, icon: "hand.raised.fill", eyebrow: "Protect", title: "Pause before opening",
             body: "Choose why you opened the app and how long you need. Repeated attempts receive gradually stronger friction.",
             shortBody: "Try selecting a reason. Mivo uses it to start intentionally and improve future insights.",
             bullets: ["5-second first pause", "10 seconds for repeated openings", "Reason check when a pattern repeats"],
@@ -1605,7 +1687,7 @@ private struct AppTutorialStep: Identifiable {
             body: "Late-night protection adds a longer pause, shows tomorrow’s wake time, and offers one final short scroll.",
             shortBody: "Nighttime prompts stay calm while making the sleep tradeoff clear.",
             bullets: ["Longer nighttime pause", "Wake-time reminder", "One last-scroll option"],
-            hint: "Set your night and wake hours in Settings.", targetLabel: "Late-night protection", focus: .upper,
+            hint: "Set your night and wake hours under Protect.", targetLabel: "Late-night protection", focus: .upper,
             buttonTitle: "Continue", requiresDemo: false, demoCompletion: nil, requiresScreenTimeAccess: false
         ),
         AppTutorialStep(
@@ -1633,11 +1715,11 @@ private struct AppTutorialStep: Identifiable {
             buttonTitle: "Continue", requiresDemo: false, demoCompletion: nil, requiresScreenTimeAccess: false
         ),
         AppTutorialStep(
-            id: 9, tab: 3, icon: "slider.horizontal.3", eyebrow: "Personalize", title: "Recovery and app personalities",
+            id: 9, tab: 2, icon: "slider.horizontal.3", eyebrow: "Personalize", title: "Recovery and app personalities",
             body: "Recovery Mode simplifies a difficult day, while app personalities adjust pauses, rescue timing, and extensions per app.",
             shortBody: "Your locked schedule remains the strongest rule; these tools tune the support around it.",
             bullets: ["Gentler recovery days", "Different friction per app", "Experiment Library"],
-            hint: "Find these controls under Mivo Tools.", targetLabel: "Personal controls", focus: .upper,
+            hint: "Find these under Protect, and experiments on Home.", targetLabel: "Personal controls", focus: .upper,
             buttonTitle: "Continue", requiresDemo: false, demoCompletion: nil, requiresScreenTimeAccess: false
         ),
         AppTutorialStep(
@@ -1649,15 +1731,15 @@ private struct AppTutorialStep: Identifiable {
             buttonTitle: "Continue", requiresDemo: false, demoCompletion: nil, requiresScreenTimeAccess: false
         ),
         AppTutorialStep(
-            id: 15, tab: 0, icon: "sparkles.rectangle.stack.fill", eyebrow: "Mivo Clear BETA", title: "Use social tools without the feed",
-            body: "Map Instagram, TikTok, or YouTube once. The native app stays protected while Mivo Clear BETA keeps useful actions available.",
+            id: 15, tab: 0, icon: "sparkles.rectangle.stack.fill", eyebrow: "Mivo Clear", title: "Use social tools without the feed",
+            body: "Map Instagram, TikTok, or YouTube once. The native app stays protected while Mivo Clear keeps useful actions available.",
             shortBody: "Try the sample mapping, then choose a focused shortcut instead of opening an endless short-form feed.",
             bullets: ["Messages, profile, and posting", "A shared reel returns you to the chat", "Device-only app mappings"],
-            hint: "Tap the demo to map Instagram and open Messages.", targetLabel: "Mivo Clear BETA setup", focus: .middle,
-            buttonTitle: "Continue", requiresDemo: true, demoCompletion: "Instagram mapped. The shield would now offer Mivo Clear BETA, and Messages would open as the focused destination.", requiresScreenTimeAccess: false
+            hint: "Tap the demo to map Instagram and open Messages.", targetLabel: "Mivo Clear setup", focus: .middle,
+            buttonTitle: "Continue", requiresDemo: true, demoCompletion: "Instagram mapped. The shield would now offer Mivo Clear, and Messages would open as the focused destination.", requiresScreenTimeAccess: false
         ),
         AppTutorialStep(
-            id: 11, tab: 3, icon: "waveform.path.ecg", eyebrow: "Final Step", title: "Connect Screen Time",
+            id: 11, tab: 2, icon: "waveform.path.ecg", eyebrow: "Final Step", title: "Connect Screen Time",
             body: "Screen Time access lets Mivo measure real usage, run the observation, protect selected apps, and enforce your schedule.",
             shortBody: "Allow access once so the core Mivo experience can work accurately.",
             bullets: ["Real usage", "App shields", "Accurate plans and insights"],
@@ -1958,7 +2040,7 @@ private struct AppTutorialTarget: View {
 
     private var mivoClearPreview: some View {
         demoStack {
-            demoHeader("Mivo Clear BETA", subtitle: demoCompleted ? "Instagram mapped" : "Choose one native app")
+            demoHeader("Mivo Clear", subtitle: demoCompleted ? "Instagram mapped" : "Choose one native app")
             demoRow("Instagram", value: demoCompleted ? "Mapped" : "Map", selected: true)
             HStack(spacing: 7) {
                 miniPill("Messages", selected: demoCompleted)
@@ -2139,7 +2221,7 @@ private struct AppTutorialTarget: View {
 
     private var personalControlsPreview: some View {
         demoStack {
-            demoHeader("Mivo Tools", subtitle: "Tune support without weakening locks")
+            demoHeader("Protect", subtitle: "Tune support without weakening locks")
             demoRow("Recovery Mode", value: "Available", selected: true)
             demoRow("App personalities", value: "Balanced", selected: false)
             demoRow("Experiment Library", value: "3 ideas", selected: false)
@@ -2283,7 +2365,7 @@ private struct AppTutorialTarget: View {
 
     private var tabBarPreview: some View {
         HStack(spacing: 8) {
-            ForEach(["Home", "Patterns", "Interventions", "Settings"], id: \.self) { title in
+            ForEach(["Home", "Patterns", "Protect", "Settings"], id: \.self) { title in
                 VStack(spacing: 4) {
                     Image(systemName: iconName(for: title))
                         .font(.system(size: 14, weight: .bold))
@@ -2445,7 +2527,7 @@ private struct AppTutorialTarget: View {
             return "house.fill"
         case "Patterns":
             return "calendar"
-        case "Interventions":
+        case "Protect":
             return "timer"
         default:
             return "gearshape.fill"
@@ -2906,5 +2988,135 @@ private struct GoalForecastPromptView: View {
         let h = minutes / 60
         let m = minutes % 60
         return m == 0 ? "\(h)h" : "\(h)h \(m)m"
+    }
+}
+
+/// One question, asked once, for users whose onboarding answer was lost.
+private struct ScrollGoalPromptView: View {
+    @EnvironmentObject private var appVM: AppViewModel
+    let prompt: ScrollGoalPrompt
+
+    @State private var selected: Int?
+
+    var body: some View {
+        ZStack {
+            MivoColors.background.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text("ONE QUICK THING")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
+                    .tracking(10 * 0.13)
+                    .foregroundColor(MivoColors.inkMuted)
+                    .padding(.top, 66)
+
+                Text("How much scrolling feels right per day?")
+                    .font(.system(size: 27, weight: .bold))
+                    .tracking(27 * -0.025)
+                    .foregroundColor(MivoColors.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 290, alignment: .leading)
+                    .padding(.top, 10)
+
+                Text(subtitle)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .lineSpacing(13.5 * 0.55)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+
+                VStack(spacing: 9) {
+                    ForEach(prompt.options, id: \.self) { minutes in
+                        option(minutes)
+                    }
+                }
+                .padding(.top, 28)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    guard let selected else { return }
+                    appVM.saveScrollGoal(selected)
+                } label: {
+                    Text("Set my target")
+                        .font(.system(size: 15.5, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(selected == nil ? MivoColors.accent.opacity(0.4) : MivoColors.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(selected == nil)
+
+                Button {
+                    appVM.dismissScrollGoalPrompt()
+                } label: {
+                    Text("Keep what I have")
+                        .font(.system(size: 13.5, weight: .bold))
+                        .foregroundColor(MivoColors.inkMuted)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 24)
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    private var subtitle: String {
+        guard let baseline = prompt.baselineMinutes, baseline > 0 else {
+            return "Mivo lost this answer during setup, so your plan has been using the default. Pick the target you actually want."
+        }
+        return "Mivo lost this answer during setup, so your plan has been using the default. You're averaging \(formatted(baseline)) a day — pick something you'd be glad to hit."
+    }
+
+    private func option(_ minutes: Int) -> some View {
+        let isSelected = selected == minutes
+        return Button {
+            HapticsService.impact(style: .medium)
+            selected = minutes
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text("\(minutes) minutes")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(MivoColors.ink)
+                Spacer(minLength: 8)
+                if let note = note(for: minutes) {
+                    Text(note)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(isSelected ? Color(hex: "#96551A") : MivoColors.inkMuted)
+                        .fixedSize()
+                }
+            }
+            .padding(18)
+            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isSelected ? MivoColors.surfaceV2 : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? MivoColors.deep.opacity(0.5) : MivoColors.ink.opacity(0.14),
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private func note(for minutes: Int) -> String? {
+        switch minutes {
+        case 30: return "ambitious"
+        case 45: return "recommended"
+        case 70: return "gentle start"
+        case 90: return "just less"
+        default: return nil
+        }
+    }
+
+    private func formatted(_ minutes: Int) -> String {
+        minutes < 60 ? "\(minutes)m" : String(format: "%dh %02dm", minutes / 60, minutes % 60)
     }
 }

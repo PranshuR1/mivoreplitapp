@@ -29,6 +29,7 @@ final class ProductExpansionStore: ObservableObject {
             accountabilityConnections = StorageService.load([AccountabilityConnection].self, forKey: .accountabilityConnections, email: email) ?? []
         }
 
+        await restoreBackupOnlyRecordsIfNeeded(email: email)
         proposeRecoveryIfNeeded(using: appVM)
         generateMonthlyReport(using: appVM)
         await refreshFeatureFlags(email: email)
@@ -264,6 +265,38 @@ final class ProductExpansionStore: ObservableObject {
             featureFlags = try await ProductExpansionService.myFeatureFlags()
             StorageService.save(featureFlags, forKey: .featureFlags, email: email)
         } catch { lastError = error.localizedDescription }
+    }
+
+    /// `saveRecoveryPlan`/`saveMonthlyEffectReport` were push-only until
+    /// this was added — Supabase held a full history that a signed-out
+    /// device (or a reinstall) had no way to read back. Runs once per
+    /// `loadedEmail` change, same as the other `prepare()` steps. Merges
+    /// by id rather than replacing outright: a plan/report that already
+    /// exists locally may reflect a more recent status change
+    /// (`acceptRecovery`/`declineRecovery`) than what's landed on the
+    /// server yet, so only items missing locally are added, never
+    /// overwritten.
+    private func restoreBackupOnlyRecordsIfNeeded(email: String) async {
+        guard ProductExpansionService.isConfigured else { return }
+        async let plans = try? ProductExpansionService.recoveryPlans()
+        async let reports = try? ProductExpansionService.monthlyEffectReports()
+        if let remotePlans = await plans {
+            let localIDs = Set(recoveryPlans.map(\.id))
+            let missing = remotePlans.filter { !localIDs.contains($0.id) }
+            if !missing.isEmpty {
+                recoveryPlans.append(contentsOf: missing)
+                persist(recoveryPlans, key: .recoveryPlans)
+            }
+        }
+        if let remoteReports = await reports {
+            let localIDs = Set(monthlyReports.map(\.id))
+            let missing = remoteReports.filter { !localIDs.contains($0.id) }
+            if !missing.isEmpty {
+                monthlyReports.append(contentsOf: missing)
+                monthlyReports.sort { $0.monthKey > $1.monthKey }
+                persist(monthlyReports, key: .monthlyEffectReports)
+            }
+        }
     }
 
     private func refreshAccountabilityConnections(email: String) async {

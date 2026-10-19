@@ -1,8 +1,94 @@
 import SwiftUI
 import WebKit
+import AVFoundation
 #if canImport(FamilyControls)
 import FamilyControls
 #endif
+
+/// Web media takes its volume from the app's audio session. Mivo never
+/// configured one, so it ran under the default `soloAmbient` category, which
+/// the hardware ring switch silences — unmuting the video element worked but
+/// produced no sound. `playback` is the category for user-initiated video.
+enum MivoClearAudioSession {
+    static func activate() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .moviePlayback, options: [])
+            try session.setActive(true)
+        } catch {
+            // Losing audio is not a reason to fail the whole browsing session.
+        }
+    }
+
+    static func deactivate() {
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: .notifyOthersOnDeactivation
+        )
+    }
+}
+
+/// Diagnostic switch for the injected guard. Off — the overlay is a
+/// development aid for reel-scroll investigations, never something a user
+/// should see. The guard still reports its state to the native side either
+/// way; this only controls whether that state is painted on screen.
+enum MivoClearDebug {
+    static let showGuardHUD = false
+}
+
+/// Appends guard state to a file inside the app container so a reel-scroll
+/// failure can be read back afterwards with
+/// `xcrun devicectl device copy from`, instead of depending on someone
+/// screenshotting a debug overlay at the right instant.
+///
+/// Records only *changes*: the guard re-checks several times a second, and a
+/// transition log is both far smaller and far more useful than a stream of
+/// identical lines.
+enum MivoClearDiagnostics {
+    private static let queue = DispatchQueue(label: "com.mivo.mivoapp.cleardiagnostics")
+    private static let byteLimit = 256 * 1024
+    private static var lastLine: String?
+
+    static var fileURL: URL? {
+        FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("mivo-clear-guard.log")
+    }
+
+    static func record(_ line: String, deduplicated: Bool = false) {
+        queue.async {
+            if deduplicated {
+                guard lastLine != line else { return }
+                lastLine = line
+            }
+            guard let url = fileURL,
+                  let data = "\(Self.stamp()) \(line)\n".data(using: .utf8) else { return }
+
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+            } else {
+                try? data.write(to: url)
+            }
+
+            // Bounded, so a long browsing session cannot grow this without
+            // limit. Keeping the tail matters more than keeping the head.
+            if let size = try? FileManager.default
+                .attributesOfItem(atPath: url.path)[.size] as? Int, size > byteLimit,
+               let existing = try? String(contentsOf: url, encoding: .utf8) {
+                let kept = existing.suffix(byteLimit / 2)
+                try? String(kept).write(to: url, atomically: true, encoding: .utf8)
+            }
+        }
+    }
+
+    private static func stamp() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter.string(from: Date())
+    }
+}
 
 struct MivoClearHomeCard: View {
     @ObservedObject private var clearStore = MivoClearStore.shared
@@ -19,7 +105,7 @@ struct MivoClearHomeCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Mivo Clear BETA")
+                    Text("Mivo Clear")
                         .font(.system(size: 17, weight: .bold, design: .rounded))
                         .foregroundColor(MivoColors.textPrimary)
                     Text("Messages, profiles, and long videos without endless feeds")
@@ -44,7 +130,7 @@ struct MivoClearHomeCard: View {
             .mivoSectionSurface()
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Open Mivo Clear BETA")
+        .accessibilityLabel("Open Mivo Clear")
     }
 }
 
@@ -74,7 +160,7 @@ struct MivoClearPatternsCard: View {
         let peak = max(1, values.max() ?? 1)
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Mivo Clear BETA", systemImage: "sparkles.rectangle.stack.fill")
+                Label("Mivo Clear", systemImage: "sparkles.rectangle.stack.fill")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(MivoColors.textPrimary)
                 Spacer()
@@ -148,7 +234,7 @@ struct MivoClearHubView: View {
                     .padding(.bottom, 36)
                 }
             }
-            .navigationTitle("Mivo Clear BETA")
+            .navigationTitle("Mivo Clear")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -209,12 +295,12 @@ struct MivoClearHubView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Social platforms require users to meet their minimum age requirements. Mivo Clear BETA is not available to users under 13.")
+            Text("Social platforms require users to meet their minimum age requirements. Mivo Clear is not available to users under 13.")
         }
-        .alert("Mivo Clear BETA unavailable", isPresented: $ageBlocked) {
+        .alert("Mivo Clear unavailable", isPresented: $ageBlocked) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Mivo Clear BETA is available to users age 13 and older.")
+            Text("Mivo Clear is available to users age 13 and older.")
         }
     }
 
@@ -463,7 +549,7 @@ struct MivoClearAppStorePreviewView: View {
                             .overlay(RoundedRectangle(cornerRadius: 8).stroke(MivoColors.border.opacity(0.4)))
                         }
 
-                        Label("Mivo Clear BETA never stores your social passwords, messages, searches, or viewed content.", systemImage: "hand.raised.fill")
+                        Label("Mivo Clear never stores your social passwords, messages, searches, or viewed content.", systemImage: "hand.raised.fill")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(MivoColors.textSecondary)
                             .padding(15)
@@ -475,7 +561,7 @@ struct MivoClearAppStorePreviewView: View {
                     .padding(.bottom, 36)
                 }
             }
-            .navigationTitle("Mivo Clear BETA")
+            .navigationTitle("Mivo Clear")
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -507,7 +593,7 @@ struct MivoClearSettingsView: View {
             MivoColors.background.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Map each social app once. Its native app stays protected, while the shield offers Mivo Clear BETA or a timed session.")
+                    Text("Map each social app once. Its native app stays protected, while the shield offers Mivo Clear or a timed session.")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(MivoColors.textSecondary)
                         .lineSpacing(3)
@@ -525,7 +611,7 @@ struct MivoClearSettingsView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(MivoColors.border.opacity(0.4)))
 
                     Button { showHub = true } label: {
-                        Label("Open Mivo Clear BETA", systemImage: "sparkles.rectangle.stack.fill")
+                        Label("Open Mivo Clear", systemImage: "sparkles.rectangle.stack.fill")
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(MivoColors.heroText)
                             .frame(maxWidth: .infinity)
@@ -543,7 +629,7 @@ struct MivoClearSettingsView: View {
                 .padding(20)
             }
         }
-        .navigationTitle("Mivo Clear BETA")
+        .navigationTitle("Mivo Clear")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: refreshMappings)
         #if canImport(FamilyControls)
@@ -648,7 +734,7 @@ private struct MivoClearDisclosureView: View {
                 Image(systemName: "hand.raised.square.fill")
                     .font(.system(size: 42))
                     .foregroundColor(MivoColors.accent)
-                Text("Before you use Mivo Clear BETA")
+                Text("Before you use Mivo Clear")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundColor(MivoColors.textPrimary)
                 disclosureRow("Social platforms handle their own sign-in inside Apple's secure WebKit session.")
@@ -656,7 +742,7 @@ private struct MivoClearDisclosureView: View {
                 disclosureRow("Platform pages can change. Mivo disables a platform instead of intentionally loading an unfiltered experience.")
                 Spacer()
                 Button(action: accept) {
-                    Text("Continue to Mivo Clear BETA")
+                    Text("Continue to Mivo Clear")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(MivoColors.heroText)
                         .frame(maxWidth: .infinity)
@@ -980,7 +1066,7 @@ private struct MivoClearTutorialView: View {
 
             VStack(spacing: 0) {
                 HStack {
-                    Label("Mivo Clear BETA", systemImage: "sparkles.rectangle.stack.fill")
+                    Label("Mivo Clear", systemImage: "sparkles.rectangle.stack.fill")
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundColor(MivoColors.textPrimary)
                     Spacer()
@@ -1013,7 +1099,7 @@ private struct MivoClearTutorialView: View {
 
                 Button(action: advance) {
                     HStack(spacing: 10) {
-                        Text(page == pages.count - 1 ? "Start Mivo Clear BETA" : "Next")
+                        Text(page == pages.count - 1 ? "Start Mivo Clear" : "Next")
                         Image(systemName: page == pages.count - 1 ? "arrow.up.right" : "arrow.right")
                     }
                     .font(.system(size: 16, weight: .bold))
@@ -1256,7 +1342,7 @@ private struct MivoClearTikTokPortalView: View {
             VStack(spacing: 0) {
                 HStack {
                     Menu {
-                        Button("Close Mivo Clear BETA", role: .destructive) { dismiss() }
+                        Button("Close Mivo Clear", role: .destructive) { dismiss() }
                     } label: {
                         Image(systemName: "line.3.horizontal")
                             .font(.system(size: 24, weight: .semibold))
@@ -1316,7 +1402,7 @@ private struct MivoClearTikTokPortalView: View {
                         .font(.system(size: 23, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
-                    Text("Mivo Clear BETA removes Home, For You, Following, Live, Shop, and continuous video routes.")
+                    Text("Mivo Clear removes Home, For You, Following, Live, Shop, and continuous video routes.")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.white.opacity(0.64))
                         .multilineTextAlignment(.center)
@@ -1450,6 +1536,19 @@ struct MivoClearBrowserView: View {
                 MivoClearReturnOverlay(title: notice.title)
                     .transition(.opacity)
             }
+            if MivoClearDebug.showGuardHUD {
+                VStack {
+                    Spacer()
+                    Text(controller.guardDiagnostics)
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.green)
+                        .padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.black.opacity(0.82))
+                        .allowsHitTesting(false)
+                }
+                .ignoresSafeArea()
+            }
         }
         .animation(.easeInOut(duration: 0.22), value: controller.returnNotice)
         .statusBarHidden(isImmersive)
@@ -1462,6 +1561,7 @@ struct MivoClearBrowserView: View {
             MivoClearSingleVideoView(media: media)
         }
         .task {
+            MivoClearAudioSession.activate()
             do {
                 ruleList = try await MivoClearContentRuleCompiler.compile(configuration: configuration)
                 store.beginSession(platform: configuration.platform, entryPoint: route.entryPoint, filterVersion: configuration.version)
@@ -1471,7 +1571,10 @@ struct MivoClearBrowserView: View {
             }
             isPreparing = false
         }
-        .onDisappear { store.endActiveSession() }
+        .onDisappear {
+            store.endActiveSession()
+            MivoClearAudioSession.deactivate()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.resumeActiveSession() }
             else { store.pauseActiveSession() }
@@ -1523,16 +1626,25 @@ struct MivoClearBrowserView: View {
             }
             Spacer()
             if controller.isLoading { ProgressView().tint(MivoColors.accent) }
-            Button {
-                HapticsService.selection()
-                controller.unmuteMedia()
-            } label: {
-                Image(systemName: "speaker.wave.2.fill")
-                    .font(.system(size: 14, weight: .bold))
-                    .frame(width: 36, height: 36)
+            // unmuteMedia() reaches into the page's own <video>/<audio>
+            // elements. Instagram and TikTok no longer play video in the page
+            // at all — inline playback is off for both (see makeUIView), so
+            // every video opens in iOS's own native player instead, which
+            // this JS has no way to reach. There is nothing left for the
+            // button to do there, so it just sat looking pressable and
+            // silent. YouTube and Snapchat still play inline, where it works.
+            if configuration.platform != .instagram && configuration.platform != .tiktok {
+                Button {
+                    HapticsService.selection()
+                    controller.unmuteMedia()
+                } label: {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Unmute media")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Unmute media")
             Button {
                 HapticsService.selection()
                 withAnimation(.easeInOut(duration: 0.2)) { isImmersive = true }
@@ -1582,7 +1694,7 @@ struct MivoClearBrowserView: View {
             browserButton("chevron.right", label: "Forward", enabled: controller.canGoForward) {
                 controller.goForward()
             }
-            browserButton("gearshape.fill", label: "Mivo Clear BETA settings", enabled: true) {
+            browserButton("gearshape.fill", label: "Mivo Clear settings", enabled: true) {
                 showBrowserSettings = true
             }
         }
@@ -1701,14 +1813,18 @@ struct MivoClearBrowserView: View {
                     }
                     .accessibilityLabel("Back")
 
-                    Button {
-                        HapticsService.selection()
-                        controller.unmuteMedia()
-                    } label: {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .frame(width: 36, height: 36)
+                    // See browserHeader: nothing to reach for Instagram/TikTok
+                    // once inline playback is off for both.
+                    if configuration.platform != .instagram && configuration.platform != .tiktok {
+                        Button {
+                            HapticsService.selection()
+                            controller.unmuteMedia()
+                        } label: {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .frame(width: 36, height: 36)
+                        }
+                        .accessibilityLabel("Unmute media")
                     }
-                    .accessibilityLabel("Unmute media")
 
                     Button {
                         HapticsService.selection()
@@ -1728,7 +1844,7 @@ struct MivoClearBrowserView: View {
                         Image(systemName: "xmark")
                             .frame(width: 36, height: 36)
                     }
-                    .accessibilityLabel("Close Mivo Clear BETA")
+                    .accessibilityLabel("Close Mivo Clear")
                 }
                 .font(.system(size: 16, weight: .bold))
                 .foregroundColor(.white)
@@ -1865,7 +1981,7 @@ struct MivoClearBrowserView: View {
         if controller.currentURL?.path.localizedCaseInsensitiveContains("login") == true {
             return "Need help logging in?"
         }
-        return "Using \(configuration.platform.title) in Mivo Clear BETA"
+        return "Using \(configuration.platform.title) in Mivo Clear"
     }
 
     private var helpDetail: String {
@@ -1877,7 +1993,7 @@ struct MivoClearBrowserView: View {
         case .youtube:
             return "Search and open longer videos. Shorts routes remain unavailable."
         case .snapchat:
-            return "This platform is not currently available in Mivo Clear BETA."
+            return "This platform is not currently available in Mivo Clear."
         }
     }
 
@@ -1950,7 +2066,7 @@ struct MivoClearBrowserView: View {
                             showBrowserSettings = false
                             dismiss()
                         } label: {
-                            Label("Close Mivo Clear BETA", systemImage: "xmark.circle.fill")
+                            Label("Close Mivo Clear", systemImage: "xmark.circle.fill")
                                 .font(.system(size: 15, weight: .bold))
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 50)
@@ -1960,7 +2076,7 @@ struct MivoClearBrowserView: View {
                     .padding(20)
                 }
             }
-            .navigationTitle("Mivo Clear BETA Settings")
+            .navigationTitle("Mivo Clear Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -2087,8 +2203,17 @@ final class MivoClearWebController: ObservableObject {
     @Published var isLoading = false
     @Published var currentURL: URL?
     @Published var isSingleMediaMode = false
+    /// Set by the all-frames scroll lock whenever a video is covering the
+    /// screen. Backs a native `isScrollEnabled` override, so the block does
+    /// not rest solely on the page honouring `preventDefault`.
+    @Published var isFeedScrollLocked = false
     @Published var presentedMedia: MivoClearPresentedMedia?
     @Published var returnNotice: MivoClearReturnNotice?
+    /// Live guard telemetry, rendered on screen only while
+    /// `MivoClearDebug.showGuardHUD` is on. Diagnosing why a guard did not
+    /// fire needs the page state at the moment it did not fire, and a WKWebView
+    /// inside a device build has no console anyone can reach.
+    @Published var guardDiagnostics: String = "guard: no report yet"
 
     /// The most recent YouTube search-results page, so a long video always has
     /// somewhere to return to without closing Mivo Clear.
@@ -2449,6 +2574,7 @@ private struct MivoClearSingleVideoView: View {
             }
         }
         .statusBarHidden(isImmersive)
+        .onAppear { MivoClearAudioSession.activate() }
     }
 }
 
@@ -2623,9 +2749,26 @@ private struct MivoClearWebView: UIViewRepresentable {
         config.websiteDataStore = .default()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
-        config.allowsInlineMediaPlayback = true
-        config.mediaTypesRequiringUserActionForPlayback =
-            configuration.platform == .instagram || configuration.platform == .tiktok ? [] : .all
+        // An endless reel feed needs exactly two things from the web view:
+        // video that plays *inside* the page, and video that starts without
+        // being asked. Mivo was granting both to precisely the two platforms
+        // it exists to slow down, which is what made the scroll-to-next-reel
+        // loop work at all.
+        //
+        // With inline playback off, iPhone hands any HTML5 video to the
+        // system's full-screen player (Apple's documented behaviour, and the
+        // iPhone default Mivo had been overriding). The feed is not on screen
+        // during playback, so there is no next reel to swipe to — containment
+        // instead of trying to out-guess Instagram's markup after the fact.
+        // Mivo's own contained reel player builds its own configuration (see
+        // MivoClearSingleVideoView) and still plays inline.
+        let isShortFormPlatform = configuration.platform == .instagram
+            || configuration.platform == .tiktok
+        config.allowsInlineMediaPlayback = !isShortFormPlatform
+        // Never let the next video start on its own. Autoplay is the other
+        // half of the loop: it is what makes a scroll pay off before the
+        // viewer has decided to watch anything.
+        config.mediaTypesRequiringUserActionForPlayback = .all
         if configuration.platform == .tiktok {
             // TikTok's mobile site omits parts of direct messaging. Desktop
             // content mode keeps the first-party message composer available.
@@ -2640,8 +2783,25 @@ private struct MivoClearWebView: UIViewRepresentable {
         config.limitsNavigationsToAppBoundDomains = configuration.platform != .tiktok
             && configuration.platform != .instagram
         if let ruleList { config.userContentController.add(ruleList) }
-        if let guardScript = try? MivoClearRuntimeGuard.script(configuration: configuration, singleMediaURL: singleMediaURL) {
+        do {
+            let guardScript = try MivoClearRuntimeGuard.script(
+                configuration: configuration,
+                singleMediaURL: singleMediaURL
+            )
             config.userContentController.addUserScript(guardScript)
+        } catch {
+            // Previously `try?`, which meant a failure here silently removed
+            // every protection the guard owns while looking identical to a
+            // working session.
+            MivoClearDiagnostics.record("guardScriptFailed \(error)")
+        }
+        // Injected into every frame, so a reel viewer living in a subframe is
+        // still covered. Independent of the guard above by design.
+        if let scrollLock = MivoClearRuntimeGuard.feedScrollLockScript(configuration: configuration) {
+            config.userContentController.addUserScript(scrollLock)
+        }
+        if let youTubeExit = MivoClearRuntimeGuard.youTubeFullscreenExitScript(configuration: configuration) {
+            config.userContentController.addUserScript(youTubeExit)
         }
         config.userContentController.add(context.coordinator, name: "mivoClearSingleMedia")
         let view = WKWebView(frame: .zero, configuration: config)
@@ -2669,10 +2829,16 @@ private struct MivoClearWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        let disablesWebScroll = controller.isSingleMediaMode && configuration.platform != .instagram
+        // Instagram was exempt from the single-media scroll disable, and that
+        // exemption only ever mattered because the flag behind it was unreliable
+        // there. `isFeedScrollLocked` is measured directly from the page — a
+        // video covering the screen — so it applies to every platform.
+        let disablesWebScroll = controller.isFeedScrollLocked
+            || (controller.isSingleMediaMode && configuration.platform != .instagram)
         uiView.scrollView.isScrollEnabled = !disablesWebScroll
-        uiView.scrollView.bounces = !controller.isSingleMediaMode
-        context.coordinator.mediaPanBlocker?.isEnabled = controller.isSingleMediaMode
+        uiView.scrollView.bounces = !(controller.isSingleMediaMode || controller.isFeedScrollLocked)
+        context.coordinator.mediaPanBlocker?.isEnabled =
+            controller.isSingleMediaMode || controller.isFeedScrollLocked
     }
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
@@ -2713,7 +2879,7 @@ private struct MivoClearWebView: UIViewRepresentable {
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard gestureRecognizer === mediaPanBlocker,
-                  controller?.isSingleMediaMode == true,
+                  controller?.isSingleMediaMode == true || controller?.isFeedScrollLocked == true,
                   let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
             let velocity = pan.velocity(in: pan.view)
             return abs(velocity.y) >= abs(velocity.x)
@@ -2820,6 +2986,11 @@ private struct MivoClearWebView: UIViewRepresentable {
             recoveryAttempts = 0
             backHops = 0
             update(webView)
+            // A load with no `guardReady` line after it in the log is the
+            // signature of the injected guard never running on that page.
+            MivoClearDiagnostics.record(
+                "didFinish \(webView.url?.path ?? "?") inlineMedia=\(webView.configuration.allowsInlineMediaPlayback)"
+            )
             controller?.clearReturnNotice()
             guard !performedInitialAction else { return }
 
@@ -2863,7 +3034,46 @@ private struct MivoClearWebView: UIViewRepresentable {
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard message.name == "mivoClearSingleMedia",
                   let payload = message.body as? [String: Any] else { return }
+            if let locked = payload["scrollLock"] as? Bool {
+                MivoClearDiagnostics.record("scrollLock \(locked ? "armed" : "released")")
+                controller?.isFeedScrollLocked = locked
+                return
+            }
+            if payload["videoFullscreenEnded"] as? Bool == true {
+                // Disabling inline playback sends every video through the
+                // system's native fullscreen player instead of Instagram's
+                // own — but the page underneath keeps running while it's
+                // covering the screen, and Instagram uses exactly that cover
+                // to quietly land on the reels feed with something "Suggested"
+                // already queued up. Closing the native player was revealing
+                // that instead of the conversation the reel came from. Route
+                // back to messages the instant it closes, before any of that
+                // is visible.
+                MivoClearDiagnostics.record("videoFullscreenEnded -> \(focusedFallbackURL.path)")
+                controller?.isFeedScrollLocked = false
+                if let webView = message.webView {
+                    webView.load(MivoClearWebSession.request(url: focusedFallbackURL, platform: policy.configuration.platform))
+                }
+                return
+            }
+            if let diagnostics = payload["diag"] as? String {
+                controller?.guardDiagnostics = diagnostics
+                MivoClearDiagnostics.record("state \(diagnostics)", deduplicated: true)
+                return
+            }
+            if payload["guardReady"] as? Bool == true {
+                // Recorded so a bug report can be tied to a specific guard build
+                // rather than guessing whether the device is running the fix.
+                let version = payload["guardVersion"] as? Int ?? -1
+                MivoClearRuntimeGuard.lastReportedVersion = version
+                let platform = payload["platform"] as? String ?? "?"
+                MivoClearDiagnostics.record("guardReady v\(version) \(platform)")
+                return
+            }
             if payload["escapedSingleMedia"] as? Bool == true {
+                MivoClearDiagnostics.record(
+                    "escape reason=\(payload["reason"] as? String ?? "?")"
+                )
                 blocked()
                 singleMediaPath = nil
                 let origin = (payload["origin"] as? String).flatMap(URL.init(string:))
@@ -3012,11 +3222,26 @@ private struct MivoClearWebView: UIViewRepresentable {
             }
         }
 
+        /// Where a closed fullscreen video should land, per platform — never
+        /// a page that is itself an open-ended scroll. `url(for:)` falls
+        /// back to `homeURL` whenever the requested action doesn't exist
+        /// for that platform, which is exactly how this used to go wrong
+        /// for YouTube: it has no "messages" quick action, so this silently
+        /// fell through to YouTube's raw `homeURL`
+        /// (`/results?search_query=`) — an empty-query search results page
+        /// that YouTube renders as a generic scrollable feed, i.e. the
+        /// "Suggested" wall of videos this is supposed to prevent landing
+        /// on. "Subscriptions" is YouTube's own already-defined quick
+        /// action and the one screen there that isn't algorithmic.
         private var focusedFallbackURL: URL {
-            if policy.configuration.platform == .tiktok {
+            switch policy.configuration.platform {
+            case .tiktok:
                 return policy.configuration.url(for: "profile") ?? policy.configuration.url(for: nil)!
+            case .youtube:
+                return policy.configuration.url(for: "subscriptions") ?? policy.configuration.url(for: nil)!
+            case .instagram, .snapchat:
+                return policy.configuration.url(for: "messages") ?? policy.configuration.url(for: nil)!
             }
-            return policy.configuration.url(for: "messages") ?? policy.configuration.url(for: nil)!
         }
 
         private func isInstagramConversationPath(_ path: String) -> Bool {
@@ -3097,7 +3322,7 @@ private struct YouTubePlayerWebView: UIViewRepresentable {
 struct MivoClearUnavailableView: View {
     var body: some View {
         ContentUnavailableView(
-            "Mivo Clear BETA unavailable",
+            "Mivo Clear unavailable",
             systemImage: "exclamationmark.shield.fill",
             description: Text("This platform is paused until its focused filters are ready.")
         )

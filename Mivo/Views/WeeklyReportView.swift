@@ -86,8 +86,9 @@ struct WeeklyReportView: View {
     private let pageCount = 6
     private let calendar = Calendar.current
 
-    init(initialPage: Int = 0) {
+    init(initialPage: Int = 0, initialWeekOffset: Int = 0) {
         _page = State(initialValue: min(5, max(0, initialPage)))
+        _weekOffset = State(initialValue: initialWeekOffset)
     }
 
     var body: some View {

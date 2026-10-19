@@ -21,6 +21,11 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     private let sessionExpiredSourceKey = "mivo.sessionExpiredSource"
     private let countdownUntilKey = "mivo.shieldCountdownUntil"
     private let countdownRemainingKey = "mivo.shieldCountdownRemaining"
+    private let pendingMidScrollCheckInKey = "mivo.pendingMidScrollCheckIn"
+    private let pendingMidScrollCheckInAppNameKey = "mivo.pendingMidScrollCheckInAppName"
+    private let instagramWrapperEnabledKey = "mivo.instagramWrapperEnabled"
+    private let pendingInstagramWrapperKey = "mivo.pendingInstagramWrapper"
+    private let instagramBundleID = "com.burbn.instagram"
     private let lastOpenMivoNotificationAtKey = "mivo.lastOpenMivoNotificationAt"
     private let openMivoNotificationPrefix = "mivo.shield.openmivo"
     private let checkInIntervalMinutesKey = "mivo.checkInIntervalMinutes"
@@ -38,6 +43,8 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     private let pendingMivoClearPlatformKey = "mivo.clear.pendingPlatform"
     private let pendingMivoClearEntryPointKey = "mivo.clear.pendingEntryPoint"
     private let mivoClearNotificationPrefix = "mivo.clear.open"
+    private let crossDeviceFocusActiveKey = "mivo.crossDeviceFocus.active"
+    private let crossDeviceFocusEndsAtKey = "mivo.crossDeviceFocus.endsAt"
 
     /// Pause duration in seconds, reading the value the user set in Mivo settings.
     private var countdownDuration: TimeInterval {
@@ -85,9 +92,29 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         switch action {
 
         case .primaryButtonPressed:
-            if isCountingDownActive() {
+            if isCrossDeviceFocusActive() {
+                // "Block my iPhone too" is a Mac-controlled, no-exceptions
+                // lock — there's nothing for the user to set up here, and
+                // opening Mivo would wrongly imply they can start their own
+                // session or intention. Just dismiss the shield overlay;
+                // the app stays blocked underneath until the Mac ends it.
+                logger.info("ShieldAction primary: cross-device focus active → close")
+                completionHandler(.close)
+
+            } else if isCountingDownActive() {
                 // Ignore taps while the hold is running
                 logger.info("ShieldAction primary: countdown in progress → .defer")
+                completionHandler(.defer)
+
+            } else if let application, isInstagram(application), isInstagramWrapperEnabled() {
+                // Opt-in feature: tapping the real Instagram app goes straight
+                // into Mivo's own wrapper instead of the normal reason/timer
+                // flow — the wrapper *is* how Instagram is used now, not a
+                // gate in front of it. Takes priority over the mid-scroll
+                // check-in and Mivo Clear mapping for this one app, since
+                // both of those assume the native app is what opens next.
+                logger.info("ShieldAction primary: Instagram + wrapper enabled → routing into Mivo")
+                requestInstagramWrapper()
                 completionHandler(.defer)
 
             } else if isExpiredSessionAwaitingMivo() || isPendingSetupWithoutSession() {
@@ -97,11 +124,19 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
                 completionHandler(.defer)
 
             } else if isSessionActive() {
-                // Active session check-in: primary now starts the 5-sec mid-scroll
-                // pause and then unlocks the lease automatically — no second button.
-                logger.info("ShieldAction primary: active session → mid-scroll 5s pause + unlock")
-                beginCountdownForActiveSession(completionHandler: completionHandler)
-                // DO NOT call completionHandler here — the countdown does it.
+                // Active session check-in used to run its own 5-second countdown
+                // right here via chained DispatchQueue timers — but this extension
+                // is a pure service process with no UI of its own and a very short
+                // execution budget; iOS could suspend it mid-countdown, which is
+                // why the number visibly stopped moving, and the whole shield felt
+                // hung waiting on ticks that might never fire. The pause and the
+                // "still want to keep scrolling?" decision now both happen inside
+                // the full Mivo app instead, where a real Timer and real animation
+                // work correctly and the outcome is an actual yes/no rather than an
+                // automatic unlock.
+                logger.info("ShieldAction primary: active session → routing mid-scroll check-in into Mivo")
+                requestMidScrollCheckIn(application: application)
+                completionHandler(.defer)
 
             } else if let application, let platform = mappedMivoClearPlatform(for: application) {
                 logger.info("ShieldAction primary: mapped app → Mivo Clear \(platform.rawValue)")
@@ -117,7 +152,10 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
             }
 
         case .secondaryButtonPressed:
-            if let application,
+            if isCrossDeviceFocusActive() {
+                logger.info("ShieldAction secondary: cross-device focus active → close")
+                completionHandler(.close)
+            } else if let application,
                mappedMivoClearPlatform(for: application) != nil,
                !isCountingDownActive(),
                !isExpiredSessionAwaitingMivo(),
@@ -184,33 +222,60 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         }
     }
 
-    /// Session-active countdown (used by "Continue session" secondary button).
-    /// The completion handler is intentionally called only after the countdown finishes;
-    /// returning early lets iOS suspend the extension before the one-second ticks run.
-    private func beginCountdownForActiveSession(completionHandler: @escaping (ShieldActionResponse) -> Void) {
-        let endTime = Date().addingTimeInterval(countdownDuration).timeIntervalSince1970
-        updateCountdownDisplay(remaining: Int(countdownDuration), endTime: endTime)
-        applyFullShieldDuringActiveSession(markSource: "active-check-in-countdown")
+    /// Keeps the shield fully applied — the app is still blocked — and hands
+    /// off to Mivo for the actual pause and decision. Mirrors
+    /// `openMivoForIntervention()`'s notification/URL mechanism, with its own
+    /// flag so the app shows a short breathing pause + yes/no check-in
+    /// instead of the full reason/duration flow.
+    private func isInstagram(_ token: ApplicationToken) -> Bool {
+        Application(token: token).bundleIdentifier == instagramBundleID
+    }
 
-        // Tick twice per second so iOS has more opportunities to redraw the
-        // shield and the user sees the pause progressing instead of looking
-        // hung. The displayed remaining-seconds value still steps by 1.
-        let totalSec = Int(countdownDuration)
-        let ticksPerSecond = 2
-        let totalTicks = totalSec * ticksPerSecond
-        for tick in 1..<totalTicks {
-            let delay = TimeInterval(tick) / TimeInterval(ticksPerSecond)
-            let remaining = max(1, totalSec - tick / ticksPerSecond)
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                self.updateCountdownDisplay(remaining: remaining, endTime: endTime)
-                self.applyFullShieldDuringActiveSession(markSource: "active-check-in-countdown")
-            }
-        }
+    private func isInstagramWrapperEnabled() -> Bool {
+        UserDefaults(suiteName: appGroup)?.bool(forKey: instagramWrapperEnabledKey) ?? false
+    }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + countdownDuration) {
-            self.unlockActiveSessionShield()
-            completionHandler(.close)
+    /// Mirrors `requestMivoClear(_:)`'s flag-plus-notification handoff — the
+    /// app picks this up in `checkPendingInstagramWrapperFlag()` on
+    /// foreground and presents `InstagramWrapperView`.
+    private func requestInstagramWrapper() {
+        let defaults = UserDefaults(suiteName: appGroup)
+        defaults?.set(true, forKey: pendingInstagramWrapperKey)
+        defaults?.synchronize()
+
+        guard let url = URL(string: "mivo://instagramWrapper") else { return }
+        openWithExtensionContextIfAvailable(url)
+        fireOpenMivoNotification(
+            force: true,
+            title: "Instagram",
+            body: "Tap to continue."
+        )
+    }
+
+    private func requestMidScrollCheckIn(application: ApplicationToken?) {
+        let defaults = UserDefaults(suiteName: appGroup)
+        defaults?.set(true, forKey: pendingMidScrollCheckInKey)
+        defaults?.set(Date().timeIntervalSince1970, forKey: pendingInterventionSetupAtKey)
+        // Best-effort only — Apple doesn't guarantee `localizedDisplayName` is
+        // populated, and the recall prompt already reads fine without it.
+        if let application, let name = Application(token: application).localizedDisplayName {
+            defaults?.set(name, forKey: pendingMidScrollCheckInAppNameKey)
+        } else {
+            defaults?.removeObject(forKey: pendingMidScrollCheckInAppNameKey)
         }
+        defaults?.removeObject(forKey: countdownUntilKey)
+        defaults?.removeObject(forKey: countdownRemainingKey)
+        defaults?.synchronize()
+
+        applyFullShieldDuringActiveSession(markSource: "mid-scroll-check-in-pending")
+
+        guard let url = URL(string: "mivo://intervention") else { return }
+        openWithExtensionContextIfAvailable(url)
+        fireOpenMivoNotification(
+            force: true,
+            title: "Check-in time",
+            body: "Tap to open Mivo for your short pause timer."
+        )
     }
 
     // MARK: - Open Mivo
@@ -294,7 +359,11 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         }
     }
 
-    private func fireOpenMivoNotification(force: Bool) {
+    private func fireOpenMivoNotification(
+        force: Bool,
+        title: String = "Open Mivo to set your intention",
+        body: String = "Tap this notification to open Mivo and choose your session."
+    ) {
         let center = UNUserNotificationCenter.current()
         let defaults = UserDefaults(suiteName: appGroup)
         let now = Date().timeIntervalSince1970
@@ -307,8 +376,8 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         defaults?.synchronize()
 
         let content = UNMutableNotificationContent()
-        content.title = "Open Mivo to set your intention"
-        content.body = "Tap this notification to open Mivo and choose your session."
+        content.title = title
+        content.body = body
         content.sound = .default
         content.categoryIdentifier = "MIVO_SESSION_ENDED"
         content.userInfo = ["openIntervention": true]
@@ -331,6 +400,11 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     }
 
     // MARK: - State checks
+
+    private func isCrossDeviceFocusActive() -> Bool {
+        guard let d = UserDefaults(suiteName: appGroup), d.bool(forKey: crossDeviceFocusActiveKey) else { return false }
+        return d.double(forKey: crossDeviceFocusEndsAtKey) > Date().timeIntervalSince1970
+    }
 
     private func isCountingDownActive() -> Bool {
         guard let d = UserDefaults(suiteName: appGroup) else { return false }
@@ -375,13 +449,6 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         defaults.removeObject(forKey: countdownRemainingKey)
         defaults.synchronize()
         return true
-    }
-
-    private func updateCountdownDisplay(remaining: Int, endTime: TimeInterval) {
-        let defaults = UserDefaults(suiteName: appGroup)
-        defaults?.set(endTime, forKey: countdownUntilKey)
-        defaults?.set(remaining, forKey: countdownRemainingKey)
-        defaults?.synchronize()
     }
 
     private func unlock(application: ApplicationToken, relockDelay: TimeInterval, requestSetupOnRelock: Bool) {

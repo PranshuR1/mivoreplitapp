@@ -24,6 +24,8 @@ struct WidgetSharedSummary: Codable {
     let planState: String
     let streakText: String
     let updatedAt: String
+    let appVersion: String?
+    let focusedMinutesToday: Int?
 }
 
 // MARK: - Live Activity attributes
@@ -73,7 +75,9 @@ private struct MivoWidgetProvider: TimelineProvider {
             nextScrollWindow: "Open Mivo to start",
             planState: "Tap to open Mivo",
             streakText: "No data yet",
-            updatedAt: ISO8601DateFormatter().string(from: Date())
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            appVersion: nil,
+            focusedMinutesToday: 0
         )
     }
 }
@@ -82,8 +86,8 @@ private struct MivoWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: MivoWidgetEntry
 
-    private var scrolledMinutesToday: Int {
-        entry.summary.screenTimeMinutesToday ?? 0
+    private var focusedMinutesToday: Int {
+        entry.summary.focusedMinutesToday ?? 0
     }
 
     var body: some View {
@@ -115,10 +119,10 @@ private struct MivoWidgetView: View {
                         .foregroundColor(.orange)
                 }
             }
-            Text(formatMinutes(scrolledMinutesToday))
+            Text(formatMinutes(focusedMinutesToday))
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundColor(Color(red: 0.36, green: 0.2, blue: 0.09))
-            Text(entry.hasData ? "scrolled today" : "no data yet")
+            Text(entry.hasData ? "focused today" : "no data yet")
                 .font(.caption)
                 .foregroundColor(Color(red: 0.71, green: 0.38, blue: 0.12).opacity(0.7))
             Spacer()
@@ -144,10 +148,10 @@ private struct MivoWidgetView: View {
                             .foregroundColor(.orange)
                     }
                 }
-                Text(formatMinutes(scrolledMinutesToday))
+                Text(formatMinutes(focusedMinutesToday))
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                     .foregroundColor(Color(red: 0.36, green: 0.2, blue: 0.09))
-                Text(entry.hasData ? "scrolled today" : "no data yet")
+                Text(entry.hasData ? "focused today" : "no data yet")
                     .font(.caption)
                     .foregroundColor(Color(red: 0.71, green: 0.38, blue: 0.12).opacity(0.7))
             }
@@ -166,17 +170,17 @@ private struct MivoWidgetView: View {
     }
 
     private var accessoryCircular: some View {
-        Gauge(value: Double(min(scrolledMinutesToday, 360)), in: 0...360) {
+        Gauge(value: Double(min(focusedMinutesToday, 360)), in: 0...360) {
             Text("Mivo")
         } currentValueLabel: {
-            Text("\(scrolledMinutesToday)m")
+            Text("\(focusedMinutesToday)m")
         }
         .gaugeStyle(.accessoryCircular)
     }
 
     private var accessoryRectangular: some View {
         VStack(alignment: .leading) {
-            Text("Mivo: \(formatMinutes(scrolledMinutesToday)) scrolled")
+            Text("Mivo: \(formatMinutes(focusedMinutesToday)) focused")
             Text(entry.summary.nextScrollWindow)
         }
     }
@@ -306,6 +310,7 @@ private struct CompactTrailingView: View {
 struct MivoWidgetsBundle: WidgetBundle {
     var body: some Widget {
         MivoStatusWidget()
+        MivoCompanionWidget()
         MivoSessionLiveActivityWidget()
     }
 }

@@ -66,6 +66,19 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         configureAppAppearance()
+        // Notification suppression is owned by a running Still session, and no
+        // session can be running across a cold launch. Without this reset, an
+        // app that was force-quit or crashed mid-session would leave the flag
+        // set and silently swallow every Mivo notification from then on, with
+        // nothing in the UI to reveal or undo it. A Lock Mode run that resumes
+        // re-arms suppression itself when its monitor restarts.
+        MivoStillNotificationSuppression.isActive = false
+        // A Lock Mode run can outlive the process that started it. Give it a
+        // live in-process unlock timer again rather than leaving the apps
+        // locked until the system gets around to a background trigger.
+        if #available(iOS 16.0, *) {
+            FamilyControlsManager.shared.rearmStillLockUnlockIfNeeded()
+        }
         UNUserNotificationCenter.current().delegate = self
         registerSessionEndedCategory()
         SessionEndedNotificationCleaner.clearDelivered()
@@ -129,7 +142,7 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         )
         let clearAction = UNNotificationAction(
             identifier: "OPEN_MIVO_CLEAR",
-            title: "Open Mivo Clear BETA",
+            title: "Open Mivo Clear",
             options: [.foreground]
         )
         let clearCategory = UNNotificationCategory(
@@ -155,17 +168,72 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
             } catch {
                 UserDefaults.standard.set(error.localizedDescription, forKey: "mivo.adminPushRegistrationError")
             }
+            await Self.registerGeneralPushDeviceIfSignedIn(deviceToken: token, installationID: installationID)
         }
+    }
+
+    /// Registers this device in `user_push_devices` for whichever account
+    /// is currently signed in, alongside (not instead of) the admin-only
+    /// registration above — that one only ever reaches admin accounts,
+    /// but cross-device focus commands (`CrossDeviceFocusService`) need
+    /// every signed-in user's device. No-op when signed out.
+    static func registerGeneralPushDeviceIfSignedIn(deviceToken: String, installationID: String) async {
+        guard let email = StorageService.load(String.self, forKey: .rememberedEmail),
+              let record = SecureAuthService.loadRecord(email: email) else { return }
+        #if DEBUG
+        let environment = "sandbox"
+        #else
+        let environment = "production"
+        #endif
+        await RemoteAuthService.registerPushDevice(
+            deviceToken: deviceToken,
+            environment: environment,
+            installationID: installationID,
+            record: record
+        )
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         UserDefaults.standard.set(error.localizedDescription, forKey: "mivo.adminPushRegistrationError")
     }
 
+    /// The silent-push counterpart to `scheduleCrossDeviceFocusBackgroundCheck()`
+    /// — `cross-device-focus-push` (the Edge Function the Mac calls right
+    /// after writing a command) sends a `content-available` push with no
+    /// alert, whose only job is to land here and give `reconcile()` a
+    /// chance to run immediately instead of waiting on the next foreground
+    /// or the next opportunistic BGAppRefreshTask. iOS delivers this even
+    /// while the phone is locked, as long as `UIBackgroundModes` includes
+    /// `remote-notification` (see Info.plist) — that's the whole reason
+    /// this exists over relying on the background task alone.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        guard #available(iOS 16.0, *) else {
+            completionHandler(.noData)
+            return
+        }
+        Task {
+            await CrossDeviceFocusService.shared.reconcile()
+            completionHandler(.newData)
+        }
+    }
+
     // Show the banner even when Mivo is already active in the foreground.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // A Still session is a deliberate no-phone period — don't let Mivo's
+        // own notifications buzz or light up the screen and tempt a pickup.
+        // This only reaches notifications Mivo itself scheduled; there is no
+        // way for a third-party app to hold back notifications from other
+        // apps or the system.
+        if MivoStillNotificationSuppression.isActive {
+            completionHandler([])
+            return
+        }
         if (notification.request.content.userInfo["mivoRoute"] as? String) == "mivoClear" {
             persistMivoClearRoute(from: notification.request.content.userInfo)
             center.removeDeliveredNotifications(withIdentifiers: [notification.request.identifier])
@@ -245,6 +313,7 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
             // sessionActive/sessionEndsAt when the session has expired.
             Task { @MainActor in
                 FamilyControlsManager.shared.applyImpulseProtectionIfNeeded()
+                await CrossDeviceFocusService.shared.reconcile()
             }
         }
         completionHandler()
@@ -269,38 +338,62 @@ enum AdminPushNotificationManager {
                 try? await ReferralCampaignService.unregisterAdminPushDevice()
                 UserDefaults.standard.set(false, forKey: "mivo.adminPushRegistered")
             }
+            // Not an admin, so the RPC registration below doesn't apply —
+            // but registerForRemoteNotifications() previously only ever
+            // ran for admins, meaning didRegisterForRemoteNotificationsWithDeviceToken
+            // (and therefore registerGeneralPushDeviceIfSignedIn, which
+            // cross-device focus commands depend on) never fired for
+            // ordinary users at all. Every signed-in user needs this.
+            await ensureRemoteNotificationRegistration()
             return
         }
 
         if let lastSyncAt, Date().timeIntervalSince(lastSyncAt) < 300 { return }
         lastSyncAt = Date()
 
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        switch settings.authorizationStatus {
-        case .authorized, .provisional, .ephemeral:
-            UIApplication.shared.registerForRemoteNotifications()
-            if let token = UserDefaults.standard.string(forKey: "mivo.adminPushDeviceToken"),
-               let installationID = try? DeviceBindingService.installationID() {
-                do {
-                    try await ReferralCampaignService.registerAdminPushDevice(
-                        deviceToken: token,
-                        installationID: installationID
-                    )
-                    UserDefaults.standard.set(true, forKey: "mivo.adminPushRegistered")
-                } catch {
-                    UserDefaults.standard.set(error.localizedDescription, forKey: "mivo.adminPushRegistrationError")
-                }
+        let registered = await ensureRemoteNotificationRegistration()
+        guard registered else { return }
+        if let token = UserDefaults.standard.string(forKey: "mivo.adminPushDeviceToken"),
+           let installationID = try? DeviceBindingService.installationID() {
+            do {
+                try await ReferralCampaignService.registerAdminPushDevice(
+                    deviceToken: token,
+                    installationID: installationID
+                )
+                UserDefaults.standard.set(true, forKey: "mivo.adminPushRegistered")
+            } catch {
+                UserDefaults.standard.set(error.localizedDescription, forKey: "mivo.adminPushRegistrationError")
             }
-        case .notDetermined:
-            let granted = (try? await UNUserNotificationCenter.current().requestAuthorization(
-                options: [.alert, .badge, .sound]
-            )) == true
-            if granted { UIApplication.shared.registerForRemoteNotifications() }
-        case .denied:
-            break
-        @unknown default:
-            break
         }
+    }
+
+    /// Requests notification authorization if undetermined, and calls
+    /// `registerForRemoteNotifications()` whenever the app is allowed to
+    /// receive push at all. Returns whether the app is registered (or
+    /// about to be) so callers can skip work that depends on it.
+    /// A silent (`content-available`) push — which is all
+    /// `cross-device-focus-push` ever sends — needs a device token, not
+    /// alert/badge/sound authorization; Apple delivers those to a
+    /// `.denied` app the same as an `.authorized` one; only a *visible*
+    /// notification needs the user's permission. Gating
+    /// `registerForRemoteNotifications()` on that authorization status
+    /// meant anyone who declined the alert prompt — plausible for an app
+    /// about reducing distraction — never got a device token at all, so
+    /// cross-device focus silently fell back to the much slower
+    /// BGAppRefreshTask-only path with no way to tell. Registering
+    /// unconditionally here still requests alert/badge/sound when
+    /// undetermined (for the *visible* notifications elsewhere in this
+    /// app), but no longer blocks the token itself on the outcome.
+    @discardableResult
+    private static func ensureRemoteNotificationRegistration() async -> Bool {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        if settings.authorizationStatus == .notDetermined {
+            _ = try? await UNUserNotificationCenter.current().requestAuthorization(
+                options: [.alert, .badge, .sound]
+            )
+        }
+        UIApplication.shared.registerForRemoteNotifications()
+        return true
     }
 }
 
@@ -324,6 +417,38 @@ struct MivoApp: App {
                 FamilyControlsManager.shared.applyImpulseProtectionIfNeeded()
             }
             refreshTask.setTaskCompleted(success: true)
+        }
+        // Register the Mivo Still Lock Mode unlock fallback — mirrors the
+        // relock registration above, in reverse (lifts a block instead of
+        // reapplying one).
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: MivoScreenTimeKeys.stillLockBGTaskIdentifier,
+            using: nil
+        ) { task in
+            guard let refreshTask = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            FamilyControlsManager.shared.endStillLockIfExpired()
+            refreshTask.setTaskCompleted(success: true)
+        }
+        // Best-effort background discovery for "Block my iPhone too" — see
+        // the doc comment on scheduleCrossDeviceFocusBackgroundCheck().
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: MivoScreenTimeKeys.crossDeviceFocusBGTaskIdentifier,
+            using: nil
+        ) { task in
+            guard let refreshTask = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            let work = Task {
+                if #available(iOS 16.0, *) {
+                    await CrossDeviceFocusService.shared.reconcile()
+                }
+                refreshTask.setTaskCompleted(success: true)
+            }
+            refreshTask.expirationHandler = { work.cancel() }
         }
         // Keep navigation bars consistent with the selected Mivo appearance.
         let navAppearance = UINavigationBarAppearance()
@@ -387,6 +512,14 @@ struct RootView: View {
                 NavigationStack { WeeklyReportView(initialPage: 5) }
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewWeeklyReport") {
                 NavigationStack { WeeklyReportView() }
+            } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewHome") {
+                NavigationStack { HomeView() }
+            } else if let raw = UserDefaults.standard.string(forKey: "MivoPreviewTabs"), let tab = Int(raw) {
+                // Whole tab shell with the bar, opened on the given tab (0-3).
+                MainTabView(initialTab: tab)
+            } else if let raw = UserDefaults.standard.string(forKey: "MivoPreviewSettingsPage"),
+                      let page = SettingsPage(rawValue: raw) {
+                NavigationStack { SettingsView(page: page) }
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewPatterns") {
                 NavigationStack { PatternsView() }
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewInterventions") {
@@ -395,6 +528,16 @@ struct RootView: View {
                 NavigationStack { SettingsView() }
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewClear") {
                 MivoClearAppStorePreviewView()
+            } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewStill") {
+                MivoStillAppStorePreviewView()
+            } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewInstagramWrapper") {
+                InstagramWrapperView()
+            } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewComeback") {
+                ComebackFlowView(prompt: ComebackPreviewFixtures.prompt)
+            } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewComebackHome") {
+                ComebackHomePreview()
+            } else if let companionMode = UserDefaults.standard.string(forKey: "MivoPreviewCompanion") {
+                CompanionPreviewHost(mode: companionMode)
             } else {
                 defaultRoot
             }
@@ -725,6 +868,8 @@ extension AppViewModel {
 #endif
 
 struct SplashView: View {
+    @State private var appear = false
+
     var body: some View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
@@ -734,7 +879,15 @@ struct SplashView: View {
                     .font(.system(size: 32, weight: .bold))
                     .tracking(-1)
                     .foregroundColor(MivoColors.textPrimary)
+                Text("Scroll on purpose.")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(MivoColors.textSecondary)
             }
+            .opacity(appear ? 1 : 0)
+            .scaleEffect(appear ? 1 : 0.94)
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.5)) { appear = true }
         }
     }
 }

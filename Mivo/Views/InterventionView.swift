@@ -1,254 +1,89 @@
 import SwiftUI
 
-private let intentionPrompts = [
-    "What are you hoping to find right now?",
-    "Is this the best use of this moment?",
-    "What will you do after you close the app?",
-    "You've been here before. What's different this time?",
-    "What was the last thing you scrolled past that mattered?",
-]
-
+/// A standalone preview of the §4.3 pause, reachable from Settings → Help and
+/// from the app tour. Both call sites pass `intention: nil, duration: nil` —
+/// this never launches a real session, so it only needs the countdown itself.
 struct InterventionView: View {
     @Environment(\.dismiss) var dismiss
     let intention: Intention?
     let duration: Int?
-    let canCloseEarly: Bool
-    let completionTitle: String
-    let onComplete: (() -> Void)?
+    var canCloseEarly: Bool = true
+    var completionTitle: String = "Done"
+    var onComplete: (() -> Void)? = nil
 
-    @State private var countdown = 5
-    @State private var canProceed = false
-    @State private var prompt: String
-    @State private var opacity = 0.0
-    @State private var showSession = false
-    @State private var selectedUrge: UrgeReason? = nil
-    @State private var urgeNote = ""
-
-    var isSessionStart: Bool { intention != nil && duration != nil }
-
-    init(
-        intention: Intention?,
-        duration: Int?,
-        canCloseEarly: Bool = true,
-        completionTitle: String = "Open the app",
-        onComplete: (() -> Void)? = nil
-    ) {
-        self.intention = intention
-        self.duration = duration
-        self.canCloseEarly = canCloseEarly
-        self.completionTitle = completionTitle
-        self.onComplete = onComplete
-        _prompt = State(initialValue: intentionPrompts.randomElement() ?? "Take one breath before you continue.")
-    }
+    @State private var secondsRemaining = 5
+    @State private var ready = false
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
-            MivoColors.background.ignoresSafeArea()
+            MivoColors.stage.ignoresSafeArea()
+
             VStack(spacing: 0) {
-                HStack {
-                    if canCloseEarly {
+                if canCloseEarly {
+                    HStack {
+                        Spacer()
                         Button { dismiss() } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 18))
-                                .foregroundColor(MivoColors.textSecondary)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(Color(hex: "#FAF3E8").opacity(0.6))
                                 .frame(width: 44, height: 44)
                         }
+                        .accessibilityLabel("Close")
                     }
-                    Spacer()
+                    .padding(.top, 12)
                 }
 
                 Spacer()
 
-                VStack(spacing: 24) {
-                    ZStack {
-                        Circle()
-                            .strokeBorder(MivoColors.accentLight, lineWidth: 1.5)
-                            .frame(width: 80, height: 80)
-                        Circle()
-                            .fill(MivoColors.accentMuted)
-                            .frame(width: 80, height: 80)
-                        Image(systemName: "pause.circle")
-                            .font(.system(size: 34))
-                            .foregroundColor(MivoColors.accent)
-                    }
+                PauseBreathingPreviewStage(secondsRemaining: secondsRemaining)
+                    .frame(width: 210, height: 210)
 
-                    Text("Just a moment.")
-                        .font(.system(size: 30, weight: .bold))
-                        .tracking(-0.8)
-                        .foregroundColor(MivoColors.textPrimary)
-                        .multilineTextAlignment(.center)
+                Text("Five seconds before the door opens")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundColor(Color(hex: "#FAF3E8"))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 250)
+                    .padding(.top, 24)
 
-                    Text(prompt)
-                        .font(.system(size: 18))
-                        .foregroundColor(MivoColors.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(8)
-                        .padding(.horizontal, 8)
-
-                    // Countdown
-                    VStack(spacing: 4) {
-                        if !canProceed {
-                            Text("\(countdown)")
-                                .font(.system(size: 56, weight: .bold))
-                                .tracking(-2)
-                                .foregroundColor(MivoColors.accent)
-                                .monospacedDigit()
-                            Text("seconds")
-                                .font(.system(size: 14))
-                                .foregroundColor(MivoColors.textMuted)
-                        } else {
-                            HStack(spacing: 8) {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(MivoColors.timerGreen)
-                                Text("Pause complete")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(MivoColors.timerGreen)
-                            }
-                            .frame(height: 72)
-                        }
-                    }
-                    .frame(minHeight: 72)
-
-                    Text("Mivo doesn't stop you from using your apps.\nIt just asks you to notice before you do.")
-                        .font(.system(size: 14))
-                        .foregroundColor(MivoColors.textMuted)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(6)
-                        .padding(.horizontal, 8)
-
-                    if isSessionStart && canProceed {
-                        urgeJournal
-                    }
-                }
-                .opacity(opacity)
+                Text("Mivo doesn't stop you from using your apps. It just asks you to notice before you do.")
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(Color(hex: "#FAF3E8").opacity(0.62))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 280)
+                    .padding(.top, 10)
 
                 Spacer()
 
-                // Actions
-                VStack(spacing: 10) {
-                    if isSessionStart {
-                        Button {
-                            showSession = true
-                        } label: {
-                            Text(sessionButtonTitle)
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(MivoColors.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(canBeginSession ? MivoColors.accent : MivoColors.accentLight)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                        .disabled(!canBeginSession)
-                    } else {
-                        Button {
-                            complete()
-                        } label: {
-                            Text(canProceed ? completionTitle : "Wait \(countdown)s...")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(MivoColors.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(canProceed ? MivoColors.accent : MivoColors.accentLight)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                        .disabled(!canProceed)
-                    }
-
-                    if canCloseEarly {
-                        Button { dismiss() } label: {
-                            Text("Close")
-                                .font(.system(size: 15))
-                                .foregroundColor(MivoColors.textMuted)
-                                .padding(.vertical, 14)
-                        }
-                    }
+                Button {
+                    complete()
+                } label: {
+                    Text(ready ? completionTitle : "Wait \(secondsRemaining)s...")
+                        .font(.system(size: 15.5, weight: .bold))
+                        .foregroundColor(ready ? .white : Color(hex: "#FAF3E8").opacity(0.5))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: MivoMetrics.buttonHeight)
+                        .background(ready ? MivoColors.accent : Color(hex: "#FAF3E8").opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.radius))
                 }
+                .buttonStyle(MivoPressStyle())
+                .disabled(!ready)
+                .padding(.bottom, canCloseEarly ? 20 : 44)
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 20)
+            .padding(.horizontal, MivoMetrics.screenPadding)
         }
         .navigationBarHidden(true)
-        .onAppear {
-            withAnimation(.easeIn(duration: 0.6)) { opacity = 1 }
-            startCountdown()
-        }
-        .fullScreenCover(isPresented: $showSession) {
-            if let intention, let duration {
-                ActiveSessionView(
-                    intention: intention,
-                    plannedMinutes: duration,
-                    urgeReason: selectedUrge,
-                    urgeNote: selectedUrge == .other ? urgeNote.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
-                    onFinished: {
-                        showSession = false
-                        onComplete?()
-                        dismiss()
-                    }
-                )
-            }
-        }
-    }
-
-    private var canBeginSession: Bool {
-        guard canProceed else { return false }
-        guard isSessionStart else { return true }
-        return selectedUrge != nil
-    }
-
-    private var sessionButtonTitle: String {
-        if !canProceed { return "Wait \(countdown)s..." }
-        if selectedUrge == nil { return "Choose why first" }
-        return "Begin session"
-    }
-
-    private var urgeJournal: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Why did you open this?")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(MivoColors.textPrimary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach(UrgeReason.allCases) { reason in
-                    Button {
-                        selectedUrge = reason
-                        HapticsService.selection()
-                    } label: {
-                        Text(reason.rawValue)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(selectedUrge == reason ? MivoColors.white : MivoColors.textPrimary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(selectedUrge == reason ? MivoColors.accent : MivoColors.card)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selectedUrge == reason ? MivoColors.accent : MivoColors.border, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            if selectedUrge == .other {
-                TextField("Optional note", text: $urgeNote)
-                    .font(.system(size: 14))
-                    .padding(12)
-                    .background(MivoColors.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border, lineWidth: 1))
-            }
-        }
-        .mivoSectionSurface()
-    }
-
-    func startCountdown() {
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-            if countdown <= 1 {
-                timer.invalidate()
-                canProceed = true
+        .onReceive(timer) { _ in
+            guard secondsRemaining > 0 else { return }
+            secondsRemaining -= 1
+            if secondsRemaining == 0 {
+                HapticsService.impact(style: .medium)
+                ready = true
             } else {
-                countdown -= 1
+                HapticsService.impact(style: .light)
             }
         }
+        .accessibilityElement(children: .contain)
     }
 
     private func complete() {
@@ -257,5 +92,37 @@ struct InterventionView: View {
         } else {
             dismiss()
         }
+    }
+}
+
+private struct PauseBreathingPreviewStage: View {
+    let secondsRemaining: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathe = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(RadialGradient(colors: [MivoColors.accent.opacity(0.34), .clear], center: .center, startRadius: 0, endRadius: 105))
+                .scaleEffect(breathe ? 1.14 : 1.0)
+                .opacity(breathe ? 0.9 : 0.5)
+            Circle()
+                .inset(by: 38)
+                .strokeBorder(MivoColors.accent.opacity(0.40), lineWidth: 1)
+                .opacity(breathe ? 0.7 : 0.35)
+            Text("\(max(secondsRemaining, 0))")
+                .font(.system(size: 84, weight: .bold))
+                .monospacedDigit()
+                .tracking(Font.mivoTracking(-0.04, at: 84))
+                .foregroundColor(Color(hex: "#FAF3E8"))
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
+                breathe = true
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("5 seconds remaining")
     }
 }

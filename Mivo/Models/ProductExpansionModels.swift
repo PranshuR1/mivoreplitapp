@@ -14,6 +14,8 @@ enum MivoFeatureKey: String, Codable, CaseIterable, Identifiable {
     case mivoClearTikTok = "mivo_clear_tiktok"
     case mivoClearYouTube = "mivo_clear_youtube"
     case mivoClearSnapchat = "mivo_clear_snapchat"
+    case mivoStill = "mivo_still"
+    case intentGames = "intent_games"
 
     var id: String { rawValue }
 
@@ -27,11 +29,13 @@ enum MivoFeatureKey: String, Codable, CaseIterable, Identifiable {
         case .experimentLibrary: return "Experiment library"
         case .accountabilityPartners: return "Accountability partners"
         case .diagnostics: return "Diagnostics"
-        case .mivoClear: return "Mivo Clear BETA"
-        case .mivoClearInstagram: return "Mivo Clear BETA - Instagram"
-        case .mivoClearTikTok: return "Mivo Clear BETA - TikTok"
-        case .mivoClearYouTube: return "Mivo Clear BETA - YouTube"
-        case .mivoClearSnapchat: return "Mivo Clear BETA - Snapchat"
+        case .mivoClear: return "Mivo Clear"
+        case .mivoClearInstagram: return "Mivo Clear - Instagram"
+        case .mivoClearTikTok: return "Mivo Clear - TikTok"
+        case .mivoClearYouTube: return "Mivo Clear - YouTube"
+        case .mivoClearSnapchat: return "Mivo Clear - Snapchat"
+        case .mivoStill: return "Mivo Still"
+        case .intentGames: return "Focus Break TRIAL"
         }
     }
 }

@@ -7,6 +7,28 @@ enum Intention: String, Codable, CaseIterable {
     case relax = "Relax"
     case bored = "Bored"
     case lookingForSomethingSpecific = "Looking for something specific"
+    /// Added for the v2 intervention flow's reason step. The raw value is the
+    /// storage key and must not change; `flowLabel` below carries the
+    /// screen copy so existing raw values (and the historical sessions
+    /// already saved under them) don't need to move to stay accurate.
+    case replyingToSomeone = "Replying to someone"
+    case postingSomething = "Posting something"
+
+    /// The five reason-step options from the v2 design, in the handoff's
+    /// order. `killTime` predates that step and is intentionally left out of
+    /// it, but still decodes fine wherever an older session referenced it.
+    static let flowOptions: [Intention] = [
+        .replyingToSomeone, .lookingForSomethingSpecific, .postingSomething, .relax, .bored
+    ]
+
+    var flowLabel: String {
+        switch self {
+        case .lookingForSomethingSpecific: return "Looking something up"
+        case .relax: return "Taking a break"
+        case .bored: return "Just bored"
+        default: return rawValue
+        }
+    }
 }
 
 enum ReflectionChoice: String, Codable {
@@ -380,6 +402,141 @@ struct TruthCheckGuess: Codable, Identifiable {
     }
 }
 
+/// One "what did you just watch?" prompt, asked mid-scroll (see
+/// `MidScrollCheckInView`'s recall step) rather than at the end of the day —
+/// unlike `TruthCheckGuess` (one guess-vs-actual-minutes check per day), this
+/// is a log of many small moments, each capturing what the person *thinks*
+/// they just consumed while it's still fresh, so the Attention Receipt can
+/// show the gap between that guess and reality without needing any usage
+/// telemetry iOS doesn't expose (there is no scroll-count API — see the
+/// receipt's real data sources: `AppViewModel.todayPerAppMinutes()` for time,
+/// this array for recall).
+struct RecallCheckIn: Codable, Identifiable {
+    let id: String
+    let date: String
+    /// Best-effort — the ShieldAction extension reads `Application(token:)`'s
+    /// `localizedDisplayName` when it fires the check-in; can be nil.
+    let appName: String?
+    let guessedCount: Int
+    let recalledText: String
+    let checkedAt: String
+
+    var recalledSomething: Bool {
+        !recalledText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+/// A real, exact scroll count from one `InstagramWrapperView` session —
+/// unlike `RecallCheckIn` (a self-reported guess), this is measured: the
+/// wrapper owns the WKWebView Instagram's mobile site renders into, so it
+/// can listen for real scroll events the way no view over the native app
+/// ever could. Only exists for sessions that went through the wrapper —
+/// using the native Instagram app directly still produces zero data, same
+/// as always.
+/// Everything `InstagramWrapperView` can genuinely measure from owning the
+/// WKWebView — real DOM/media events, nothing inferred or guessed. Fields
+/// added after the first version use `decodeIfPresent(...) ?? 0` so older
+/// locally-stored sessions (missing the newer keys) still decode instead of
+/// silently vanishing.
+struct InstagramWrapperSession: Codable, Identifiable {
+    let id: String
+    let date: String
+    let startedAt: String
+    let endedAt: String
+    /// Distinct scroll bursts — the original measured count.
+    let scrollCount: Int
+    /// Real `<video>` `play` events — the closest thing to an actual "reels
+    /// watched" count, since Instagram's mobile reels render as `<video>`
+    /// elements Mivo's script can listen to directly.
+    let videoPlayCount: Int
+    /// Cumulative seconds any video spent actually playing (sum of
+    /// play→pause/ended intervals), not just "time the screen was open."
+    let videoWatchSeconds: Int
+    /// Real `click` events — taps distinct from scroll gestures (likes,
+    /// opens, button presses).
+    let tapCount: Int
+    /// Total scroll distance in points, summed across every scroll delta.
+    let scrollDistancePoints: Int
+    /// Distinct in-app navigations (feed → profile → search, etc.), counted
+    /// via `history.pushState`/`popstate` — Instagram's mobile site is a
+    /// single-page app, so this is the real proxy for "how many different
+    /// places did you go," not a guess.
+    let sectionChanges: Int
+    /// The longest gap, in seconds, between two consecutive scroll bursts —
+    /// the longest single stretch of not-scrolling during the session.
+    let longestPauseSeconds: Int
+    /// Seconds between the page loading and the first scroll — how long
+    /// before they actually started engaging.
+    let firstScrollDelaySeconds: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, date, startedAt, endedAt, scrollCount
+        case videoPlayCount, videoWatchSeconds, tapCount
+        case scrollDistancePoints, sectionChanges
+        case longestPauseSeconds, firstScrollDelaySeconds
+    }
+
+    init(
+        id: String,
+        date: String,
+        startedAt: String,
+        endedAt: String,
+        scrollCount: Int,
+        videoPlayCount: Int = 0,
+        videoWatchSeconds: Int = 0,
+        tapCount: Int = 0,
+        scrollDistancePoints: Int = 0,
+        sectionChanges: Int = 0,
+        longestPauseSeconds: Int = 0,
+        firstScrollDelaySeconds: Int = 0
+    ) {
+        self.id = id
+        self.date = date
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.scrollCount = scrollCount
+        self.videoPlayCount = videoPlayCount
+        self.videoWatchSeconds = videoWatchSeconds
+        self.tapCount = tapCount
+        self.scrollDistancePoints = scrollDistancePoints
+        self.sectionChanges = sectionChanges
+        self.longestPauseSeconds = longestPauseSeconds
+        self.firstScrollDelaySeconds = firstScrollDelaySeconds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        date = try container.decode(String.self, forKey: .date)
+        startedAt = try container.decode(String.self, forKey: .startedAt)
+        endedAt = try container.decode(String.self, forKey: .endedAt)
+        scrollCount = try container.decode(Int.self, forKey: .scrollCount)
+        videoPlayCount = try container.decodeIfPresent(Int.self, forKey: .videoPlayCount) ?? 0
+        videoWatchSeconds = try container.decodeIfPresent(Int.self, forKey: .videoWatchSeconds) ?? 0
+        tapCount = try container.decodeIfPresent(Int.self, forKey: .tapCount) ?? 0
+        scrollDistancePoints = try container.decodeIfPresent(Int.self, forKey: .scrollDistancePoints) ?? 0
+        sectionChanges = try container.decodeIfPresent(Int.self, forKey: .sectionChanges) ?? 0
+        longestPauseSeconds = try container.decodeIfPresent(Int.self, forKey: .longestPauseSeconds) ?? 0
+        firstScrollDelaySeconds = try container.decodeIfPresent(Int.self, forKey: .firstScrollDelaySeconds) ?? 0
+    }
+}
+
+/// One "what was on screen N reels ago?" prompt, fired periodically *during*
+/// an `InstagramWrapperView` session (as opposed to `RecallCheckIn`, which
+/// fires once when a check-in ends a session). `scrollsAgo` is real — it's
+/// how many measured scrolls back the question refers to, not a guess.
+struct InstagramRecallPrompt: Codable, Identifiable {
+    let id: String
+    let date: String
+    let scrollsAgo: Int
+    let answer: String
+    let checkedAt: String
+
+    var recalledSomething: Bool {
+        !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 struct DailyScreenTimeObservation: Codable, Identifiable, Equatable {
     var id: String { date }
     let date: String
@@ -459,6 +616,17 @@ struct GoalForecastPrompt: Identifiable, Equatable {
     let createdAt: String
 }
 
+/// Asks an existing user to pick the daily target that onboarding failed to
+/// save for them.
+struct ScrollGoalPrompt: Identifiable, Equatable {
+    let id: String
+    /// Their measured baseline when one exists, so the options can be framed
+    /// against reality instead of an arbitrary list.
+    let baselineMinutes: Int?
+    let options: [Int]
+    let createdAt: String
+}
+
 struct WeeklyReportSnapshot: Codable, Identifiable {
     let id: String
     let weekStart: String
@@ -485,6 +653,23 @@ struct AccountabilitySummary: Codable {
     let shareText: String
 }
 
+/// Today's Mac activity, aggregated client-side by
+/// `RemoteAuthService.fetchMacActivitySummary` from the raw
+/// `mac_activity_records`/`mac_focus_sessions` rows Mivo for Mac syncs.
+struct MacActivitySummary {
+    struct AppUsage: Identifiable {
+        let name: String
+        let minutes: Int
+        var id: String { name }
+    }
+
+    let totalMinutes: Int
+    let focusMinutes: Int
+    let driftMinutes: Int
+    let topApps: [AppUsage]
+    let focusSessionsToday: Int
+}
+
 struct WidgetSharedSummary: Codable {
     let recoveredMinutesToday: Int
     let screenTimeMinutesToday: Int?
@@ -492,11 +677,41 @@ struct WidgetSharedSummary: Codable {
     let planState: String
     let streakText: String
     let updatedAt: String
+    /// Added for the Mac companion app's pairing feature, which needs a
+    /// minimum iPhone version — optional so older, already-persisted
+    /// summaries (written before this field existed) still decode.
+    let appVersion: String?
+    /// Today's Mivo Still minutes — the closest thing this app tracks to a
+    /// literal "focused time" number, since Mivo Still is the one feature
+    /// that's actually named and framed around focusing (phone face-down),
+    /// rather than a proxy like recovered-vs-baseline. Optional for the
+    /// same already-persisted-data reason as `appVersion` above.
+    let focusedMinutesToday: Int?
+
+    init(
+        recoveredMinutesToday: Int,
+        screenTimeMinutesToday: Int?,
+        nextScrollWindow: String,
+        planState: String,
+        streakText: String,
+        updatedAt: String,
+        appVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+        focusedMinutesToday: Int? = nil
+    ) {
+        self.recoveredMinutesToday = recoveredMinutesToday
+        self.screenTimeMinutesToday = screenTimeMinutesToday
+        self.nextScrollWindow = nextScrollWindow
+        self.planState = planState
+        self.streakText = streakText
+        self.updatedAt = updatedAt
+        self.appVersion = appVersion
+        self.focusedMinutesToday = focusedMinutesToday
+    }
 }
 
 struct UserProfile: Codable {
     let email: String
-    let name: String
+    var name: String
     let createdAt: String
     // Optional onboarding profile stored with the user so AI and features can use it
     var onboardingProfile: OnboardingProfile?
@@ -534,6 +749,29 @@ struct AppSettings: Codable {
     var appearanceMode: AppAppearanceMode? = nil
 }
 
+/// How much friction sits between opening a protected app and using it.
+enum PauseStyle: String, Codable, CaseIterable, Identifiable {
+    case fiveSecond = "five_second"
+    case tenSecond = "ten_second"
+    case askReason = "ask_reason"
+    case countOnly = "count_only"
+
+    var id: String { rawValue }
+
+    /// Seconds the pause screen holds before the app can be opened.
+    var waitSeconds: Int {
+        switch self {
+        case .fiveSecond: return 5
+        case .tenSecond: return 10
+        case .askReason: return 10
+        case .countOnly: return 0
+        }
+    }
+
+    /// Whether Mivo asks what the user came to do before letting them through.
+    var asksReason: Bool { self == .askReason }
+}
+
 struct OnboardingProfile: Codable {
     var observationStartedAt: String?
     var primaryIntention: Intention?
@@ -552,6 +790,11 @@ struct OnboardingProfile: Codable {
     /// The user's target daily scrolling minutes — the floor that the
     /// personalized plan ramps down to from the blended observed baseline.
     var dailyScrollGoalMinutes: Int?
+
+    /// How hard Mivo should push back when a protected app is opened. Chosen in
+    /// onboarding and read by `interventionFrictionState`, so the answer changes
+    /// real behaviour rather than only being recorded.
+    var pauseStyle: PauseStyle?
 
     init(primaryIntention: Intention? = nil, scrollEstimateMinutes: Int? = nil, preferredApps: [String] = [], preferredScrollWindows: [ScreenScrollWindow]? = nil) {
         self.observationStartedAt = nil
@@ -746,4 +989,114 @@ enum MivoMeasurement: Equatable {
     }
 
     var isAvailable: Bool { minutes != nil }
+}
+
+/// One-time repair for day keys written before `MivoDay` existed.
+///
+/// Those keys came from `DateFormatter`s that inherited the device calendar, so
+/// the same instant was stored as `2026-07-25` on a Gregorian device but
+/// `2569-07-25` on a Buddhist one, `0008-07-25` on Japanese, and `1405-05-03`
+/// on Persian — and under some locales with non-Latin digits. Now that every
+/// key is read back as Gregorian, those records would simply stop matching and
+/// the user's history would vanish from Patterns and their reports. This
+/// rewrites them in place, once.
+enum MivoDayKeyRepair {
+    /// Years Mivo could plausibly hold data for. Anything outside this was
+    /// written under a different calendar.
+    private static let plausibleYears = 2015...2100
+
+    static func needsRepair(_ key: String) -> Bool {
+        let parts = key.split(separator: "-")
+        guard parts.count == 3, let year = Int(parts[0]) else {
+            // Non-numeric, e.g. a locale that rendered non-Latin digits.
+            return true
+        }
+        return !plausibleYears.contains(year)
+    }
+
+    /// The canonical key for a record, or nil when it is already correct or
+    /// cannot be recovered safely.
+    ///
+    /// - Parameter timestamp: an unambiguous ISO-8601 instant from the same
+    ///   record, when one exists that is guaranteed to fall on the same day.
+    ///   Omitted for records whose timestamp can legitimately differ from the
+    ///   day they describe, such as an observation written after midnight.
+    static func repairedKey(for key: String, timestamp: String? = nil) -> String? {
+        guard needsRepair(key) else { return nil }
+
+        if let timestamp, let date = isoDate(from: timestamp) {
+            return MivoDay.key(date)
+        }
+
+        // Otherwise read the key back with the calendar that wrote it. This is
+        // exact while the device calendar is unchanged, and the plausibility
+        // check below rejects the result if it is not.
+        guard let date = deviceFormatter.date(from: key) else { return nil }
+        let repaired = MivoDay.key(date)
+        guard !needsRepair(repaired) else { return nil }
+        return repaired
+    }
+
+    private static var deviceFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar.current
+        formatter.locale = Locale.current
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }
+
+    private static func isoDate(from value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+}
+
+extension Session {
+    /// A copy filed under the canonical day key, or nil when no change is needed.
+    func repairingDayKey() -> Session? {
+        guard let repaired = MivoDayKeyRepair.repairedKey(for: date, timestamp: startTime) else {
+            return nil
+        }
+        return Session(
+            id: id, date: repaired, startTime: startTime, endTime: endTime,
+            plannedDuration: plannedDuration, actualDuration: actualDuration,
+            intention: intention, extendedOnce: extendedOnce, reflection: reflection,
+            reflectionNote: reflectionNote, urgeReason: urgeReason, urgeNote: urgeNote,
+            outcomeScore: outcomeScore, emergencyUnlockUsed: emergencyUnlockUsed,
+            emergencyUnlockReason: emergencyUnlockReason
+        )
+    }
+}
+
+extension TruthCheckGuess {
+    func repairingDayKey() -> TruthCheckGuess? {
+        // `checkedAt` is stamped when the guess is made, which is always the
+        // day the guess is about, so it is a safe source.
+        guard let repaired = MivoDayKeyRepair.repairedKey(for: date, timestamp: checkedAt) else {
+            return nil
+        }
+        return TruthCheckGuess(
+            id: id, date: repaired, guess: guess, actual: actual,
+            checkedAt: checkedAt, perAppMinutes: perAppMinutes
+        )
+    }
+}
+
+extension DailyScreenTimeObservation {
+    func repairingDayKey() -> DailyScreenTimeObservation? {
+        // No timestamp is passed: `recordedAt` can land on the following day
+        // when a report arrives just after midnight, so it cannot stand in for
+        // the day being observed.
+        guard let repaired = MivoDayKeyRepair.repairedKey(for: date) else { return nil }
+        return DailyScreenTimeObservation(date: repaired, minutes: minutes, recordedAt: recordedAt)
+    }
+}
+
+extension DailyScrollSchedule {
+    func repairingDayKey() -> DailyScrollSchedule? {
+        guard let repaired = MivoDayKeyRepair.repairedKey(for: date) else { return nil }
+        return DailyScrollSchedule(id: id, date: repaired, windows: windows, createdAt: createdAt)
+    }
 }

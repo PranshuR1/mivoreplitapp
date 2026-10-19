@@ -605,6 +605,11 @@ class AIService {
                 scores["YouTube", default: 1] += 2
             case .lookingForSomethingSpecific:
                 scores["Reddit", default: 1] += 1
+            case .replyingToSomeone:
+                scores["Instagram", default: 1] += 2
+            case .postingSomething:
+                scores["Instagram", default: 1] += 1
+                scores["TikTok", default: 1] += 1
             }
         }
 
@@ -631,7 +636,8 @@ class AIService {
         truthChecks: [TruthCheckGuess],
         todayScreenTimeMinutes: Int?,
         profile: OnboardingProfile?,
-        dailyObservations: [DailyScreenTimeObservation] = []
+        dailyObservations: [DailyScreenTimeObservation] = [],
+        comeback: ComebackAnchor? = nil
     ) -> ScreenTimeReductionPlan {
         // Plan structure:
         //   • Days 1–3: 3-day observation period. No enforced cap — Mivo just
@@ -648,6 +654,36 @@ class AIService {
         //     min if no goal is on file.
         let daysNeeded = 3
         let floorMinutes = max(15, profile?.dailyScrollGoalMinutes ?? 30)
+
+        // A fresh start replaces both the observation window and the calendar
+        // ramp: the count restarts at the day the user chose to come back, at a
+        // target set from what they do now. Without this a returning user is
+        // measured against a ramp that kept descending while they were away.
+        if let comeback, let comebackDay = MivoComeback.dayIndex(anchor: comeback, today: MivoDay.todayKey) {
+            let target = MivoComeback.target(anchor: comeback, dayIndex: comebackDay, floor: floorMinutes)
+            let baseline = max(comeback.baselineMinutes, 1)
+            let strictness = max(0, min(95, Int(((Double(baseline) - Double(target)) / Double(baseline) * 100).rounded())))
+            let summary: String
+            if comebackDay == 1 {
+                summary = "Fresh start — day 1. Today's target is \(target) min, set from where you are now."
+            } else {
+                summary = "Fresh start — day \(comebackDay). Today's target is \(target) min, \(comeback.dailyStepMinutes) min lower each day until you reach your \(floorMinutes)-min goal."
+            }
+            return ScreenTimeReductionPlan(
+                id: "comeback-\(comebackDay)-\(target)",
+                collecting: false,
+                daysCollected: 3,
+                daysNeeded: 3,
+                dayIndex: comebackDay,
+                baselineMinutes: baseline,
+                targetMinutes: target,
+                strictnessPercent: strictness,
+                summary: summary,
+                decisionReason: "You restarted on \(MivoComeback.shortDate(comeback.startDay)) at a \(comeback.pace.title.lowercased()) pace. Your old plan's day count is set aside.",
+                windows: recommendedScrollWindows(from: sessions, targetMinutes: target)
+            )
+        }
+
         let observedDailyTotals = observedDailyScrollTotals(
             sessions: sessions,
             truthChecks: truthChecks,
@@ -655,13 +691,27 @@ class AIService {
         )
         let totalsByDate = Dictionary(uniqueKeysWithValues: observedDailyTotals.map { ($0.date, $0.minutes) })
         let observationStart = observationStartDate(profile: profile, observedDailyTotals: observedDailyTotals)
-        let completedCalendarDays = completedObservationDays(since: observationStart)
-        let daysCollected = min(daysNeeded, completedCalendarDays)
-        let observedSamples = observationDateKeys(from: observationStart, count: daysCollected)
-            .compactMap { totalsByDate[$0] }
-        let fallbackEstimate = max(profile?.scrollEstimateMinutes ?? 90, todayScreenTimeMinutes ?? 0, 45)
-        let partialObservedAverage = averageMinutes(observedSamples)
-        let baseline = max(partialObservedAverage ?? fallbackEstimate, 20)
+        let elapsedCalendarDays = completedObservationDays(since: observationStart)
+
+        // Days Mivo actually measured, not days that merely passed. Counting
+        // elapsed time graduated a user who never granted Screen Time onto a
+        // plan whose "observed" baseline was an invented number, while the copy
+        // told them it came from three observed days.
+        // `elapsedCalendarDays` is the gap between the start day and today, so
+        // the window needs one more key to include today itself — otherwise a
+        // measurement taken today never counts.
+        let measuredKeys = observationDateKeys(
+            from: observationStart,
+            count: max(elapsedCalendarDays + 1, daysNeeded)
+        )
+        .filter { totalsByDate[$0] != nil }
+
+        // The first three measured days anchor the plan, so it stays tied to the
+        // observation window rather than drifting once the plan is running.
+        let anchorKeys = Array(measuredKeys.prefix(daysNeeded))
+        let daysCollected = min(daysNeeded, anchorKeys.count)
+        let observedSamples = anchorKeys.compactMap { totalsByDate[$0] }
+        let baseline = max(averageMinutes(observedSamples) ?? max(profile?.scrollEstimateMinutes ?? 45, 20), 20)
 
         guard daysCollected >= daysNeeded else {
             // Observation period: no cap, just track usage.  Windows are
@@ -678,6 +728,21 @@ class AIService {
             }
             let remaining = max(0, daysNeeded - daysCollected)
             let dayLabel = min(daysCollected + 1, daysNeeded)
+
+            // Once more days have passed than were measured, saying "day 2 of 3"
+            // would imply progress that is not happening. Name the real problem
+            // instead, because the user is the only one who can fix it.
+            let stalledDays = max(0, elapsedCalendarDays - daysCollected)
+            let summary: String
+            let reason: String
+            if stalledDays >= 2 {
+                summary = "Waiting on Screen Time data — \(daysCollected) of \(daysNeeded) days measured so far."
+                reason = "Mivo has not received a Screen Time report for \(stalledDays) of the days since setup, so it cannot start a plan yet. Check that Screen Time access is still granted."
+            } else {
+                summary = "Day \(dayLabel) of \(daysNeeded) — observation mode. \(remaining) day\(remaining == 1 ? "" : "s") left, then your week-1 lenient plan begins from these \(daysNeeded) measured days."
+                reason = "Mivo observes freely for \(daysNeeded) days — no cap, no restrictions. Plan day 1 starts from the days Mivo actually measured."
+            }
+
             return ScreenTimeReductionPlan(
                 id: "collecting-\(daysCollected)",
                 collecting: true,
@@ -687,8 +752,8 @@ class AIService {
                 baselineMinutes: baseline,
                 targetMinutes: 0,
                 strictnessPercent: 0,
-                summary: "Day \(dayLabel) of \(daysNeeded) — observation mode. \(remaining) day\(remaining == 1 ? "" : "s") left, then your week-1 lenient plan begins from your self-report plus these 3 observed days.",
-                decisionReason: "Mivo observes freely for 3 days — no cap, no restrictions. Plan day 1 starts at the average of your onboarding report and the 3 observed daily totals.",
+                summary: summary,
+                decisionReason: reason,
                 windows: observationWindows
             )
         }
@@ -697,19 +762,22 @@ class AIService {
         // observed daily totals, averaged as separate inputs. Keeping the first
         // 3 days anchors the plan to the observation window instead of letting
         // the baseline drift after the plan starts.
-        let missingDayFallback = max(profile?.scrollEstimateMinutes ?? 45, 20)
-        let observationTotals = observationDateKeys(from: observationStart, count: daysNeeded)
-            .map { totalsByDate[$0] ?? missingDayFallback }
+        // Only real measurements. This previously substituted an invented figure
+        // for any day with no report, so an unmeasured user still got a
+        // confident-looking baseline.
         let blendedBaseline: Int = {
-            var samples = observationTotals
+            var samples = observedSamples
             if let reported = profile?.scrollEstimateMinutes, reported > 0 {
                 samples.append(reported)
             }
             return max(floorMinutes, averageMinutes(samples) ?? baseline)
         }()
 
-        // dayIndex = 1 on the first plan day (overall day 4).
-        let dayIndex = max(1, completedCalendarDays - daysNeeded + 1)
+        // The ramp starts the day observation actually completed. Counting from
+        // setup instead would drop a user whose third measured day arrived late
+        // straight into week two.
+        let planStart = anchorKeys.last.flatMap { MivoDay.date(from: $0) } ?? observationStart
+        let dayIndex = max(1, completedObservationDays(since: planStart))
         let target = personalizedTargetMinutes(dayIndex: dayIndex, baseline: blendedBaseline, floor: floorMinutes)
         let strictness = max(0, min(95, Int(((Double(blendedBaseline) - Double(target)) / Double(max(blendedBaseline, 1)) * 100).rounded())))
         let activeWindows = recommendedScrollWindows(from: sessions, targetMinutes: target)
@@ -735,7 +803,7 @@ class AIService {
             targetMinutes: target,
             strictnessPercent: strictness,
             summary: summaryLine,
-            decisionReason: "Plan day 1 = the average of your onboarding report and the 3 observed daily totals. Week 1 trims 3 min/day; each week after that the daily trim grows by 1 min, with a \(floorMinutes)-min floor.",
+            decisionReason: "Plan day 1 = the average of your onboarding report and the \(daysNeeded) days Mivo measured. Week 1 trims 3 min/day; each week after that the daily trim grows by 1 min, with a \(floorMinutes)-min floor.",
             windows: activeWindows
         )
     }
@@ -828,6 +896,22 @@ class AIService {
         return max(floor, total)
     }
 
+    /// Target for a plan day, honouring a fresh start when one is active. Every
+    /// projection (Home forecast, tomorrow's allowance) goes through here so
+    /// none of them keeps drawing the old ramp after a restart.
+    static func projectedTargetMinutes(dayIndex: Int, baseline: Int, floor: Int, comeback: ComebackAnchor?) -> Int {
+        if let comeback {
+            return MivoComeback.target(anchor: comeback, dayIndex: dayIndex, floor: floor)
+        }
+        return personalizedTargetMinutes(dayIndex: dayIndex, baseline: baseline, floor: floor)
+    }
+
+    /// Plan day on which the target reaches `goal`, honouring a fresh start.
+    static func projectedDaysUntilGoal(baseline: Int, goal: Int, comeback: ComebackAnchor?) -> Int {
+        if let comeback { return MivoComeback.goalDayIndex(anchor: comeback, floor: goal) }
+        return daysUntilGoalReached(baseline: baseline, goal: goal)
+    }
+
     /// How many plan days the personalized ramp takes to reach `goal` starting
     /// from `baseline`. Returns 1 if the baseline already meets the goal.
     /// Capped at 365 days for safety.
@@ -846,16 +930,21 @@ class AIService {
         truthChecks: [TruthCheckGuess],
         todayScreenTimeMinutes: Int?,
         profile: OnboardingProfile?,
-        dailyObservations: [DailyScreenTimeObservation] = []
+        dailyObservations: [DailyScreenTimeObservation] = [],
+        comeback: ComebackAnchor? = nil
     ) async -> ScreenTimeReductionPlan {
         let local = makeScreenTimeReductionPlan(
             sessions: sessions,
             truthChecks: truthChecks,
             todayScreenTimeMinutes: todayScreenTimeMinutes,
             profile: profile,
-            dailyObservations: dailyObservations
+            dailyObservations: dailyObservations,
+            comeback: comeback
         )
         guard !local.collecting else { return local }
+        // The generated narrative describes the blended-baseline ramp, which a
+        // fresh start deliberately isn't, so it would misstate the plan.
+        guard !local.id.hasPrefix("comeback-") else { return local }
         if let ai = await OpenRouterService.makePersonalizedPlan(
             sessions: sessions,
             profile: profile,
