@@ -194,6 +194,27 @@ struct MeerkatCanvas: View {
     }
 }
 
+/// Just the face, for slots too small for the whole figure (Dynamic Island,
+/// Live Activities). Crops the same painter, so the artwork stays in one place.
+struct MeerkatHeadBadge: View {
+    var pose: MeerkatPose
+
+    var body: some View {
+        Canvas { context, size in
+            let side = min(size.width, size.height)
+            let scale = side / 100 // ears and face span ~100 design units
+            let height = MeerkatPainter.designSize.height * scale
+            let drawSize = CGSize(width: MeerkatPainter.designSize.width * scale, height: height)
+            let headY = 240 - 162 * pose.bodyStretch + 16 * pose.headDrop - pose.lift
+            var cropped = context
+            cropped.translateBy(x: size.width / 2 - 100 * scale, y: size.height / 2 - headY * scale)
+            MeerkatPainter.draw(pose, in: cropped, size: drawSize)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .accessibilityHidden(true)
+    }
+}
+
 enum MeerkatPainter {
     static let designSize = CGSize(width: 200, height: 260)
 

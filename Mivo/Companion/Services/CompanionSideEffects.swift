@@ -32,9 +32,11 @@ final class LiveCompanionSideEffects: CompanionSideEffects {
             store.clear()
             CompanionPortraitRenderer.remove()
             reloadWidgetIfNeeded(signature: "inactive")
+            updateLiveActivity(name: nil, state: nil)
             return
         }
         store.write(snapshot)
+        updateLiveActivity(name: snapshot.name, state: snapshot.state)
         CompanionPortraitRenderer.refreshIfNeeded()
 
         // Reloading widget timelines is an IPC round trip. Only do it when
@@ -44,6 +46,17 @@ final class LiveCompanionSideEffects: CompanionSideEffects {
             "\(snapshot.focusActive)", snapshot.dayKey,
         ].joined(separator: "|")
         reloadWidgetIfNeeded(signature: signature)
+    }
+
+    private var lastLiveActivitySignature: String?
+
+    /// A running session / focus Live Activity shows the character; keep it in
+    /// step. Only touches ActivityKit when the character actually changed.
+    private func updateLiveActivity(name: String?, state: String?) {
+        let signature = "\(name ?? "-")|\(state ?? "-")"
+        guard signature != lastLiveActivitySignature else { return }
+        lastLiveActivitySignature = signature
+        FamilyControlsManager.shared.updateLiveActivityCompanion(name: name, state: state)
     }
 
     private func reloadWidgetIfNeeded(signature: String) {

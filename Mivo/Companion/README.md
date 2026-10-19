@@ -45,10 +45,21 @@ which of the available signals are missing (`CompanionDataLimit`).
 No floating overlay, private API or new entitlement is used. The App Group
 (`group.com.mivo.mivoapp`) was already configured for the app, widget and shield extension.
 
-## Live Activities
+## Live Activities / Dynamic Island
 
-Mivo already has a session Live Activity (`MivoSessionLiveAttributes`). Companion does not add a
-second one; a permanently running activity just to show the character is not a legitimate use.
+iOS has no way to draw a character over other apps, so the companion is visible outside Mivo only
+through Apple's sanctioned surfaces. Companion reuses Mivo's existing session Live Activity
+(`MivoSessionLiveAttributes`, behind the existing `liveActivities` rollout flag) instead of adding a
+second one:
+
+- It starts only for a real timed event: a Mivo scroll session, or a Mivo Still run
+  (`kind == "focus"`, which hides the Finish / Add time actions that only make sense for a scroll session).
+- When Companion is on, `ContentState.companionName` / `companionState` make the Lock Screen,
+  compact and minimal Dynamic Island show the meerkat's face (`MeerkatHeadBadge`) in the state's
+  resting pose. Live Activities can't run custom animation.
+- `LiveCompanionSideEffects` pushes state changes into a running activity, and drops the character
+  if Companion is switched off.
+- There is deliberately no always-on activity just to keep the character visible.
 
 ## Adding a character
 

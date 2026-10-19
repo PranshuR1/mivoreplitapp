@@ -525,6 +525,7 @@ final class FamilyControlsManager: ObservableObject {
         stopStillLockDeviceActivity()
         cancelStillLockBGTask()
         cancelStillLockNotification()
+        endFocusLiveActivity()
         logger.info("Still Lock ended")
     }
 
@@ -735,23 +736,61 @@ final class FamilyControlsManager: ObservableObject {
     /// Starts a Live Activity showing a countdown timer on the lock screen / Dynamic Island.
     /// Requires NSSupportsLiveActivities = YES and the MivoWidgets extension target to be
     /// wired up in Xcode (see Mivo/Constants/MivoLiveActivityAttributes.swift).
-    func startSessionLiveActivity(sessionEndsAt: Date, planMinutes: Int, intentionLabel: String) {
-        // End any stale activity from a previous session first.
-        endSessionLiveActivity()
+    func startSessionLiveActivity(sessionEndsAt: Date, planMinutes: Int, intentionLabel: String, kind: String? = nil) {
         let attrs = MivoSessionLiveAttributes(
             sessionStartedAt: Date(),
-            intentionLabel: intentionLabel
+            intentionLabel: intentionLabel,
+            kind: kind
         )
+        // The companion appears only when it is on; the snapshot is what the
+        // Companion feature already publishes for the widget.
+        let companion = CompanionSharedStore().read().flatMap { $0.isActive && $0.isFresh(at: Date()) ? $0 : nil }
         let state = MivoSessionLiveAttributes.ContentState(
             sessionEndsAt: sessionEndsAt,
-            planMinutes: planMinutes
+            planMinutes: planMinutes,
+            companionName: companion?.name,
+            companionState: kind == "focus" ? CompanionState.focused.rawValue : companion?.state
         )
-        do {
-            let content = ActivityContent(state: state, staleDate: sessionEndsAt.addingTimeInterval(60))
-            _ = try Activity.request(attributes: attrs, content: content)
-            logger.info("LiveActivity: started — ends at \(sessionEndsAt)")
-        } catch {
-            logger.warning("LiveActivity: failed to start — \(error.localizedDescription)")
+        // End any stale activity from a previous session first — and only then
+        // request the new one. Ending in a separate task raced the request and
+        // could end the activity that had just been started.
+        Task {
+            for activity in Activity<MivoSessionLiveAttributes>.activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+            do {
+                let content = ActivityContent(state: state, staleDate: sessionEndsAt.addingTimeInterval(60))
+                _ = try Activity.request(attributes: attrs, content: content)
+                logger.info("LiveActivity: started — ends at \(sessionEndsAt)")
+            } catch {
+                logger.warning("LiveActivity: failed to start — \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Keeps a running Live Activity's character in step with the Companion
+    /// (or drops it when Companion is switched off). Called only when the
+    /// published companion state changes.
+    func updateLiveActivityCompanion(name: String?, state: String?) {
+        Task {
+            for activity in Activity<MivoSessionLiveAttributes>.activities {
+                let isFocus = activity.attributes.kind == "focus"
+                let newState = name == nil ? nil : (isFocus ? CompanionState.focused.rawValue : state)
+                var updated = activity.content.state
+                guard updated.companionName != name || updated.companionState != newState else { continue }
+                updated.companionName = name
+                updated.companionState = newState
+                await activity.update(ActivityContent(state: updated, staleDate: activity.content.staleDate))
+            }
+        }
+    }
+
+    /// Ends only a Mivo Still Live Activity, leaving any scroll-session one alone.
+    func endFocusLiveActivity() {
+        Task {
+            for activity in Activity<MivoSessionLiveAttributes>.activities where activity.attributes.kind == "focus" {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
         }
     }
 

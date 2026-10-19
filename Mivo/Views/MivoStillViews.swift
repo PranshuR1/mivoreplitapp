@@ -94,6 +94,7 @@ struct MivoStillFlowView: View {
             if started {
                 monitor.stop()
                 CompanionInterventionAdapter.focusEnded(completed: false)
+                endFocusLiveActivityUnlessLocked()
             }
         }
         .onChange(of: monitor.phase) { _, newPhase in
@@ -191,9 +192,11 @@ struct MivoStillFlowView: View {
                     _ = FamilyControlsManager.shared.activateStillLock(durationSeconds: activeLockMinutes * 60)
                     monitor.start(plannedSeconds: Double(activeLockMinutes * 60))
                     CompanionInterventionAdapter.focusBegan(endsAt: Date().addingTimeInterval(Double(activeLockMinutes * 60)))
+                    startFocusLiveActivity(minutes: activeLockMinutes)
                 } else {
                     monitor.start(plannedSeconds: Double(selectedMinutes * 60))
                     CompanionInterventionAdapter.focusBegan(endsAt: Date().addingTimeInterval(Double(selectedMinutes * 60)))
+                    startFocusLiveActivity(minutes: selectedMinutes)
                 }
             }
             .padding(.bottom, 24)
@@ -516,6 +519,28 @@ struct MivoStillFlowView: View {
         started = true
         monitor.start(plannedSeconds: remaining)
         CompanionInterventionAdapter.focusBegan(endsAt: Date().addingTimeInterval(remaining))
+        startFocusLiveActivity(minutes: max(1, Int((remaining / 60).rounded(.up))), endsAt: Date().addingTimeInterval(remaining))
+    }
+
+    /// Lock Mode keeps blocking apps after the screen closes, so its countdown
+    /// stays up until `endStillLock()` ends it.
+    private func endFocusLiveActivityUnlessLocked() {
+        if !FamilyControlsManager.shared.isStillLockActive() {
+            FamilyControlsManager.shared.endFocusLiveActivity()
+        }
+    }
+
+    /// Shows the countdown (and the companion, if on) on the Lock Screen and
+    /// Dynamic Island for the length of the Still run. Same opt-in rollout flag
+    /// as Mivo's session Live Activity — this reuses that activity, it doesn't add another.
+    private func startFocusLiveActivity(minutes: Int, endsAt: Date? = nil) {
+        guard ProductExpansionStore.shared.isEnabled(.liveActivities) else { return }
+        FamilyControlsManager.shared.startSessionLiveActivity(
+            sessionEndsAt: endsAt ?? Date().addingTimeInterval(Double(minutes * 60)),
+            planMinutes: minutes,
+            intentionLabel: "Mivo Still",
+            kind: "focus"
+        )
     }
 
     private func resetToSetup() {
@@ -534,6 +559,7 @@ struct MivoStillFlowView: View {
         // A completed session was already reported by `recordIfNeeded`; this
         // closes any that is leaving early. Ending early is never held against anyone.
         CompanionInterventionAdapter.focusEnded(completed: false)
+        endFocusLiveActivityUnlessLocked()
         if lockModeEnabled, FamilyControlsManager.shared.isStillLockActive() {
             showLockStillActiveNotice = true
         } else {
@@ -575,6 +601,7 @@ struct MivoStillFlowView: View {
         )
         store.record(session)
         CompanionInterventionAdapter.focusEnded(completed: true)
+        FamilyControlsManager.shared.endFocusLiveActivity()
         HapticsService.impact(style: .medium)
         if outcome == .completed {
             HapticsService.success()

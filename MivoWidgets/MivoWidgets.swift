@@ -198,24 +198,31 @@ private struct MivoSessionLiveActivityView: View {
     private var endsAt: Date { context.state.sessionEndsAt }
     private var planSeconds: Double { Double(context.state.planMinutes) * 60 }
     private var startedAt: Date { context.attributes.sessionStartedAt }
+    private var isFocus: Bool { context.attributes.kind == "focus" }
 
     var body: some View {
         HStack(spacing: 16) {
-            // Timer circle
-            VStack(spacing: 2) {
-                Image(systemName: "timer")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(brown)
-                Text(timerText)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(brown)
+            if let companionState = context.state.companionState {
+                // Companion on: the character stands in for the timer glyph.
+                CompanionLiveBadge(rawState: companionState, size: 52, background: cream)
+                    .accessibilityLabel("\(context.state.companionName ?? "Your companion")")
+            } else {
+                // Timer circle
+                VStack(spacing: 2) {
+                    Image(systemName: "timer")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(brown)
+                    Text(timerText)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(brown)
+                }
+                .frame(width: 52, height: 52)
+                .background(cream)
+                .clipShape(Circle())
             }
-            .frame(width: 52, height: 52)
-            .background(cream)
-            .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Mivo session active")
+                Text(isFocus ? "Focus session" : "Mivo session active")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(brown)
                 Text(context.attributes.intentionLabel)
@@ -241,23 +248,26 @@ private struct MivoSessionLiveActivityView: View {
                 }
                 .frame(width: 40, height: 40)
 
-                HStack(spacing: 6) {
-                    Link(destination: URL(string: "mivo://session/finish")!) {
-                        Image(systemName: "checkmark")
-                            .frame(width: 26, height: 24)
-                    }
-                    .accessibilityLabel("Finish session")
-
-                    if !activeExperimentBlocksExtensions() {
-                        Link(destination: URL(string: "mivo://session/addTime")!) {
-                            Image(systemName: "plus")
+                // Finish / Add time act on a Mivo scroll session, not a Still run.
+                if !isFocus {
+                    HStack(spacing: 6) {
+                        Link(destination: URL(string: "mivo://session/finish")!) {
+                            Image(systemName: "checkmark")
                                 .frame(width: 26, height: 24)
                         }
-                        .accessibilityLabel("Add time")
+                        .accessibilityLabel("Finish session")
+
+                        if !activeExperimentBlocksExtensions() {
+                            Link(destination: URL(string: "mivo://session/addTime")!) {
+                                Image(systemName: "plus")
+                                    .frame(width: 26, height: 24)
+                            }
+                            .accessibilityLabel("Add time")
+                        }
                     }
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(brown)
                 }
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(brown)
             }
         }
         .padding(.horizontal, 20)
@@ -281,6 +291,21 @@ private struct MivoSessionLiveActivityView: View {
     private let bgColor = Color(red: 0.91, green: 0.84, blue: 0.76)
     private let cream   = Color(red: 0.96, green: 0.93, blue: 0.88)
     private let brown   = Color(red: 0.35, green: 0.19, blue: 0.09)
+}
+
+/// The meerkat's face in a round badge, for the Lock Screen and Dynamic Island.
+/// A Live Activity can't animate custom drawing, so this is the state's resting pose.
+private struct CompanionLiveBadge: View {
+    let rawState: String
+    let size: CGFloat
+    var background: Color = Color(red: 0.96, green: 0.93, blue: 0.88)
+
+    var body: some View {
+        MeerkatHeadBadge(pose: MeerkatMotion.staticPose(for: CompanionState(rawValue: rawState) ?? .idle))
+            .frame(width: size, height: size)
+            .background(background)
+            .clipShape(Circle())
+    }
 }
 
 // Compact leading: timer countdown text
@@ -338,9 +363,13 @@ struct MivoSessionLiveActivityWidget: Widget {
                 // Expanded (long press) – full timer
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 6) {
-                        Image(systemName: "timer")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("Session")
+                        if let companionState = context.state.companionState {
+                            CompanionLiveBadge(rawState: companionState, size: 26)
+                        } else {
+                            Image(systemName: "timer")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        Text(context.attributes.kind == "focus" ? "Focus" : "Session")
                             .font(.system(size: 13, weight: .bold))
                     }
                     .foregroundColor(Color(red: 0.35, green: 0.19, blue: 0.09))
@@ -353,12 +382,14 @@ struct MivoSessionLiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 8) {
-                        Link(destination: URL(string: "mivo://session/finish")!) {
-                            Label("Finish", systemImage: "checkmark")
-                        }
-                        if !activeExperimentBlocksExtensions() {
-                            Link(destination: URL(string: "mivo://session/addTime")!) {
-                                Label("Add time", systemImage: "plus")
+                        if context.attributes.kind != "focus" {
+                            Link(destination: URL(string: "mivo://session/finish")!) {
+                                Label("Finish", systemImage: "checkmark")
+                            }
+                            if !activeExperimentBlocksExtensions() {
+                                Link(destination: URL(string: "mivo://session/addTime")!) {
+                                    Label("Add time", systemImage: "plus")
+                                }
                             }
                         }
                         Spacer()
@@ -371,9 +402,13 @@ struct MivoSessionLiveActivityWidget: Widget {
                     .padding(.top, 4)
                 }
             } compactLeading: {
-                Image(systemName: "timer")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color(red: 0.35, green: 0.19, blue: 0.09))
+                if let companionState = context.state.companionState {
+                    CompanionLiveBadge(rawState: companionState, size: 22)
+                } else {
+                    Image(systemName: "timer")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color(red: 0.35, green: 0.19, blue: 0.09))
+                }
             } compactTrailing: {
                 Text(context.state.sessionEndsAt, style: .timer)
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
@@ -381,11 +416,15 @@ struct MivoSessionLiveActivityWidget: Widget {
                     .foregroundColor(Color(red: 0.35, green: 0.19, blue: 0.09))
                     .frame(width: 42)
             } minimal: {
-                Image(systemName: "timer")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color(red: 0.35, green: 0.19, blue: 0.09))
+                if let companionState = context.state.companionState {
+                    CompanionLiveBadge(rawState: companionState, size: 20)
+                } else {
+                    Image(systemName: "timer")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(red: 0.35, green: 0.19, blue: 0.09))
+                }
             }
-            .widgetURL(URL(string: "mivo://session/finish"))
+            .widgetURL(URL(string: context.attributes.kind == "focus" ? "mivo://focus" : "mivo://session/finish"))
         }
     }
 }

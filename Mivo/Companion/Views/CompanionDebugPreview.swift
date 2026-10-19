@@ -2,7 +2,7 @@
 import SwiftUI
 
 /// Debug-only launch targets for reviewing the Companion screens without
-/// signing in: `-MivoPreviewCompanion <home|settings|onboarding|pause|sleeping>`.
+/// signing in: `-MivoPreviewCompanion <home|settings|onboarding|pause|sleeping|focus|session>`.
 /// Uses a throwaway account key, wiped on each launch.
 struct CompanionPreviewHost: View {
     let mode: String
@@ -47,6 +47,15 @@ struct CompanionPreviewHost: View {
         manager.prepare(forEmail: email)
         if mode != "onboarding" {
             manager.completeOnboarding(name: "Milo", personality: .gentle)
+        }
+        if mode == "focus" || mode == "session" {
+            // Starts the real Live Activity so the Lock Screen / Dynamic Island can be reviewed.
+            FamilyControlsManager.shared.startSessionLiveActivity(
+                sessionEndsAt: Date().addingTimeInterval(25 * 60),
+                planMinutes: 25,
+                intentionLabel: mode == "focus" ? "Mivo Still" : "Session active",
+                kind: mode == "focus" ? "focus" : nil
+            )
         }
         if mode == "sleeping" {
             manager.updatePreferences { $0.quietHours = CompanionTimeWindow(isEnabled: true, start: .init(hour: 0), end: .init(hour: 23, minute: 59)) }

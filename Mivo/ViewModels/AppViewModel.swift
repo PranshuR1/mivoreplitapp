@@ -1998,6 +1998,9 @@ class AppViewModel: ObservableObject {
             CompanionStateManager.shared.requestOpen()
             return
         }
+        // Tapping a Mivo Still Live Activity just opens the app on the Still screen
+        // it came from; it must not start the pause flow the way an unknown link does.
+        if url.host == "focus" { return }
         if url.host == "session" {
             let actionName = url.pathComponents.last ?? ""
             liveActivityDeepLinkAction = LiveActivityDeepLinkAction(rawValue: actionName)
