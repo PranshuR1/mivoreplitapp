@@ -509,7 +509,7 @@ struct SettingsView: View {
                 settingsNavigationRow(
                     icon: "rectangle.3.group.fill",
                     title: "Super Admin Center",
-                    subtitle: "Full access to users, analytics, campaigns, and security"
+                    subtitle: "Full access to users, analytics, and security"
                 ) {
                     MivoAdminCenterView()
                         .environmentObject(appVM)
@@ -567,18 +567,6 @@ struct SettingsView: View {
                     subtitle: "Prepare drafts for founder approval"
                 ) {
                     AnnouncementAdminView()
-                }
-            }
-        }
-
-        if appVM.isAmbassadorUser {
-            settingsSection("Ambassador") {
-                settingsNavigationRow(
-                    icon: "person.2.badge.gearshape.fill",
-                    title: "Your referrals",
-                    subtitle: "People who entered your assigned ambassador name"
-                ) {
-                    AmbassadorDashboardView()
                 }
             }
         }
@@ -827,7 +815,6 @@ struct SettingsView: View {
         switch appVM.accountRole {
         case "super_admin": return "SUPER ADMIN"
         case "admin": return "ADMIN"
-        case "ambassador": return "AMBASSADOR"
         default: return "USER"
         }
     }
@@ -868,7 +855,7 @@ struct SettingsView: View {
                     FocusBreakTrial.isOptedIn = newValue
                     HapticsService.selection()
                     Task {
-                        await ReferralCampaignService.logEvent(
+                        await MivoBackendService.logEvent(
                             "focus_break_trial_opt_changed",
                             metadata: ["opted_in": newValue]
                         )
@@ -2201,77 +2188,39 @@ private enum AdminUserFilter: String, CaseIterable, Identifiable {
     case all = "All"
     case onboarded = "Onboarded"
     case active = "Active"
-    case ambassador = "Ambassador"
 
     var id: String { rawValue }
 }
 
-private struct AmbassadorDatabaseFilterOption: Identifiable {
-    let id: String
-    let name: String
-}
-
 struct AdminUserDatabaseView: View {
     @EnvironmentObject private var appVM: AppViewModel
-    @State private var users: [AdminCampaignUser] = []
+    @State private var users: [AdminUserRecord] = []
     @State private var searchText = ""
     @State private var filter: AdminUserFilter = .all
     @State private var page = 0
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var ambassadorAssignmentUser: AdminCampaignUser?
-    @State private var selectedAmbassadorID = "all"
-    @State private var limitsAmbassadorDates = false
-    @State private var ambassadorCreatedFrom = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
-    @State private var ambassadorCreatedThrough = Date()
 
     private let pageSize = 25
 
-    private var filteredUsers: [AdminCampaignUser] {
+    private var filteredUsers: [AdminUserRecord] {
         users.filter { user in
             let matchesSearch = searchText.isEmpty
                 || user.name.localizedCaseInsensitiveContains(searchText)
                 || user.email.localizedCaseInsensitiveContains(searchText)
                 || user.userId.localizedCaseInsensitiveContains(searchText)
-                || (user.ambassadorDisplayName?.localizedCaseInsensitiveContains(searchText) == true)
             let matchesFilter: Bool
             switch filter {
             case .all: matchesFilter = true
             case .onboarded: matchesFilter = user.onboardingComplete
             case .active: matchesFilter = user.sessionCount > 0
-            case .ambassador:
-                let matchesAmbassador = user.isAmbassadorReferral
-                    && (selectedAmbassadorID == "all" || user.ambassadorFilterID == selectedAmbassadorID)
-                let matchesDates: Bool
-                if limitsAmbassadorDates {
-                    matchesDates = user.createdAt
-                        .flatMap(parseAdminDate)
-                        .map { created in
-                            let calendar = Calendar.current
-                            let start = calendar.startOfDay(for: ambassadorCreatedFrom)
-                            let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: ambassadorCreatedThrough)) ?? ambassadorCreatedThrough
-                            return created >= start && created < end
-                        } ?? false
-                } else {
-                    matchesDates = true
-                }
-                matchesFilter = matchesAmbassador && matchesDates
             }
             return matchesSearch && matchesFilter
         }
     }
 
-    private var ambassadorOptions: [AmbassadorDatabaseFilterOption] {
-        var options: [String: AmbassadorDatabaseFilterOption] = [:]
-        users.filter(\.isAmbassadorReferral).forEach { user in
-            guard let id = user.ambassadorFilterID, let name = user.ambassadorDisplayName else { return }
-            options[id] = AmbassadorDatabaseFilterOption(id: id, name: name)
-        }
-        return options.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
     private var pageCount: Int { max(1, Int(ceil(Double(filteredUsers.count) / Double(pageSize)))) }
-    private var visibleUsers: [AdminCampaignUser] {
+    private var visibleUsers: [AdminUserRecord] {
         let safePage = min(page, pageCount - 1)
         let start = safePage * pageSize
         guard start < filteredUsers.count else { return [] }
@@ -2291,10 +2240,6 @@ struct AdminUserDatabaseView: View {
                         }
                     }
                     .pickerStyle(.segmented)
-
-                    if filter == .ambassador {
-                        ambassadorFilterPanel
-                    }
 
                     if let errorMessage {
                         ContentUnavailableView(
@@ -2331,24 +2276,7 @@ struct AdminUserDatabaseView: View {
         .searchable(text: $searchText, prompt: "Search name, email, or user ID")
         .onChange(of: searchText) { _, _ in page = 0 }
         .onChange(of: filter) { _, _ in page = 0 }
-        .onChange(of: selectedAmbassadorID) { _, _ in page = 0 }
-        .onChange(of: limitsAmbassadorDates) { _, _ in page = 0 }
-        .onChange(of: ambassadorCreatedFrom) { _, newValue in
-            if newValue > ambassadorCreatedThrough { ambassadorCreatedThrough = newValue }
-            page = 0
-        }
-        .onChange(of: ambassadorCreatedThrough) { _, newValue in
-            if newValue < ambassadorCreatedFrom { ambassadorCreatedFrom = newValue }
-            page = 0
-        }
         .task { await load() }
-        .sheet(item: $ambassadorAssignmentUser) { user in
-            AmbassadorAssignmentView(user: user) {
-                ambassadorAssignmentUser = nil
-                await load()
-            }
-            .environmentObject(appVM)
-        }
     }
 
     private var summaryStrip: some View {
@@ -2357,67 +2285,6 @@ struct AdminUserDatabaseView: View {
             databaseStat("Onboarded", value: users.filter(\.onboardingComplete).count, icon: "checkmark.circle.fill")
             databaseStat("Active", value: users.filter { $0.sessionCount > 0 }.count, icon: "waveform.path.ecg")
         }
-    }
-
-    private var ambassadorFilterPanel: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Image(systemName: "person.crop.circle.badge.checkmark")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(MivoColors.accent)
-                    .frame(width: 36, height: 36)
-                    .background(MivoColors.accent.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Referred by ambassador")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
-                    Text("Based on the ambassador name entered during onboarding")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(MivoColors.textMuted)
-                }
-                Spacer(minLength: 8)
-                Picker("Ambassador", selection: $selectedAmbassadorID) {
-                    Text("All ambassadors").tag("all")
-                    ForEach(ambassadorOptions) { option in
-                        Text(option.name).tag(option.id)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .tint(MivoColors.accent)
-            }
-            .padding(13)
-
-            Divider().overlay(MivoColors.border).padding(.leading, 61)
-
-            Toggle(isOn: $limitsAmbassadorDates) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Account creation dates")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(MivoColors.textPrimary)
-                    Text(limitsAmbassadorDates ? "Only show accounts created in this range" : "Showing all creation dates")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(MivoColors.textMuted)
-                }
-            }
-            .tint(MivoColors.accent)
-            .padding(13)
-
-            if limitsAmbassadorDates {
-                Divider().overlay(MivoColors.border).padding(.leading, 13)
-                HStack(spacing: 14) {
-                    DatePicker("From", selection: $ambassadorCreatedFrom, in: ...ambassadorCreatedThrough, displayedComponents: .date)
-                    DatePicker("To", selection: $ambassadorCreatedThrough, in: ambassadorCreatedFrom...Date(), displayedComponents: .date)
-                }
-                .font(.system(size: 12, weight: .semibold))
-                .padding(13)
-            }
-        }
-        .background(MivoColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border.opacity(0.65), lineWidth: 1))
     }
 
     private func databaseStat(_ title: String, value: Int, icon: String) -> some View {
@@ -2476,7 +2343,7 @@ struct AdminUserDatabaseView: View {
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MivoColors.border.opacity(0.65), lineWidth: 1))
     }
 
-    private func databaseUserRow(_ user: AdminCampaignUser) -> some View {
+    private func databaseUserRow(_ user: AdminUserRecord) -> some View {
         HStack(spacing: 12) {
             Text(String(user.name.prefix(1)).uppercased())
                 .font(.system(size: 15, weight: .bold))
@@ -2513,13 +2380,6 @@ struct AdminUserDatabaseView: View {
                 .font(.system(size: 9, weight: .medium))
                 .foregroundColor(MivoColors.textMuted)
                 .lineLimit(1)
-
-                if user.isAmbassadorReferral, let ambassador = user.ambassadorAttributionLabel {
-                    Text("Referred by \(ambassador) · Account created \(shortAdminDate(user.ambassadorReferredAt ?? user.createdAt ?? ""))")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(MivoColors.accent)
-                        .lineLimit(2)
-                }
             }
             Spacer()
             if user.onboardingComplete {
@@ -2529,7 +2389,7 @@ struct AdminUserDatabaseView: View {
             }
             if user.email.lowercased() != appVM.user?.email.lowercased() {
                 Menu {
-                    ForEach(["user", "admin", "ambassador"], id: \.self) { role in
+                    ForEach(["user", "admin"], id: \.self) { role in
                         Button {
                             Task { await setRole(user, role: role) }
                         } label: {
@@ -2584,8 +2444,8 @@ struct AdminUserDatabaseView: View {
         isLoading = true
         errorMessage = nil
         do {
-            try await appVM.prepareAuthenticatedCampaignSession()
-            let dashboard = try await ReferralCampaignService.loadAdminDashboard()
+            try await appVM.prepareAuthenticatedSession()
+            let dashboard = try await MivoBackendService.loadAdminUserDashboard()
             users = dashboard.users
             page = min(page, max(0, pageCount - 1))
         } catch {
@@ -2594,14 +2454,11 @@ struct AdminUserDatabaseView: View {
         isLoading = false
     }
 
-    private func setRole(_ user: AdminCampaignUser, role: String) async {
+    private func setRole(_ user: AdminUserRecord, role: String) async {
         do {
-            try await appVM.prepareAuthenticatedCampaignSession()
-            try await ReferralCampaignService.setUserRole(userID: user.userId, role: role)
+            try await appVM.prepareAuthenticatedSession()
+            try await MivoBackendService.setUserRole(userID: user.userId, role: role)
             await load()
-            if role == "ambassador" {
-                ambassadorAssignmentUser = users.first(where: { $0.userId == user.userId }) ?? user
-            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2731,7 +2588,7 @@ struct AdminAnalyticsView: View {
 
     private func sources(_ data: AdminProductDashboard) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("Campaign sources", icon: "megaphone.fill")
+            sectionTitle("Sign-up sources", icon: "megaphone.fill")
             if data.sources.isEmpty { Text("No source attribution yet.").font(.system(size: 12)).foregroundColor(MivoColors.textMuted) }
             ForEach(data.sources) { source in
                 HStack { Text(source.source.capitalized); Spacer(); Text("\(source.signups) sign-ups · \(source.onboarded) activated") }
@@ -2765,7 +2622,7 @@ struct AdminAnalyticsView: View {
     private func sectionTitle(_ title: String, icon: String) -> some View { Label(title, systemImage: icon).font(.system(size: 16, weight: .bold)).foregroundColor(MivoColors.textPrimary) }
     private func decimal(_ value: Double?) -> String { String(format: "%.1f", value ?? 0) }
     private func conversion(_ value: Int, from previous: Int) -> String { previous == 0 ? "—" : String(format: "%.0f%%", 100.0 * Double(value) / Double(previous)) }
-    private func load() async { isLoading = true; do { try await appVM.prepareAuthenticatedCampaignSession(); dashboard = try await ReferralCampaignService.loadProductDashboard() } catch { errorMessage = error.localizedDescription }; isLoading = false }
+    private func load() async { isLoading = true; do { try await appVM.prepareAuthenticatedSession(); dashboard = try await MivoBackendService.loadProductDashboard() } catch { errorMessage = error.localizedDescription }; isLoading = false }
 }
 
 struct FeedbackSubmissionView: View {
@@ -2789,7 +2646,7 @@ struct FeedbackSubmissionView: View {
         .navigationTitle("Send Feedback").navigationBarTitleDisplayMode(.inline)
         .alert("Feedback", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage=nil } })) { Button("OK") {} } message: { Text(errorMessage ?? "") }
     }
-    private func submit() async { isSending=true; do { try await appVM.prepareAuthenticatedCampaignSession(); try await ReferralCampaignService.submitFeedback(type:type,subject:subject,message:message); dismiss() } catch { errorMessage=error.localizedDescription }; isSending=false }
+    private func submit() async { isSending=true; do { try await appVM.prepareAuthenticatedSession(); try await MivoBackendService.submitFeedback(type:type,subject:subject,message:message); dismiss() } catch { errorMessage=error.localizedDescription }; isSending=false }
 }
 
 struct AdminFeedbackView: View {
@@ -2814,7 +2671,7 @@ struct AdminFeedbackView: View {
         }.navigationTitle("Feedback & Bugs").navigationBarTitleDisplayMode(.inline).task { await load() }.refreshable { await load() }
           .alert("Feedback",isPresented:Binding(get:{errorMessage != nil},set:{if !$0{errorMessage=nil}})){Button("OK") {}} message:{Text(errorMessage ?? "")}
     }
-    private func load() async { loading=true; do { try await appVM.prepareAuthenticatedCampaignSession(); items=try await ReferralCampaignService.adminFeedback() } catch { errorMessage=error.localizedDescription }; loading=false }
+    private func load() async { loading=true; do { try await appVM.prepareAuthenticatedSession(); items=try await MivoBackendService.adminFeedback() } catch { errorMessage=error.localizedDescription }; loading=false }
 }
 
 private struct AdminFeedbackDetailView: View {
@@ -2823,47 +2680,11 @@ private struct AdminFeedbackDetailView: View {
     @State private var status: String; @State private var assigned: String; @State private var notes: String; @State private var message: String?
     init(item:AdminFeedbackItem,didSave:@escaping()async->Void){self.item=item;self.didSave=didSave;_status=State(initialValue:item.status);_assigned=State(initialValue:item.assignedTo ?? "");_notes=State(initialValue:item.internalNotes ?? "")}
     var body: some View { Form { Section("Report") { Text(item.subject).font(.headline); Text(item.message); LabeledContent("Type",value:item.type.capitalized); LabeledContent("Version",value:item.appVersion ?? "Unknown"); LabeledContent("Device",value:item.deviceInfo ?? "Unknown") }; Section("Team") { Picker("Status",selection:$status){ForEach(["new","investigating","fixed","closed"],id:\.self){Text($0.capitalized).tag($0)}};TextField("Assigned team member",text:$assigned);TextField("Internal notes",text:$notes,axis:.vertical).lineLimit(4...8);Button("Save changes"){Task{await save()}} } }.navigationTitle("Feedback").navigationBarTitleDisplayMode(.inline).alert("Feedback",isPresented:Binding(get:{message != nil},set:{if !$0{message=nil}})){Button("OK") {}} message:{Text(message ?? "")} }
-    private func save() async { do { try await ReferralCampaignService.updateFeedback(id:item.id,status:status,assignedTo:assigned,notes:notes);await didSave();message="Feedback updated." } catch { message=error.localizedDescription } }
+    private func save() async { do { try await MivoBackendService.updateFeedback(id:item.id,status:status,assignedTo:assigned,notes:notes);await didSave();message="Feedback updated." } catch { message=error.localizedDescription } }
 }
 
 private extension View {
     func analyticsPanel() -> some View { padding(14).frame(maxWidth:.infinity,alignment:.leading).background(MivoColors.card).clipShape(RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).strokeBorder(MivoColors.border.opacity(0.65),lineWidth:1)) }
-}
-
-private extension AdminCampaignUser {
-    var isAmbassadorReferral: Bool {
-        referralSource?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ambassador"
-            && !(referralAmbassadorName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-    }
-
-    var ambassadorFilterID: String? {
-        guard isAmbassadorReferral else { return nil }
-        if let ambassadorUserId, !ambassadorUserId.isEmpty {
-            return "user:\(ambassadorUserId)"
-        }
-        guard let entered = referralAmbassadorName?.trimmingCharacters(in: .whitespacesAndNewlines), !entered.isEmpty else { return nil }
-        return "name:\(entered.lowercased())"
-    }
-
-    var ambassadorDisplayName: String? {
-        guard let entered = referralAmbassadorName?.trimmingCharacters(in: .whitespacesAndNewlines), !entered.isEmpty else { return nil }
-        guard let account = ambassadorAccountName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !account.isEmpty,
-              account.caseInsensitiveCompare(entered) != .orderedSame else {
-            return ambassadorUserId == nil ? "\(entered) (unassigned)" : entered
-        }
-        return "\(account) · entered as \(entered)"
-    }
-
-    var ambassadorAttributionLabel: String? {
-        guard let entered = referralAmbassadorName?.trimmingCharacters(in: .whitespacesAndNewlines), !entered.isEmpty else { return nil }
-        guard let account = ambassadorAccountName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !account.isEmpty,
-              account.caseInsensitiveCompare(entered) != .orderedSame else {
-            return entered
-        }
-        return "\(entered) (assigned to \(account))"
-    }
 }
 
 private func parseAdminDate(_ iso: String) -> Date? {

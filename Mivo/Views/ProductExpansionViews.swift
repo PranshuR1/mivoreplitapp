@@ -850,7 +850,7 @@ struct MivoDeleteAccountView: View {
             bullet("Your sign-in and \(appVM.user?.email ?? "your email address")")
             bullet("All \(appVM.sessions.count) scroll sessions and \(appVM.truthChecks.count) truth checks")
             bullet("Weekly experiments, reports, and your screen-time plan")
-            bullet("Referral profile, accountability partner connections, and shared summaries")
+            bullet("Accountability partner connections and shared summaries")
             bullet("Everything Mivo stored on this device, including Screen Time selections")
         }
     }

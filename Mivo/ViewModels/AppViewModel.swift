@@ -80,14 +80,14 @@ class AppViewModel: ObservableObject {
     /// expected and handled — the recall prompt just asks generically.
     @Published var pendingMidScrollCheckInAppName: String? = nil
     @Published var pendingInstagramWrapper: Bool = false
-    /// Set when an App Store event or universal link should open the Referral Hub.
-    @Published var deepLinkReferralHubRequested: Bool = false
     @Published var pendingMivoClearRoute: MivoClearRoute? = nil
     @Published var liveActivityDeepLinkAction: LiveActivityDeepLinkAction? = nil
     private var remoteSyncTask: Task<Void, Never>? = nil
 
     init() {
         performInternalFreshStartIfNeeded()
+        // A removed feature's leftover value on devices that ran an older build.
+        UserDefaults.standard.removeObject(forKey: "mivo.prefilledReferralCode")
         loadData()
         // Begin observing device activity updates from the Device Activity extension or Screen Time API
         startObservingDeviceActivityUpdates()
@@ -672,7 +672,7 @@ class AppViewModel: ObservableObject {
         try completeLogin(email: normalizedEmail)
         saveForCurrentUser(settings, forKey: .settings)
         saveForCurrentUser(onboardingProfile, forKey: .onboardingProfile)
-        Task { try? await ReferralCampaignService.requestNewAccountAlert() }
+        Task { try? await MivoBackendService.requestNewAccountAlert() }
     }
 
     private func registerLocallyDirectly(email: String, password: String, displayName: String) throws {
@@ -687,7 +687,7 @@ class AppViewModel: ObservableObject {
 
     func logout() {
         if isSuperAdminUser {
-            Task { try? await ReferralCampaignService.unregisterAdminPushDevice() }
+            Task { try? await MivoBackendService.unregisterAdminPushDevice() }
         }
         if let email = user?.email, let record = SecureAuthService.loadRecord(email: email),
            let installationID = try? DeviceBindingService.installationID() {
@@ -1062,7 +1062,6 @@ class AppViewModel: ObservableObject {
     var canManageAnnouncements: Bool { isAdminUser }
     var canViewAdminUsers: Bool { isSuperAdminUser }
     var canAccessSuperAdminCenter: Bool { isSuperAdminUser }
-    var isAmbassadorUser: Bool { accountRole == "ambassador" }
 
     var canReplayFounderOnboarding: Bool {
         isSuperAdminUser
@@ -1084,8 +1083,8 @@ class AppViewModel: ObservableObject {
     }
 
     func loadAdminUsers() async throws -> [AdminUser] {
-        try await prepareAuthenticatedCampaignSession()
-        let dashboard = try await ReferralCampaignService.loadAdminDashboard()
+        try await prepareAuthenticatedSession()
+        let dashboard = try await MivoBackendService.loadAdminUserDashboard()
         return dashboard.users.map { item in
             AdminUser(
                 email: item.email,
@@ -1101,12 +1100,12 @@ class AppViewModel: ObservableObject {
     }
 
     func deleteAdminUser(email: String) async throws {
-        try await prepareAuthenticatedCampaignSession()
-        let dashboard = try await ReferralCampaignService.loadAdminDashboard()
+        try await prepareAuthenticatedSession()
+        let dashboard = try await MivoBackendService.loadAdminUserDashboard()
         guard let target = dashboard.users.first(where: { $0.email.lowercased() == email.lowercased() }) else {
             throw AppError.noAccount
         }
-        try await ReferralCampaignService.deleteUser(userID: target.userId, reason: "Deleted from Mivo user database")
+        try await MivoBackendService.deleteUser(userID: target.userId, reason: "Deleted from Mivo user database")
     }
 
     /// Returns false when there is no trustworthy usage figure to compare the
@@ -1729,15 +1728,8 @@ class AppViewModel: ObservableObject {
             onboardingProfile.checkInIntervalMinutes = interval
             FamilyControlsManager.shared.setCheckInIntervalMinutes(interval)
         }
-        if let referralCode = partial.referralCode,
-           !referralCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            onboardingProfile.referralCode = referralCode.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        }
         if let source = partial.referralSource, !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             onboardingProfile.referralSource = source
-            onboardingProfile.referralAmbassadorName = source == "ambassador"
-                ? partial.referralAmbassadorName?.trimmingCharacters(in: .whitespacesAndNewlines)
-                : nil
         }
         // Persist the onboarding profile separately
         saveForCurrentUser(onboardingProfile, forKey: .onboardingProfile)
@@ -1966,15 +1958,6 @@ class AppViewModel: ObservableObject {
             }
             return
         }
-        if url.scheme == "mivo", url.host == "referral" {
-            let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                .queryItems?.first(where: { $0.name == "code" })?.value
-            if let code, !code.isEmpty {
-                UserDefaults.standard.set(code.uppercased(), forKey: "mivo.prefilledReferralCode")
-            }
-            deepLinkReferralHubRequested = true
-            return
-        }
         if url.host == "usemivo.app" {
             let parts = url.pathComponents.filter { $0 != "/" }
             if parts.count >= 2, parts[0] == "clear",
@@ -1983,13 +1966,6 @@ class AppViewModel: ObservableObject {
                     .queryItems?.first(where: { $0.name == "url" })?.value.flatMap(URL.init(string:))
                 pendingMivoClearRoute = MivoClearRoute(platform: platform, directURL: directURL, entryPoint: .deepLink)
                 return
-            }
-            if parts.count >= 2, parts[0] == "r" {
-                UserDefaults.standard.set(parts[1].uppercased(), forKey: "mivo.prefilledReferralCode")
-                return
-            }
-            if parts == ["referral"] || parts == ["events", "referral-challenge"] {
-                deepLinkReferralHubRequested = true
             }
             return
         }
@@ -3672,8 +3648,8 @@ class AppViewModel: ObservableObject {
     func refreshWeeklyExperiments() async {
         guard isLoggedIn else { return }
         do {
-            try await prepareAuthenticatedCampaignSession()
-            let remote = try await ReferralCampaignService.loadWeeklyExperiments()
+            try await prepareAuthenticatedSession()
+            let remote = try await MivoBackendService.loadWeeklyExperiments()
             var merged = Dictionary(uniqueKeysWithValues: remote.map { ($0.id, $0) })
             let remoteActiveID = remote.first(where: { $0.status == .active })?.id
             for local in weeklyExperiments {
@@ -3683,7 +3659,7 @@ class AppViewModel: ObservableObject {
                         continue
                     }
                     do {
-                        let saved = try await ReferralCampaignService.saveWeeklyExperiment(local)
+                        let saved = try await MivoBackendService.saveWeeklyExperiment(local)
                         merged[saved.id] = saved
                     } catch {
                         if remoteVersion == nil { merged[local.id] = local }
@@ -3900,7 +3876,7 @@ class AppViewModel: ObservableObject {
         interventionAttempts[index].continued = continued
         saveForCurrentUser(interventionAttempts, forKey: .interventionAttempts)
         CompanionInterventionAdapter.pauseResolved(continued: continued)
-        Task { await ReferralCampaignService.logEvent(continued ? "intervention_continued" : "intervention_cancelled") }
+        Task { await MivoBackendService.logEvent(continued ? "intervention_continued" : "intervention_cancelled") }
     }
 
     private func syncWeeklyExperimentEnforcement() {
@@ -3932,9 +3908,9 @@ class AppViewModel: ObservableObject {
         saveForCurrentUser(weeklyExperiments, forKey: .weeklyExperiments)
         Task {
             do {
-                try await prepareAuthenticatedCampaignSession()
-                await ReferralCampaignService.logEvent(event)
-                let saved = try await ReferralCampaignService.saveWeeklyExperiment(experiment)
+                try await prepareAuthenticatedSession()
+                await MivoBackendService.logEvent(event)
+                let saved = try await MivoBackendService.saveWeeklyExperiment(experiment)
                 if let index = weeklyExperiments.firstIndex(where: { $0.id == saved.id }) {
                     let current = weeklyExperiments[index]
                     if preferredExperimentVersion(saved, over: current) || saved == current {

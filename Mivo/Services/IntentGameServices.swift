@@ -193,7 +193,7 @@ final class IntentGameService: ObservableObject {
         // analytics_events table every other admin-visible metric in Mivo
         // already reads from.
         Task {
-            await ReferralCampaignService.logEvent(
+            await MivoBackendService.logEvent(
                 "focus_break_result",
                 metadata: [
                     "game_type": result.gameType.rawValue,

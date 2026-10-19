@@ -784,9 +784,7 @@ struct OnboardingProfile: Codable {
     var age: Int?
     var ageRange: String?
     var checkInIntervalMinutes: Int?
-    var referralCode: String?
     var referralSource: String?
-    var referralAmbassadorName: String?
     /// The user's target daily scrolling minutes — the floor that the
     /// personalized plan ramps down to from the blended observed baseline.
     var dailyScrollGoalMinutes: Int?
@@ -806,9 +804,7 @@ struct OnboardingProfile: Codable {
         self.age = nil
         self.ageRange = nil
         self.checkInIntervalMinutes = nil
-        self.referralCode = nil
         self.referralSource = nil
-        self.referralAmbassadorName = nil
         self.dailyScrollGoalMinutes = nil
     }
 }

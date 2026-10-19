@@ -519,7 +519,7 @@ enum RemoteAuthService {
     }
 
     /// General, non-admin push device registry — separate from
-    /// `ReferralCampaignService.registerAdminPushDevice`, which writes to a
+    /// `MivoBackendService.registerAdminPushDevice`, which writes to a
     /// purpose-built admin-alerting table. Cross-device focus commands
     /// (see `CrossDeviceFocusService`) need every signed-in user's device
     /// reachable, not just admins', so this writes to its own
@@ -919,8 +919,6 @@ enum RemoteAuthService {
             "user_id": userId,
             "observation_started_at": nullIfNil(profile.observationStartedAt),
             "referral_source": nullIfNil(profile.referralSource),
-            "referral_ambassador_name": nullIfNil(profile.referralAmbassadorName),
-            "referral_campaign_code": nullIfNil(profile.referralCode),
             "primary_intention": nullIfNil(profile.primaryIntention?.rawValue),
             "scroll_estimate_minutes": nullIfNil(profile.scrollEstimateMinutes),
             "preferred_apps": profile.preferredApps,

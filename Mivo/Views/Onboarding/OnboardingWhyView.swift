@@ -6,20 +6,19 @@ private struct IntentionOption {
     let icon: String
 }
 
-private struct ReferralSourceOption {
+private struct SourceOption {
     let value: String
     let title: String
     let desc: String
     let icon: String
 }
 
-private let referralSources: [ReferralSourceOption] = [
+private let sourceOptions: [SourceOption] = [
     .init(value: "youtube", title: "YouTube", desc: "A video, short, creator, or channel", icon: "play.rectangle.fill"),
     .init(value: "instagram", title: "Instagram", desc: "A post, reel, story, or creator", icon: "camera.fill"),
     .init(value: "tiktok", title: "TikTok", desc: "A video, search, or creator mention", icon: "music.note"),
     .init(value: "friend", title: "Friend", desc: "Someone sent it to you or told you", icon: "person.2.fill"),
     .init(value: "linkedin", title: "LinkedIn", desc: "A post, profile, comment, or message", icon: "briefcase.fill"),
-    .init(value: "ambassador", title: "Ambassador", desc: "A Mivo ambassador introduced you", icon: "person.crop.circle.badge.checkmark"),
 ]
 
 private let intentions: [IntentionOption] = [
@@ -29,18 +28,13 @@ private let intentions: [IntentionOption] = [
     .init(intention: .lookingForSomethingSpecific, desc: "Searching for particular content", icon: "magnifyingglass"),
 ]
 
-struct OnboardingReferralSourceView: View {
+struct OnboardingSourceView: View {
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var selected: String? = nil
-    @State private var ambassadorName = ""
     @State private var appear = false
-    @FocusState private var ambassadorNameFocused: Bool
 
-    private var canFinish: Bool {
-        guard let selected else { return false }
-        return selected != "ambassador" || !ambassadorName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
+    private var canFinish: Bool { selected != nil }
 
     var body: some View {
         ZStack {
@@ -59,7 +53,7 @@ struct OnboardingReferralSourceView: View {
                         .onboardingEntrance(appear)
 
                         VStack(spacing: 12) {
-                            ForEach(Array(referralSources.enumerated()), id: \.element.value) { index, item in
+                            ForEach(Array(sourceOptions.enumerated()), id: \.element.value) { index, item in
                                 Button {
                                     withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
                                         selected = item.value
@@ -77,36 +71,6 @@ struct OnboardingReferralSourceView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .onboardingEntrance(appear, delay: 0.08 + Double(index) * 0.05)
-
-                                if item.value == "ambassador", selected == "ambassador" {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text("Ambassador's name")
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundColor(MivoColors.textSecondary)
-
-                                        TextField("Enter their name", text: $ambassadorName)
-                                            .textInputAutocapitalization(.words)
-                                            .autocorrectionDisabled(false)
-                                            .focused($ambassadorNameFocused)
-                                            .font(.system(size: 16, weight: .medium))
-                                            .foregroundColor(MivoColors.textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .frame(height: 54)
-                                            .background(MivoColors.card)
-                                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                    .strokeBorder(MivoColors.accent.opacity(0.45), lineWidth: 1)
-                                            )
-                                            .onChange(of: ambassadorName) { _, value in
-                                                if value.count > 80 {
-                                                    ambassadorName = String(value.prefix(80))
-                                                }
-                                            }
-                                    }
-                                    .padding(.leading, 12)
-                                    .transition(.move(edge: .top).combined(with: .opacity))
-                                }
                             }
                         }
                     }
@@ -122,9 +86,6 @@ struct OnboardingReferralSourceView: View {
                         guard let selected else { return }
                         var profile = OnboardingProfile()
                         profile.referralSource = selected
-                        profile.referralAmbassadorName = selected == "ambassador"
-                            ? ambassadorName.trimmingCharacters(in: .whitespacesAndNewlines)
-                            : nil
                         appVM.saveOnboardingProfile(profile)
                         dismiss()
                         Task { @MainActor in
@@ -144,19 +105,8 @@ struct OnboardingReferralSourceView: View {
         .onboardingNavigationChromeHidden()
         .background(DisableBackSwipe())
         .onAppear {
-            selected = appVM.onboardingProfile.referralSource
-            ambassadorName = appVM.onboardingProfile.referralAmbassadorName ?? ""
+            selected = sourceOptions.first { $0.value == appVM.onboardingProfile.referralSource }?.value
             appear = true
-        }
-        .onChange(of: selected) { _, value in
-            if value == "ambassador" {
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 220_000_000)
-                    ambassadorNameFocused = true
-                }
-            } else {
-                ambassadorNameFocused = false
-            }
         }
     }
 }

@@ -278,7 +278,7 @@ struct RegisterView: View {
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
                 if let ticket = ParentalConsentTicketStore.load() {
-                    try await ReferralCampaignService.claimApprovedParentalConsent(ticket: ticket)
+                    try await MivoBackendService.claimApprovedParentalConsent(ticket: ticket)
                     ParentalConsentTicketStore.clear()
                 }
                 await MainActor.run {

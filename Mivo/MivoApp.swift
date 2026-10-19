@@ -160,7 +160,7 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         Task {
             guard let installationID = try? DeviceBindingService.installationID() else { return }
             do {
-                try await ReferralCampaignService.registerAdminPushDevice(
+                try await MivoBackendService.registerAdminPushDevice(
                     deviceToken: token,
                     installationID: installationID
                 )
@@ -335,7 +335,7 @@ enum AdminPushNotificationManager {
     static func sync(for access: AccountAccess) async {
         guard access.isSuperAdmin else {
             if UserDefaults.standard.bool(forKey: "mivo.adminPushRegistered") {
-                try? await ReferralCampaignService.unregisterAdminPushDevice()
+                try? await MivoBackendService.unregisterAdminPushDevice()
                 UserDefaults.standard.set(false, forKey: "mivo.adminPushRegistered")
             }
             // Not an admin, so the RPC registration below doesn't apply —
@@ -356,7 +356,7 @@ enum AdminPushNotificationManager {
         if let token = UserDefaults.standard.string(forKey: "mivo.adminPushDeviceToken"),
            let installationID = try? DeviceBindingService.installationID() {
             do {
-                try await ReferralCampaignService.registerAdminPushDevice(
+                try await MivoBackendService.registerAdminPushDevice(
                     deviceToken: token,
                     installationID: installationID
                 )

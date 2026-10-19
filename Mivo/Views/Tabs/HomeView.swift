@@ -23,9 +23,6 @@ struct HomeView: View {
     @State private var protectionEnabled = false
     @State private var adaptivePlan: ScreenTimeReductionPlan? = nil
     @State private var showMonthlyForecast = false
-    @State private var referralSummary: ReferralSummary?
-    @State private var referralLoading = false
-    @State private var showReferralHub = false
     @State private var showExperimentHub = false
     @State private var showMivoClear = false
     @State private var showMivoStill = false
@@ -62,8 +59,8 @@ struct HomeView: View {
 
                     // Everything Mivo offers beyond the plan itself, grouped
                     // instead of one long run of identical rows. Features that
-                    // used to be buried in Settings (schedule, referrals, the
-                    // 30-day forecast) surface here.
+                    // used to be buried in Settings (schedule, the 30-day
+                    // forecast) surface here.
                     groupHeader("Practice")
 
                     experimentRow
@@ -95,14 +92,11 @@ struct HomeView: View {
                     MivoHairline()
 
                     scheduleRow
-                    MivoHairline()
 
                     if let plan = displayedPlan, !plan.collecting {
-                        forecastRow
                         MivoHairline()
+                        forecastRow
                     }
-
-                    referralRow
                 }
                 .padding(.horizontal, MivoMetrics.screenPadding)
                 .padding(.bottom, MivoMetrics.scrollBottomPadding)
@@ -203,10 +197,6 @@ struct HomeView: View {
         }
         .fullScreenCover(isPresented: $showAttentionReceipt) {
             AttentionReceiptView()
-                .environmentObject(appVM)
-        }
-        .sheet(isPresented: $showReferralHub) {
-            ReferralHubView()
                 .environmentObject(appVM)
         }
         .sheet(isPresented: $showMonthlyForecast) {
@@ -474,20 +464,6 @@ struct HomeView: View {
                 .font(.system(size: 15.5, weight: .semibold))
                 .foregroundColor(MivoColors.ink)
             Text("Where your plan is headed, day by day")
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundColor(MivoColors.inkMuted)
-        }
-    }
-
-    private var referralRow: some View {
-        MivoNavigationRow {
-            HapticsService.selection()
-            showReferralHub = true
-        } content: {
-            Text("Invite friends")
-                .font(.system(size: 15.5, weight: .semibold))
-                .foregroundColor(MivoColors.ink)
-            Text("Your code, link, and referral progress")
                 .font(.system(size: 12.5, weight: .medium))
                 .foregroundColor(MivoColors.inkMuted)
         }

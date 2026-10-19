@@ -264,7 +264,6 @@ struct OnboardingWelcomeView: View {
         return -1
     }
     @State private var answers: [Int: String] = [:]
-    @State private var showReferralStep = false
     @State private var isRequestingScreenTime = false
     @State private var glow = false
     @State private var swapSelection: UserSwap? = nil
@@ -284,9 +283,6 @@ struct OnboardingWelcomeView: View {
             }
         }
         .animation(.easeInOut(duration: 0.24), value: index)
-        .sheet(isPresented: $showReferralStep) {
-            NavigationStack { OnboardingReferralCodeView() }
-        }
         .overlay(alignment: .topTrailing) {
             if replayMode {
                 Button {
@@ -359,7 +355,6 @@ struct OnboardingWelcomeView: View {
 
                 Button {
                     HapticsService.impact(style: .heavy)
-                    if appVM.onboardingProfile.referralCode == nil { showReferralStep = true }
                     index = 0
                 } label: {
                     Text("Begin")

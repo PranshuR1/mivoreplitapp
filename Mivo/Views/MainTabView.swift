@@ -11,7 +11,6 @@ struct MainTabView: View {
     @State private var activeAnnouncement: MivoAnnouncement?
     @State private var requestedAdminUser: AdminUserRoute?
     @State private var openExpiredAddTimeImmediately = false
-    @State private var showDeepLinkedReferralHub = false
     @State private var completedExperimentForReview: WeeklyExperiment?
     @State private var deferredExperimentReviewID: String?
 
@@ -141,7 +140,7 @@ struct MainTabView: View {
         .sheet(item: $activeAnnouncement) { announcement in
             AnnouncementPresentationView(announcement: announcement) {
                 Task {
-                    try? await ReferralCampaignService.markAnnouncementSeen(id: announcement.id, dismissed: true)
+                    try? await MivoBackendService.markAnnouncementSeen(id: announcement.id, dismissed: true)
                     activeAnnouncement = nil
                 }
             }
@@ -153,10 +152,6 @@ struct MainTabView: View {
                 AdminPushUserDestinationView(userID: route.id)
                     .environmentObject(appVM)
             }
-        }
-        .sheet(isPresented: $showDeepLinkedReferralHub) {
-            ReferralHubView()
-                .environmentObject(appVM)
         }
         .sheet(item: $completedExperimentForReview) { experiment in
             WeeklyExperimentCompletionView(
@@ -177,10 +172,6 @@ struct MainTabView: View {
             guard let userID = note.object as? String else { return }
             selectedTab = 3
             requestedAdminUser = AdminUserRoute(id: userID)
-        }
-        .onChange(of: appVM.deepLinkReferralHubRequested) { _, requested in
-            guard requested, !shouldShowTutorial else { return }
-            routeToDeepLinkedReferralHubIfNeeded()
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: tutorialStep)
         .animation(.easeInOut(duration: 0.22), value: shouldShowTutorial)
@@ -265,7 +256,7 @@ struct MainTabView: View {
             Task {
                 await ProductExpansionStore.shared.prepare(for: appVM)
                 await appVM.refreshServerAdminRole()
-                await ReferralCampaignService.logEvent("app_open")
+                await MivoBackendService.logEvent("app_open")
                 await loadAnnouncement()
             }
             routePendingAdminNotification()
@@ -310,7 +301,7 @@ struct MainTabView: View {
             Task {
                 await ProductExpansionStore.shared.prepare(for: appVM)
                 await appVM.refreshServerAdminRole()
-                await ReferralCampaignService.logEvent("app_open")
+                await MivoBackendService.logEvent("app_open")
                 await loadAnnouncement()
             }
             routePendingAdminNotification()
@@ -449,10 +440,10 @@ struct MainTabView: View {
     private func loadAnnouncement() async {
         guard !shouldShowTutorial, activeAnnouncement == nil else { return }
         do {
-            try await appVM.prepareAuthenticatedCampaignSession()
-            guard let announcement = try await ReferralCampaignService.unseenAnnouncements().first else { return }
+            try await appVM.prepareAuthenticatedSession()
+            guard let announcement = try await MivoBackendService.unseenAnnouncements().first else { return }
             activeAnnouncement = announcement
-            try? await ReferralCampaignService.markAnnouncementSeen(id: announcement.id, dismissed: false)
+            try? await MivoBackendService.markAnnouncementSeen(id: announcement.id, dismissed: false)
         } catch {
             // Announcements should never interrupt the rest of Mivo when offline.
         }
@@ -462,9 +453,6 @@ struct MainTabView: View {
         appVM.checkDeepLinkInterventionFlag()
         appVM.checkMidScrollCheckInFlag()
         appVM.checkPendingInstagramWrapperFlag()
-        if routeToDeepLinkedReferralHubIfNeeded() {
-            return
-        }
         if routeToLiveActivityActionIfNeeded() {
             return
         }
@@ -472,16 +460,6 @@ struct MainTabView: View {
             return
         }
         routeToPendingInterventionIfNeeded()
-    }
-
-    @discardableResult
-    private func routeToDeepLinkedReferralHubIfNeeded() -> Bool {
-        guard appVM.deepLinkReferralHubRequested else { return false }
-        appVM.deepLinkReferralHubRequested = false
-        selectedTab = 0
-        showDeepLinkedReferralHub = true
-        HapticsService.selection()
-        return true
     }
 
     @discardableResult
@@ -1707,14 +1685,6 @@ private struct AppTutorialStep: Identifiable {
             buttonTitle: "Continue", requiresDemo: true, demoCompletion: "Sample experiment approved. Home would now show Day 1 of 7 and measure the agreed rule without changing it.", requiresScreenTimeAccess: false
         ),
         AppTutorialStep(
-            id: 8, tab: 0, icon: "person.2.fill", eyebrow: "Referral", title: "Invite and track privately",
-            body: "Your Referral Hub holds your code, link, milestones, private rank, campaign rules, and qualified referrals.",
-            shortBody: "Copy or share your code and see first-name-only progress when a campaign is active.",
-            bullets: ["Unique code and link", "Qualified and pending counts", "Rules and milestones"],
-            hint: "Campaign controls stay hidden until the founder publishes them.", targetLabel: "Referral Hub", focus: .lower,
-            buttonTitle: "Continue", requiresDemo: false, demoCompletion: nil, requiresScreenTimeAccess: false
-        ),
-        AppTutorialStep(
             id: 9, tab: 2, icon: "slider.horizontal.3", eyebrow: "Personalize", title: "Recovery and app personalities",
             body: "Recovery Mode simplifies a difficult day, while app personalities adjust pauses, rescue timing, and extensions per app.",
             shortBody: "Your locked schedule remains the strongest rule; these tools tune the support around it.",
@@ -1756,8 +1726,8 @@ private struct AppTutorialStep: Identifiable {
             result.append(roleStep(
                 id: 12, icon: "rectangle.3.group.fill", eyebrow: "Founder",
                 title: "Run Mivo from your iPhone",
-                shortBody: "Admin Center brings reliability, releases, data quality, analytics, approvals, users, referrals, and security together.",
-                bullets: ["Feature flags and kill switches", "User and campaign tools", "Audited approvals"]
+                shortBody: "Admin Center brings reliability, releases, data quality, analytics, approvals, users, and security together.",
+                bullets: ["Feature flags and kill switches", "User tools", "Audited approvals"]
             ))
         case "admin":
             result.append(roleStep(
@@ -1765,13 +1735,6 @@ private struct AppTutorialStep: Identifiable {
                 title: "Prepare announcement drafts",
                 shortBody: "Create and edit your own announcement drafts. The founder reviews and publishes them before users see anything.",
                 bullets: ["Draft only", "Founder approval", "No user-data access"]
-            ))
-        case "ambassador":
-            result.append(roleStep(
-                id: 14, icon: "person.2.badge.gearshape.fill", eyebrow: "Ambassador",
-                title: "Your ambassador dashboard",
-                shortBody: "See only people who entered one of your assigned ambassador names, with limited onboarding and referral status.",
-                bullets: ["Attributed users only", "No emails", "No behavior history"]
             ))
         default:
             break
@@ -1980,8 +1943,6 @@ private struct AppTutorialTarget: View {
             patternDashboardPreview
         case 7:
             experimentPreview
-        case 8:
-            referralPreview
         case 9:
             personalControlsPreview
         case 10:
@@ -1990,7 +1951,7 @@ private struct AppTutorialTarget: View {
             mivoClearPreview
         case 11:
             screenTimePreview
-        case 12, 13, 14:
+        case 12, 13:
             roleToolsPreview
         default:
             cardPreview
@@ -2203,22 +2164,6 @@ private struct AppTutorialTarget: View {
         }
     }
 
-    private var referralPreview: some View {
-        demoStack {
-            demoHeader("Your referral code", subtitle: "MIVO-7K2Q")
-            HStack(spacing: 7) {
-                miniStat("Qualified", "3", selected: true)
-                miniStat("Pending", "1")
-                miniStat("Rank", "#4")
-            }
-            HStack(spacing: 8) {
-                miniPill("Copy", selected: false)
-                miniPill("Share", selected: true)
-                miniPill("Rules", selected: false)
-            }
-        }
-    }
-
     private var personalControlsPreview: some View {
         demoStack {
             demoHeader("Protect", subtitle: "Tune support without weakening locks")
@@ -2248,17 +2193,10 @@ private struct AppTutorialTarget: View {
                 demoRow("Reliability", value: "Healthy", selected: true)
                 demoRow("Approvals", value: "3 waiting", selected: false)
                 demoRow("Feature flags", value: "Manage", selected: false)
-            } else if step.id == 13 {
+            } else {
                 demoHeader("Announcement drafts", subtitle: "Founder approval required")
                 demoRow("New draft", value: "Edit", selected: true)
                 demoRow("Publishing", value: "Founder only", selected: false)
-            } else {
-                demoHeader("Ambassador", subtitle: "Assigned names only")
-                HStack(spacing: 8) {
-                    miniStat("Attributed", "8", selected: true)
-                    miniStat("Complete", "6")
-                    miniStat("Pending", "2")
-                }
             }
         }
     }

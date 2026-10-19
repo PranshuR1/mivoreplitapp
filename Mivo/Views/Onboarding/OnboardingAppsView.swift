@@ -2192,7 +2192,7 @@ private struct WidgetOnboardingView_Internal: View {
                 
                 OnboardingBottomBar {
                     NavigationLink {
-                        OnboardingReferralSourceView()
+                        OnboardingSourceView()
                     } label: {
                         HStack(spacing: 10) {
                             Text("I added it")

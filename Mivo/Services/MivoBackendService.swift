@@ -1,69 +1,7 @@
-import CryptoKit
 import Foundation
 import UIKit
 
-struct ReferralCampaign: Codable, Identifiable, Equatable {
-    let id: String
-    var name: String
-    var description: String
-    var status: String
-    var startsAt: String?
-    var endsAt: String?
-    var timezone: String
-    var firstPrizeCents: Int
-    var secondPrizeCents: Int
-    var thirdPrizeCents: Int
-    var rewardType: String?
-    var rulesPdfUrl: String?
-    var rulesVersion: String
-    var rulesHash: String?
-    var rulesPublishedAt: String?
-    var termsUrl: String?
-
-    var isLive: Bool { status == "active" || status == "paused" }
-    var isDraft: Bool { status == "draft" || rulesVersion.lowercased().contains("draft") }
-    var hasPublishedFinalRules: Bool {
-        rulesPdfUrl != nil
-            && rulesPublishedAt != nil
-            && !rulesVersion.lowercased().contains("draft")
-    }
-}
-
-struct ReferredCampaignUser: Codable, Identifiable, Equatable {
-    let id: String
-    let firstName: String
-    let status: String
-    let date: String
-}
-
-struct ReferralSummary: Codable, Equatable {
-    let referralCode: String
-    let qualifiedCount: Int
-    let pendingCount: Int
-    let nextMilestone: Int?
-    let privateRank: Int?
-    let referredUsers: [ReferredCampaignUser]
-    let campaign: ReferralCampaign?
-
-    var referralsRemaining: Int? {
-        nextMilestone.map { max(0, $0 - qualifiedCount) }
-    }
-}
-
-struct AdminReferralStanding: Codable, Identifiable {
-    let campaignId: String
-    let userId: String
-    let name: String
-    let email: String?
-    let referralCode: String?
-    let qualifiedCount: Int
-    let pendingCount: Int
-    let reachedAt: String?
-
-    var id: String { userId }
-}
-
-struct AdminCampaignUser: Codable, Identifiable {
+struct AdminUserRecord: Codable, Identifiable {
     let userId: String
     let email: String
     let name: String
@@ -77,11 +15,6 @@ struct AdminCampaignUser: Codable, Identifiable {
     let calibrationComplete: Bool?
     let truthCheckCount: Int?
     let interventionCount: Int?
-    let referralSource: String?
-    let referralAmbassadorName: String?
-    let ambassadorUserId: String?
-    let ambassadorAccountName: String?
-    let ambassadorReferredAt: String?
 
     var id: String { userId }
 }
@@ -90,44 +23,12 @@ struct AccountAccess: Codable, Equatable {
     let role: String
     let isSuperAdmin: Bool
     let canManageAnnouncements: Bool
-    let canViewAmbassadorDashboard: Bool
 
     static let user = AccountAccess(
         role: "user",
         isSuperAdmin: false,
-        canManageAnnouncements: false,
-        canViewAmbassadorDashboard: false
+        canManageAnnouncements: false
     )
-}
-
-struct AmbassadorNameOption: Codable, Identifiable, Hashable {
-    let enteredName: String
-    let normalizedName: String
-    let count: Int
-
-    var id: String { normalizedName }
-}
-
-struct AmbassadorAttributionOptions: Codable {
-    let assigned: [AmbassadorNameOption]
-    let unassigned: [AmbassadorNameOption]
-}
-
-struct AmbassadorPerson: Codable, Identifiable {
-    let userId: String
-    let firstName: String
-    let joinedAt: String?
-    let onboardingComplete: Bool
-    let referralStatus: String
-
-    var id: String { userId }
-}
-
-struct AmbassadorDashboard: Codable {
-    let totalCount: Int
-    let completedCount: Int
-    let pendingCount: Int
-    let people: [AmbassadorPerson]
 }
 
 struct AdminOverviewMetrics: Codable {
@@ -189,11 +90,9 @@ struct ParentalConsentRequest: Codable, Identifiable {
     let createdAt: String
 }
 
-struct AdminReferralDashboard: Codable {
-    let campaigns: [ReferralCampaign]
-    let standings: [AdminReferralStanding]
+struct AdminUserDashboard: Codable {
     let consentRequests: [ParentalConsentRequest]
-    let users: [AdminCampaignUser]
+    let users: [AdminUserRecord]
 }
 
 struct ParentalConsentTicket: Codable {
@@ -236,14 +135,14 @@ struct MivoAnnouncement: Codable, Identifiable, Equatable {
     let updatedAt: String
 }
 
-enum ReferralCampaignError: LocalizedError {
+enum MivoBackendError: LocalizedError {
     case unavailable
     case authenticationRequired
     case server(String)
 
     var errorDescription: String? {
         switch self {
-        case .unavailable: return "The online Mivo campaign service is not configured."
+        case .unavailable: return "The online Mivo service is not configured."
         case .authenticationRequired: return "Sign in again to continue."
         case .server(let message):
             let normalized = message.replacingOccurrences(of: "_", with: " ")
@@ -252,7 +151,7 @@ enum ReferralCampaignError: LocalizedError {
     }
 }
 
-enum ReferralCampaignService {
+enum MivoBackendService {
     private static var baseURL: URL? {
         guard let raw = Bundle.main.object(forInfoDictionaryKey: "MIVO_SUPABASE_URL") as? String else { return nil }
         let cleaned = raw
@@ -294,18 +193,6 @@ enum ReferralCampaignService {
 
     static var isConfigured: Bool { baseURL != nil && !anonKey.isEmpty }
 
-    static func loadSummary() async throws -> ReferralSummary {
-        try await rpc("get_my_referral_summary", body: [:], authenticated: true)
-    }
-
-    static func attach(code: String) async throws {
-        let _: AttachResponse = try await rpc(
-            "attach_referral_code",
-            body: ["input_code": code.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)],
-            authenticated: true
-        )
-    }
-
     static func isSuperAdmin() async throws -> Bool {
         try await rpc("is_app_admin", body: [:], authenticated: true)
     }
@@ -319,7 +206,7 @@ enum ReferralCampaignService {
     }
 
     static func requestNewAccountAlert() async throws {
-        guard let userID = currentRemoteUserID else { throw ReferralCampaignError.authenticationRequired }
+        guard let userID = currentRemoteUserID else { throw MivoBackendError.authenticationRequired }
         let _: AlertRequestResponse = try await rest(
             path: "functions/v1/new-account-alert",
             method: "POST",
@@ -341,7 +228,7 @@ enum ReferralCampaignService {
 
     static func saveWeeklyExperiment(_ experiment: WeeklyExperiment) async throws -> WeeklyExperiment {
         guard let userID = experiment.userId ?? currentRemoteUserID else {
-            throw ReferralCampaignError.authenticationRequired
+            throw MivoBackendError.authenticationRequired
         }
         let payload: [String: Any] = [
             "id": experiment.id,
@@ -371,7 +258,7 @@ enum ReferralCampaignService {
             authenticated: true,
             prefer: "resolution=merge-duplicates,return=representation"
         )
-        guard let saved = rows.first else { throw ReferralCampaignError.server("experiment_not_saved") }
+        guard let saved = rows.first else { throw MivoBackendError.server("experiment_not_saved") }
         return saved
     }
 
@@ -380,26 +267,6 @@ enum ReferralCampaignService {
             "admin_set_user_role",
             body: ["input_user_id": userID, "input_role": role], authenticated: true
         )
-    }
-
-    static func ambassadorAttributionOptions(userID: String) async throws -> AmbassadorAttributionOptions {
-        try await rpc(
-            "admin_ambassador_attribution_options",
-            body: ["input_user_id": userID],
-            authenticated: true
-        )
-    }
-
-    static func setAmbassadorNames(userID: String, normalizedNames: [String]) async throws {
-        let _: EmptyRPCResponse = try await rpcAllowingEmpty(
-            "admin_set_ambassador_names",
-            body: ["input_user_id": userID, "input_normalized_names": normalizedNames],
-            authenticated: true
-        )
-    }
-
-    static func loadAmbassadorDashboard() async throws -> AmbassadorDashboard {
-        try await rpc("ambassador_dashboard", body: [:], authenticated: true)
     }
 
     static func logEvent(_ name: String, source: String? = nil, metadata: [String: Any] = [:]) async {
@@ -495,12 +362,8 @@ enum ReferralCampaignService {
         )
     }
 
-    static func loadAdminDashboard() async throws -> AdminReferralDashboard {
-        try await rpc("admin_referral_dashboard", body: [:], authenticated: true)
-    }
-
-    static func createCampaign() async throws -> ReferralCampaign {
-        try await rpc("admin_create_referral_campaign", body: [:], authenticated: true)
+    static func loadAdminUserDashboard() async throws -> AdminUserDashboard {
+        try await rpc("admin_user_dashboard", body: [:], authenticated: true)
     }
 
     static func unseenAnnouncements() async throws -> [MivoAnnouncement] {
@@ -601,136 +464,6 @@ enum ReferralCampaignService {
         )
     }
 
-    static func updateCampaign(
-        _ campaign: ReferralCampaign,
-        startsAt: Date?,
-        endsAt: Date?,
-        milestones: [Int]
-    ) async throws -> ReferralCampaign {
-        let formatter = ISO8601DateFormatter()
-        let payload: [String: Any] = [
-            "name": campaign.name,
-            "description": campaign.description,
-            "status": campaign.status,
-            "starts_at": startsAt.map(formatter.string(from:)) ?? NSNull(),
-            "ends_at": endsAt.map(formatter.string(from:)) ?? NSNull(),
-            "timezone": campaign.timezone,
-            "first_prize_cents": campaign.firstPrizeCents,
-            "second_prize_cents": campaign.secondPrizeCents,
-            "third_prize_cents": campaign.thirdPrizeCents,
-            "reward_type": campaign.rewardType ?? "cash",
-            "rules_version": campaign.rulesVersion,
-            "terms_url": campaign.termsUrl ?? NSNull(),
-            "updated_at": formatter.string(from: Date())
-        ]
-        let rows: [ReferralCampaign] = try await rest(
-            path: "rest/v1/referral_campaigns?id=eq.\(campaign.id)",
-            method: "PATCH",
-            body: payload,
-            authenticated: true,
-            prefer: "return=representation"
-        )
-        try await replaceMilestones(campaignID: campaign.id, milestones: milestones)
-        guard let updated = rows.first else { throw ReferralCampaignError.server("campaign_not_saved") }
-        return updated
-    }
-
-    static func uploadDraftRules(campaignID: String, fileURL: URL) async throws -> String {
-        guard let data = try? Data(contentsOf: fileURL) else {
-            throw ReferralCampaignError.server("rules_file_missing")
-        }
-        let objectPath = "\(campaignID)/Mivo_Referral_Campaign_Official_Rules_Draft_v0.1.pdf"
-        let _: Data = try await rawRequest(
-            path: "storage/v1/object/campaign-rules/\(objectPath)",
-            method: "POST",
-            bodyData: data,
-            contentType: "application/pdf",
-            authenticated: true,
-            extraHeaders: ["x-upsert": "true"]
-        )
-        let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        let _: [ReferralCampaign] = try await rest(
-            path: "rest/v1/referral_campaigns?id=eq.\(campaignID)",
-            method: "PATCH",
-            body: [
-                "rules_pdf_url": "campaign-rules/\(objectPath)",
-                "rules_hash": hash,
-                "rules_version": "0.1-draft",
-                "rules_published_at": ISO8601DateFormatter().string(from: Date()),
-                "updated_at": ISO8601DateFormatter().string(from: Date())
-            ],
-            authenticated: true,
-            prefer: "return=representation"
-        )
-        return objectPath
-    }
-
-    static func publishFinalRules(campaignID: String, fileURL: URL, version: String) async throws {
-        guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else {
-            throw ReferralCampaignError.server("final_rules_file_missing")
-        }
-        guard !version.lowercased().contains("draft"), !version.trimmingCharacters(in: .whitespaces).isEmpty else {
-            throw ReferralCampaignError.server("final_rules_version_required")
-        }
-        guard let publisherID = SecureAuthService.loadRecord()?.remoteUserId else {
-            throw ReferralCampaignError.authenticationRequired
-        }
-        let safeVersion = version.replacingOccurrences(of: " ", with: "-")
-        let objectPath = "\(campaignID)/Mivo_Referral_Campaign_Official_Rules_v\(safeVersion).pdf"
-        let _: Data = try await rawRequest(
-            path: "storage/v1/object/campaign-rules/\(objectPath)",
-            method: "POST",
-            bodyData: data,
-            contentType: "application/pdf",
-            authenticated: true,
-            extraHeaders: ["x-upsert": "false"]
-        )
-        let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        let _: [RuleVersionResponse] = try await rest(
-            path: "rest/v1/campaign_rule_versions",
-            method: "POST",
-            body: [[
-                "campaign_id": campaignID,
-                "version": version,
-                "storage_path": "campaign-rules/\(objectPath)",
-                "sha256": hash,
-                "is_draft": false,
-                "published_by": publisherID,
-                "effective_at": ISO8601DateFormatter().string(from: Date())
-            ]],
-            authenticated: true,
-            prefer: "return=representation"
-        )
-        let _: [ReferralCampaign] = try await rest(
-            path: "rest/v1/referral_campaigns?id=eq.\(campaignID)",
-            method: "PATCH",
-            body: [
-                "rules_pdf_url": "campaign-rules/\(objectPath)",
-                "rules_hash": hash,
-                "rules_version": version,
-                "rules_published_at": ISO8601DateFormatter().string(from: Date()),
-                "updated_at": ISO8601DateFormatter().string(from: Date())
-            ],
-            authenticated: true,
-            prefer: "return=representation"
-        )
-    }
-
-    static func downloadRules(remotePath: String) async throws -> URL {
-        let cleanPath = remotePath.replacingOccurrences(of: "campaign-rules/", with: "")
-        let data: Data = try await rawRequest(
-            path: "storage/v1/object/campaign-rules/\(cleanPath)",
-            method: "GET",
-            bodyData: nil,
-            contentType: nil,
-            authenticated: true
-        )
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Mivo_Referral_Campaign_Rules.pdf")
-        try data.write(to: destination, options: .atomic)
-        return destination
-    }
-
     static func updateSession(
         userID: String,
         session: AdminSessionRecord,
@@ -764,27 +497,6 @@ enum ReferralCampaignService {
             "admin_delete_user",
             body: ["input_user_id": userID, "input_reason": reason],
             authenticated: true
-        )
-    }
-
-    private static func replaceMilestones(campaignID: String, milestones: [Int]) async throws {
-        let _: Data = try await rawRequest(
-            path: "rest/v1/referral_milestones?campaign_id=eq.\(campaignID)",
-            method: "DELETE",
-            bodyData: nil,
-            contentType: nil,
-            authenticated: true
-        )
-        let rows = Array(Set(milestones.filter { $0 > 0 })).sorted().map {
-            ["campaign_id": campaignID, "target_count": $0] as [String: Any]
-        }
-        guard !rows.isEmpty else { return }
-        let _: [MilestoneResponse] = try await rest(
-            path: "rest/v1/referral_milestones",
-            method: "POST",
-            body: rows,
-            authenticated: true,
-            prefer: "return=representation"
         )
     }
 
@@ -839,7 +551,7 @@ enum ReferralCampaignService {
         do {
             return try decoder.decode(Response.self, from: data)
         } catch {
-            throw ReferralCampaignError.server("invalid_campaign_response")
+            throw MivoBackendError.server("invalid_response")
         }
     }
 
@@ -853,11 +565,11 @@ enum ReferralCampaignService {
     ) async throws -> Data {
         guard let baseURL, !anonKey.isEmpty,
               let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
-            throw ReferralCampaignError.unavailable
+            throw MivoBackendError.unavailable
         }
         let bearer: String
         if authenticated {
-            guard let token = accessToken, !token.isEmpty else { throw ReferralCampaignError.authenticationRequired }
+            guard let token = accessToken, !token.isEmpty else { throw MivoBackendError.authenticationRequired }
             bearer = token
         } else {
             bearer = anonKey
@@ -876,24 +588,21 @@ enum ReferralCampaignService {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            throw ReferralCampaignError.unavailable
+            throw MivoBackendError.unavailable
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 500
         guard (200..<300).contains(status) else {
             let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             let message = payload?["message"] as? String
                 ?? payload?["error"] as? String
-                ?? "campaign_request_failed"
-            throw ReferralCampaignError.server(message)
+                ?? "request_failed"
+            throw MivoBackendError.server(message)
         }
         return data
     }
 
-    private struct AttachResponse: Decodable { let status: String }
     private struct AlertRequestResponse: Decodable { let ok: Bool }
     private struct FeedbackEmailResponse: Decodable { let ok: Bool }
-    private struct MilestoneResponse: Decodable { let id: String }
-    private struct RuleVersionResponse: Decodable { let id: String }
     private struct EmptyRPCResponse: Decodable { init() {} }
 }
 
@@ -918,13 +627,13 @@ enum ParentalConsentTicketStore {
 
 @MainActor
 extension AppViewModel {
-    func prepareAuthenticatedCampaignSession() async throws {
+    func prepareAuthenticatedSession() async throws {
         guard isLoggedIn, let currentUser = user else {
-            throw ReferralCampaignError.authenticationRequired
+            throw MivoBackendError.authenticationRequired
         }
         guard var record = SecureAuthService.loadRecord(email: currentUser.email),
               record.remoteUserId != nil else {
-            throw ReferralCampaignError.authenticationRequired
+            throw MivoBackendError.authenticationRequired
         }
 
         do {
@@ -949,21 +658,21 @@ extension AppViewModel {
                 accountRole: record.accountRole
             )
         } catch AppError.invalidCredentials {
-            throw ReferralCampaignError.authenticationRequired
+            throw MivoBackendError.authenticationRequired
         } catch AppError.noAccount {
-            throw ReferralCampaignError.authenticationRequired
+            throw MivoBackendError.authenticationRequired
         }
     }
 
     func refreshServerAdminRole() async {
-        guard isLoggedIn, ReferralCampaignService.isConfigured else { return }
+        guard isLoggedIn, MivoBackendService.isConfigured else { return }
         do {
             let access: AccountAccess
             do {
-                access = try await ReferralCampaignService.currentAccountAccess()
+                access = try await MivoBackendService.currentAccountAccess()
             } catch {
-                try await prepareAuthenticatedCampaignSession()
-                access = try await ReferralCampaignService.currentAccountAccess()
+                try await prepareAuthenticatedSession()
+                access = try await MivoBackendService.currentAccountAccess()
             }
             if var current = user {
                 current.isAdmin = access.isSuperAdmin
@@ -980,15 +689,5 @@ extension AppViewModel {
             // A temporary network failure must not promote an account. Existing
             // cached admin state is retained until the server can be reached.
         }
-    }
-
-    func loadReferralSummary() async throws -> ReferralSummary {
-        try await prepareAuthenticatedCampaignSession()
-        return try await ReferralCampaignService.loadSummary()
-    }
-
-    func attachReferralCode(_ code: String) async throws {
-        try await prepareAuthenticatedCampaignSession()
-        try await ReferralCampaignService.attach(code: code)
     }
 }

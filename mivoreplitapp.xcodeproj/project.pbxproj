@@ -74,6 +74,7 @@
 		77760667BFE5743D9C62BAD0 /* MivoDesignSystemV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F0A0C01AD1E72BD4FA8357 /* MivoDesignSystemV2.swift */; };
 		7CBBF8194ABCF81EC7E3C915 /* CompanionPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD44231BFC8DAE011E86DE0A /* CompanionPersistence.swift */; };
 		81727F2A1F5179C59A97200C /* GuardHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA71A60C30F6E7A4FF0EB2DF /* GuardHarness.swift */; };
+		8218B40D50CF6E0DD325B24A /* MivoBackendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA2F4449A3AB8AEEE4FA3CB /* MivoBackendService.swift */; };
 		8490515CD6AF2AED0400D0CA /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C7B8AED77B857F5C728E43 /* MainTabView.swift */; };
 		855AE97F519D28D9B68F5FE6 /* IntentGameServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78B165420431483ADB1C41CA /* IntentGameServices.swift */; };
 		877B96462FABC7EE6EAB85FA /* CompanionBehaviorEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F158B42FAD9B0581E939EBA1 /* CompanionBehaviorEngine.swift */; };
@@ -83,9 +84,6 @@
 		91F6020A8ABC435042A0C98D /* CompanionDeviceActivityAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D82300FE75EFF0052DA4A3ED /* CompanionDeviceActivityAdapter.swift */; };
 		9E95268901DF66CCAE00B28A /* PatternsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37FB156D848A2B34CB4543A9 /* PatternsComponents.swift */; };
 		9F0AE1C02B3D4E5F6A7B8C9D /* AttentionReceiptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0AE1C02B3D4E5F6A7B8C9E /* AttentionReceiptView.swift */; };
-		A1B2C3D4E5F6010101010101 /* ReferralCampaignService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6010101010111 /* ReferralCampaignService.swift */; };
-		A1B2C3D4E5F6010101010102 /* ReferralCampaignView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6010101010112 /* ReferralCampaignView.swift */; };
-		A1B2C3D4E5F6010101010103 /* Mivo_Referral_Campaign_Official_Rules_Draft.pdf in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6010101010113 /* Mivo_Referral_Campaign_Official_Rules_Draft.pdf */; };
 		A51906C752905075915C480C /* ActiveSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */; };
 		A79AFA1D32903E9CBBF9E905 /* InterventionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FFED9B21B799AA832E6CD87 /* InterventionView.swift */; };
 		AA11BB22CC33DD44EE55FF01 /* MivoRatingPromptService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF02 /* MivoRatingPromptService.swift */; };
@@ -101,6 +99,7 @@
 		AA7700042FB7000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA7700152FB7000000000001 /* PrivacyInfo.xcprivacy */; };
 		AD94D9CF1B8E20453FB159CF /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE58C1D450B8A8660731280 /* RegisterView.swift */; };
 		B2034AE97906840D68F05BDE /* MivoComebackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4AF97403C8A047208EDC3C8 /* MivoComebackTests.swift */; };
+		B4D25BE8682426D137DE9AE0 /* AdminSupportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D992B028D9B340EAF65846B9 /* AdminSupportViews.swift */; };
 		B8673D14DBE49CB53B13CFE6 /* CompanionSpeechPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7406C7E9D1869AB1C9D508 /* CompanionSpeechPolicy.swift */; };
 		B8AA70A1F1012D31136AD5D8 /* CompanionBehavior.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E29511BBC37013D48B1683 /* CompanionBehavior.swift */; };
 		B9CA5C2E4E223127ABE9B8EF /* CompanionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80AC6B01D32AEC64290A236A /* CompanionState.swift */; };
@@ -299,6 +298,7 @@
 		746D9E526584247F84DE1F90 /* CompanionSettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionSettingsView.swift; sourceTree = "<group>"; };
 		78B165420431483ADB1C41CA /* IntentGameServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentGameServices.swift; sourceTree = "<group>"; };
 		7A180955A0A07FDEFC1A0BFF /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
+		7BA2F4449A3AB8AEEE4FA3CB /* MivoBackendService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoBackendService.swift; sourceTree = "<group>"; };
 		7D7141BD01F69FA19D68CD23 /* ReflectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectionView.swift; sourceTree = "<group>"; };
 		7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomeView.swift; sourceTree = "<group>"; };
 		7F7406C7E9D1869AB1C9D508 /* CompanionSpeechPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionSpeechPolicy.swift; sourceTree = "<group>"; };
@@ -313,9 +313,6 @@
 		9A68937D8073A75CA7497EFB /* MivoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoApp.swift; sourceTree = "<group>"; };
 		9ADF0ACA3D047985442D5E20 /* GoogleAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleAuthService.swift; sourceTree = "<group>"; };
 		9F0AE1C02B3D4E5F6A7B8C9E /* AttentionReceiptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionReceiptView.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F6010101010111 /* ReferralCampaignService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferralCampaignService.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F6010101010112 /* ReferralCampaignView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferralCampaignView.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F6010101010113 /* Mivo_Referral_Campaign_Official_Rules_Draft.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = Resources/Mivo_Referral_Campaign_Official_Rules_Draft.pdf; sourceTree = "<group>"; };
 		A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionView.swift; sourceTree = "<group>"; };
 		A32F88595EE93F7622346254 /* FocusTimerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerView.swift; sourceTree = "<group>"; };
 		A82228E0BCFCD9DE2A442FB0 /* CompanionWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionWidget.swift; sourceTree = "<group>"; };
@@ -354,6 +351,7 @@
 		D73120622FA4000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D788F8A4514332CEE98047C1 /* CompanionPauseAccessory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionPauseAccessory.swift; sourceTree = "<group>"; };
 		D82300FE75EFF0052DA4A3ED /* CompanionDeviceActivityAdapter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionDeviceActivityAdapter.swift; sourceTree = "<group>"; };
+		D992B028D9B340EAF65846B9 /* AdminSupportViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AdminSupportViews.swift; sourceTree = "<group>"; };
 		E26817C81C75C43CE8E5536E /* CompanionDebugPreview.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionDebugPreview.swift; sourceTree = "<group>"; };
 		E5A63C4EAD8A83BB91C7DC04 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		E95C86508338955F8D1513A5 /* CompanionInterventionAdapter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionInterventionAdapter.swift; sourceTree = "<group>"; };
@@ -602,7 +600,6 @@
 				78B165420431483ADB1C41CA /* IntentGameServices.swift */,
 				AA11BB22CC33DD44EE55FF02 /* MivoRatingPromptService.swift */,
 				CD5DE1F0A1B2C3D4E5F6A7B9 /* CrossDeviceFocusService.swift */,
-				A1B2C3D4E5F6010101010111 /* ReferralCampaignService.swift */,
 				34191824CA5D84892229698E /* StorageService.swift */,
 				7A180955A0A07FDEFC1A0BFF /* AIService.swift */,
 				34191825CA5D84892229698F /* AIDataStore.swift */,
@@ -611,6 +608,7 @@
 				9ADF0ACA3D047985442D5E20 /* GoogleAuthService.swift */,
 				11A1B2C3D4E5F60718293A52 /* HapticsService.swift */,
 				F1A2B3C4D5E6F7A8B9C0D1E1 /* FamilyControlsManager.swift */,
+				7BA2F4449A3AB8AEEE4FA3CB /* MivoBackendService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -690,7 +688,6 @@
 		93D943C899C8008A77329327 /* Mivo */ = {
 			isa = PBXGroup;
 			children = (
-				A1B2C3D4E5F6010101010113 /* Mivo_Referral_Campaign_Official_Rules_Draft.pdf */,
 				203EE6C12F8672FF00CF2F60 /* Mivo.entitlements */,
 				36E0194512D0FF39478C220E /* Components */,
 				86D31FF5DF9632C8AC79518F /* Constants */,
@@ -776,7 +773,6 @@
 				C12026072000000000000013 /* MivoClearViews.swift */,
 				EE2026071300000000000014 /* ProductExpansionViews.swift */,
 				EE2026071300000000000015 /* AdminCenterView.swift */,
-				A1B2C3D4E5F6010101010112 /* ReferralCampaignView.swift */,
 				828DA2A2BB0342F6D08E57FE /* MivoStillViews.swift */,
 				24DBB4CDE10143B182E75F61 /* ComebackViews.swift */,
 				AA11BB22CC33DD44EE55FF04 /* MivoRatingPromptView.swift */,
@@ -796,6 +792,7 @@
 				A927AC28F9838387580E5F7C /* WeeklyReportView.swift */,
 				9F0AE1C02B3D4E5F6A7B8C9E /* AttentionReceiptView.swift */,
 				6B1CD2E03F4A5B6C7D8E9F02 /* InstagramWrapperView.swift */,
+				D992B028D9B340EAF65846B9 /* AdminSupportViews.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -1060,7 +1057,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A1B2C3D4E5F6010101010103 /* Mivo_Referral_Campaign_Official_Rules_Draft.pdf in Resources */,
 				D7312060C644D124B483BC72 /* Assets.xcassets in Resources */,
 				D73120612FA4000000000001 /* PrivacyInfo.xcprivacy in Resources */,
 			);
@@ -1140,8 +1136,6 @@
 				EE2026071300000000000004 /* ProductExpansionViews.swift in Sources */,
 				EE2026071300000000000005 /* AdminCenterView.swift in Sources */,
 				EE2026071300000000000006 /* MivoDiagnosticsService.swift in Sources */,
-				A1B2C3D4E5F6010101010101 /* ReferralCampaignService.swift in Sources */,
-				A1B2C3D4E5F6010101010102 /* ReferralCampaignView.swift in Sources */,
 				F36E8F0BEF32F3B1A9711946 /* MivoApp.swift in Sources */,
 				3E02A7708F6BD08E765E5128 /* Models.swift in Sources */,
 				C6C3DD0E863A2F8D790AA962 /* Colors.swift in Sources */,
@@ -1212,6 +1206,8 @@
 				E87777464CD4E565D690C38D /* CompanionSettingsView.swift in Sources */,
 				5581A93AD45FC8F3616D372F /* MeerkatArt.swift in Sources */,
 				20A82EE6F8B6B67DA6720D84 /* CompanionDebugPreview.swift in Sources */,
+				8218B40D50CF6E0DD325B24A /* MivoBackendService.swift in Sources */,
+				B4D25BE8682426D137DE9AE0 /* AdminSupportViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

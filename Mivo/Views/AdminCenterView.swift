@@ -9,7 +9,7 @@ private enum AdminCenterTab: String, CaseIterable, Identifiable {
     case analytics = "Analytics"
     case approvals = "Approvals"
     case users = "Users"
-    case referrals = "Referrals"
+    case consent = "Consent"
     case security = "Security"
 
     var id: String { rawValue }
@@ -22,7 +22,7 @@ private enum AdminCenterTab: String, CaseIterable, Identifiable {
         case .analytics: return "chart.xyaxis.line"
         case .approvals: return "tray.full.fill"
         case .users: return "person.3.fill"
-        case .referrals: return "megaphone.fill"
+        case .consent: return "person.crop.circle.badge.checkmark"
         case .security: return "lock.shield.fill"
         }
     }
@@ -113,7 +113,7 @@ struct MivoAdminCenterView: View {
         case .analytics: analytics
         case .approvals: approvals
         case .users: users
-        case .referrals: referrals
+        case .consent: consent
         case .security: security
         }
     }
@@ -216,7 +216,7 @@ struct MivoAdminCenterView: View {
     private var approvals: some View {
         VStack(alignment: .leading, spacing: 12) {
             AdminSectionTitle("Approval queue", icon: "tray.full.fill")
-            if expansion.adminSnapshot.approvals.isEmpty { AdminEmptyState(title: "Queue is clear", detail: "Announcements, campaigns, consent, deletion, ambassador, and referral reviews appear here.") }
+            if expansion.adminSnapshot.approvals.isEmpty { AdminEmptyState(title: "Queue is clear", detail: "Announcements, consent, and deletion reviews appear here.") }
             ForEach(filtered(expansion.adminSnapshot.approvals, text: { "\($0.title) \($0.detail)" })) { item in
                 adminPanel {
                     Text(item.type.replacingOccurrences(of: "_", with: " ").uppercased()).font(.system(size: 10, weight: .bold)).foregroundColor(MivoColors.accent)
@@ -244,22 +244,17 @@ struct MivoAdminCenterView: View {
         }
     }
 
-    private var referrals: some View {
+    private var consent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            AdminSectionTitle("Referrals and campaigns", icon: "megaphone.fill")
-            NavigationLink { ReferralAdminView() } label: { adminNavigationLabel("Campaigns, standings, and consent", icon: "trophy.fill") }
-            adminPanel {
-                Label("Fraud review", systemImage: "exclamationmark.shield.fill").font(.system(size: 16, weight: .bold)).foregroundColor(MivoColors.textPrimary)
-                Text("Suspicious referrals are held for review. Mivo never automatically disqualifies a participant from a risk score alone.")
-                    .font(.system(size: 13)).foregroundColor(MivoColors.textSecondary)
-            }
+            AdminSectionTitle("Parent consent", icon: "person.crop.circle.badge.checkmark")
+            NavigationLink { ParentalConsentReviewView() } label: { adminNavigationLabel("Review parent consent requests", icon: "checkmark.shield.fill") }
         }
     }
 
     private var security: some View {
         VStack(alignment: .leading, spacing: 12) {
             AdminSectionTitle("Audit and security", icon: "lock.shield.fill")
-            if expansion.adminSnapshot.securityEvents.isEmpty { AdminEmptyState(title: "No recent security events", detail: "Role changes, exports, deletions, campaigns, approvals, and suspicious access appear here.") }
+            if expansion.adminSnapshot.securityEvents.isEmpty { AdminEmptyState(title: "No recent security events", detail: "Role changes, exports, deletions, approvals, and suspicious access appear here.") }
             ForEach(filtered(expansion.adminSnapshot.securityEvents, text: { "\($0.action) \($0.actorLabel)" })) { event in
                 adminPanel {
                     HStack { severityDot(event.severity); Text(event.action.replacingOccurrences(of: "_", with: " ").capitalized).font(.system(size: 15, weight: .bold)); Spacer() }

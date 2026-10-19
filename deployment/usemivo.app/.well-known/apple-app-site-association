@@ -5,20 +5,7 @@
         "appIDs": [
           "45UT26F58Q.app.mivo.com"
         ],
-        "components": [
-          {
-            "/": "/events/referral-challenge",
-            "comment": "Mivo Referral Challenge App Store event"
-          },
-          {
-            "/": "/referral",
-            "comment": "Mivo Referral Hub"
-          },
-          {
-            "/": "/r/*",
-            "comment": "Mivo referral links"
-          }
-        ]
+        "components": []
       }
     ]
   }

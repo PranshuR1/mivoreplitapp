@@ -47,16 +47,14 @@ label{display:block;font-weight:700;margin:14px 0 6px}input[type=text],input[typ
 <h1>Review Mivo's data request</h1>${message ? `<p class="notice">${message}</p>` : ""}
 <p>A person under age 13 requested permission to create a Mivo account. Mivo will not create that account or collect Screen Time and behavioral data until an authorized reviewer approves this request.</p>
 <div class="card"><h2>Information Mivo may collect after consent</h2><ul>
-<li>Account email, first name, and persistent device identifier.</li><li>Selected apps, Screen Time summaries, schedules, sessions, reflections, and intervention activity.</li>
-<li>Referral code activity, notifications, and first-name/status visibility to the referrer.</li></ul>
+<li>Account email, first name, and persistent device identifier.</li><li>Selected apps, Screen Time summaries, schedules, sessions, reflections, and intervention activity.</li></ul>
 <p>You may later request access, revoke consent, or request deletion by emailing <a href="mailto:info.mivoapp@gmail.com">info.mivoapp@gmail.com</a>.</p></div>
 <form method="post" enctype="multipart/form-data" action="${action}">
 <label>Your full legal name</label><input required name="parent_name" type="text" autocomplete="name">
 <label>Signed consent and identity evidence</label><input required name="evidence" type="file" accept="application/pdf,image/jpeg,image/png">
 <p class="small">Upload one PDF, JPEG, or PNG up to 10 MB. Evidence is private, used only for manual verification, and deleted after review.</p>
-<label class="check"><input required name="consent" type="checkbox" value="yes"><span>I am the parent or legal guardian, I have reviewed this notice, and I consent to the collection and uses described above, including Campaign participation.</span></label>
+<label class="check"><input required name="consent" type="checkbox" value="yes"><span>I am the parent or legal guardian, I have reviewed this notice, and I consent to the collection and uses described above.</span></label>
 <button type="submit">Submit for Mivo review</button></form>
-<p class="small">Campaign rules remain a draft until campaign dates and legal review are complete. No purchase is necessary.</p>
 </main></body></html>`;
 }
 
