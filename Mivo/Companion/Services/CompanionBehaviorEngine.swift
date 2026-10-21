@@ -3,16 +3,16 @@ import Foundation
 /// Tunables for classification. One place, so tests and tuning never hunt
 /// through the engine.
 struct CompanionThresholds {
-    var approachingFraction = 0.75
-    var repeatedInterventionCount = 3
+    var approachingFraction = 0.7
+    var repeatedInterventionCount = 2
     var continuationWindow: TimeInterval = 30 * 60
     var continuationExtraMinutes = 10
     var intentionalBreakWindow: TimeInterval = 20 * 60
     var celebrationWindow: TimeInterval = 60
     var focusAfterglowWindow: TimeInterval = 10 * 60
-    var extendedRatio = 1.3
-    var extendedMinimumExtraMinutes = 30
-    var extendedMinimumHistoryDays = 5
+    var extendedRatio = 1.2
+    var extendedMinimumExtraMinutes = 20
+    var extendedMinimumHistoryDays = 3
     var recentInterventionForLateNight: TimeInterval = 45 * 60
 
     static let standard = CompanionThresholds()

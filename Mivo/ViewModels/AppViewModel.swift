@@ -704,6 +704,8 @@ class AppViewModel: ObservableObject {
                 FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
                 // Drops the account's companion state and clears the widget's snapshot.
                 CompanionStateManager.shared.prepare(forEmail: nil)
+                // Ends a running Spot and lifts its shield; the account's Spots stay saved.
+                SpotManager.shared.signOut()
                 self.user = nil
                 self.adminToken = nil
                 self.isLoggedIn = false
@@ -740,6 +742,7 @@ class AppViewModel: ObservableObject {
         // another Mivo account after the deletion.
         DeviceBindingService.releaseIfBound(email: email)
         ParentalConsentTicketStore.clear()
+        SpotManager.shared.eraseAllData()
 
         logout()
     }
@@ -1813,6 +1816,7 @@ class AppViewModel: ObservableObject {
     func resetAllData() {
         let resetEmail = user?.email ?? StorageService.activeUserEmail
         mivoLaunchGateActive = false
+        SpotManager.shared.eraseAllData()
 
         SecureAuthService.deleteAllRecords()
         StorageService.removeAllMivoData()
@@ -1949,6 +1953,10 @@ class AppViewModel: ObservableObject {
     // MARK: - Deep link (shield "Open Mivo" button)
 
     func handleDeepLink(_ url: URL) {
+        // A Mivo Spot link — from an NFC tag read by iOS, a scan inside Mivo, or a
+        // tapped link. Handled first: it is a universal link on the same host as
+        // the others below.
+        if SpotManager.shared.handle(url: url) { return }
         if url.scheme == "mivo", url.host == "clear" {
             let platformName = url.pathComponents.first(where: { $0 != "/" })
             if let platformName, let platform = MivoClearPlatform(rawValue: platformName.lowercased()) {

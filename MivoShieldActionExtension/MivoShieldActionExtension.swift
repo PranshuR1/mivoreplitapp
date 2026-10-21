@@ -63,6 +63,7 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         for application: ApplicationToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
+        if handleSpotShield(action: action, application: application, category: nil, webDomain: nil, completionHandler: completionHandler) { return }
         handleShieldAction(action: action, application: application, completionHandler: completionHandler)
     }
 
@@ -71,6 +72,7 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         for category: ActivityCategoryToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
+        if handleSpotShield(action: action, application: nil, category: category, webDomain: nil, completionHandler: completionHandler) { return }
         handleShieldAction(action: action, application: nil, completionHandler: completionHandler)
     }
 
@@ -79,7 +81,105 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         for webDomain: WebDomainToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
+        if handleSpotShield(action: action, application: nil, category: nil, webDomain: webDomain, completionHandler: completionHandler) { return }
         handleShieldAction(action: action, application: nil, completionHandler: completionHandler)
+    }
+
+    // MARK: - Mivo Spots
+
+    /// A tap on a shield that a running Spot put up. Returns false when the tapped
+    /// thing isn't the Spot's, so the existing Mivo flows handle it exactly as before.
+    ///
+    /// Like every other flow here, the extension can't show UI or reliably open the
+    /// app; it records what was asked for and posts the same "Open Mivo" local
+    /// notification. The app shows the pause / question when it comes forward.
+    private func handleSpotShield(
+        action: ShieldAction,
+        application: ApplicationToken?,
+        category: ActivityCategoryToken?,
+        webDomain: WebDomainToken?,
+        completionHandler: @escaping (ShieldActionResponse) -> Void
+    ) -> Bool {
+        let defaults = UserDefaults(suiteName: SpotKeys.appGroup)
+        guard let live = SpotLiveState.read(from: defaults), live.wantsShield(),
+              spotCovers(defaults: defaults, application: application, category: category, webDomain: webDomain) else {
+            return false
+        }
+        switch action {
+        case .primaryButtonPressed:
+            logger.info("ShieldAction primary: Spot \(live.mode.rawValue) → Open Mivo")
+            requestSpotRoute(live, application: application, defaults: defaults)
+            completionHandler(.defer)
+        case .secondaryButtonPressed:
+            completionHandler(.close)
+        @unknown default:
+            completionHandler(.close)
+        }
+        return true
+    }
+
+    private func spotCovers(
+        defaults: UserDefaults?,
+        application: ApplicationToken?,
+        category: ActivityCategoryToken?,
+        webDomain: WebDomainToken?
+    ) -> Bool {
+        guard let data = defaults?.data(forKey: SpotKeys.liveSelection),
+              let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else { return false }
+        if let application, selection.applicationTokens.contains(application) { return true }
+        if let category, selection.categoryTokens.contains(category) { return true }
+        if let webDomain, selection.webDomainTokens.contains(webDomain) { return true }
+        // This callback is given an app without its category. If the Spot covers
+        // whole categories or sites, an app that isn't in the person's own
+        // protected list is taken to be here because of the Spot.
+        if let application, !selection.categoryTokens.isEmpty || !selection.webDomainTokens.isEmpty {
+            return !loadSelection().applicationTokens.contains(application)
+        }
+        return false
+    }
+
+    private func requestSpotRoute(_ live: SpotLiveState, application: ApplicationToken?, defaults: UserDefaults?) {
+        let route: String
+        switch live.mode {
+        case .pause: route = "pause"
+        case .intention: route = "intention"
+        case .focus, .awareness: route = "status"
+        }
+        defaults?.set(route, forKey: SpotKeys.pendingRoute)
+        defaults?.set(Date().timeIntervalSince1970, forKey: SpotKeys.pendingAt)
+        if let application, let name = Application(token: application).localizedDisplayName {
+            defaults?.set(name, forKey: SpotKeys.pendingAppName)
+        } else {
+            defaults?.removeObject(forKey: SpotKeys.pendingAppName)
+        }
+        defaults?.synchronize()
+
+        if let url = URL(string: "mivo://spot-prompt") {
+            openWithExtensionContextIfAvailable(url)
+        }
+
+        let content = UNMutableNotificationContent()
+        switch live.mode {
+        case .pause:
+            content.title = "A short pause first"
+            content.body = "\(live.name) is on. Tap to open Mivo."
+        case .intention:
+            content.title = "What did you come here to do?"
+            content.body = "Tap to answer in Mivo."
+        case .focus, .awareness:
+            content.title = "\(live.name) is on"
+            content.body = "Tap to open Mivo."
+        }
+        content.sound = .default
+        content.categoryIdentifier = "MIVO_SESSION_ENDED"
+        content.userInfo = ["mivoRoute": SpotKeys.notificationRoute]
+        if #available(iOS 15.0, *) { content.interruptionLevel = .timeSensitive }
+        let request = UNNotificationRequest(
+            identifier: "\(openMivoNotificationPrefix).spot.\(Int(Date().timeIntervalSince1970 * 1000))",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 
     // MARK: - Shared action handler

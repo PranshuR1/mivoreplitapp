@@ -24,35 +24,35 @@ enum CompanionInterventionFrequency: String, Codable, CaseIterable, Identifiable
 
     var summary: String {
         switch self {
-        case .minimal: return "At most a few words a day."
-        case .balanced: return "A few words when something stands out."
-        case .attentive: return "More check-ins, still never nagging."
+        case .minimal: return "A few words a day, when something stands out."
+        case .balanced: return "Speaks up through the day, never nagging."
+        case .attentive: return "Frequent check-ins, still never nagging."
         }
     }
 
     /// Minimum gap between two companion messages.
     var messageGap: TimeInterval {
         switch self {
-        case .minimal: return 45 * 60
-        case .balanced: return 20 * 60
-        case .attentive: return 10 * 60
+        case .minimal: return 20 * 60
+        case .balanced: return 8 * 60
+        case .attentive: return 4 * 60
         }
     }
 
     var dailyMessageCap: Int {
         switch self {
-        case .minimal: return 3
-        case .balanced: return 6
-        case .attentive: return 12
+        case .minimal: return 5
+        case .balanced: return 12
+        case .attentive: return 24
         }
     }
 
     /// How long the companion rests, silently, after an intervention resolves.
     var postInterventionCooldown: TimeInterval {
         switch self {
-        case .minimal: return 60 * 60
-        case .balanced: return 30 * 60
-        case .attentive: return 15 * 60
+        case .minimal: return 30 * 60
+        case .balanced: return 10 * 60
+        case .attentive: return 5 * 60
         }
     }
 }
@@ -64,7 +64,7 @@ struct CompanionPreferences: Codable, Equatable {
     static let maxNameLength = 16
 
     var schemaVersion: Int = CompanionPreferences.currentSchemaVersion
-    var isEnabled: Bool = false
+    var isEnabled: Bool = true
     var hasCompletedOnboarding: Bool = false
     var companionType: CompanionType = .meerkat
     var name: String = CompanionType.meerkat.defaultName
@@ -82,6 +82,9 @@ struct CompanionPreferences: Codable, Equatable {
     /// Companion presence requires both the switch and a finished onboarding —
     /// the privacy explanation is shown before it ever reacts to anything.
     var isActive: Bool { isEnabled && hasCompletedOnboarding }
+
+    /// On by default but not yet introduced: Home offers to meet the companion.
+    var isAwaitingIntroduction: Bool { isEnabled && !hasCompletedOnboarding }
 
     /// Back to defaults, keeping on/off and onboarding so the flow doesn't replay.
     func resetToDefaults() -> CompanionPreferences {
@@ -105,7 +108,7 @@ struct CompanionPreferences: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = c.value(.schemaVersion, default: Self.currentSchemaVersion)
-        isEnabled = c.value(.isEnabled, default: false)
+        isEnabled = c.value(.isEnabled, default: true)
         hasCompletedOnboarding = c.value(.hasCompletedOnboarding, default: false)
         companionType = c.value(.companionType, default: .meerkat)
         personality = c.value(.personality, default: .gentle)

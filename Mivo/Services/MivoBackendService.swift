@@ -691,3 +691,157 @@ extension AppViewModel {
         }
     }
 }
+
+// MARK: - Mivo Spots (official physical Spots)
+//
+// The registry behind `https://usemivo.app/s/<ID>`. See
+// supabase/migrations/20261019130000_physical_spots.sql. Everything here is an
+// RPC; the tables themselves are not reachable from the app.
+
+struct AdminPhysicalSpot: Decodable, Identifiable, Equatable {
+    let spotId: String
+    let url: String
+    let status: String
+    let batchLabel: String?
+    let createdAt: String
+    let claimedAt: String?
+    let ownerEmail: String?
+    let disabledAt: String?
+    let disabledReason: String?
+
+    var id: String { spotId }
+}
+
+struct AdminPhysicalSpotPage: Decodable {
+    let total: Int
+    let spots: [AdminPhysicalSpot]
+}
+
+struct AdminPhysicalSpotBatch: Decodable, Identifiable, Equatable {
+    let id: String
+    let label: String
+    let spotCount: Int
+    let createdAt: String
+    let claimedCount: Int
+    let disabledCount: Int
+}
+
+struct AdminGeneratedPhysicalSpots: Decodable {
+    struct Item: Decodable, Equatable {
+        let spotId: String
+        let url: String
+    }
+    let batchId: String
+    let label: String
+    let spots: [Item]
+}
+
+extension MivoBackendService {
+    private struct PhysicalSpotStateResponse: Decodable {
+        let state: String
+        let ownerUserId: String?
+        let claimedAt: String?
+    }
+
+    private struct PhysicalSpotRecordResponse: Decodable {
+        let spotId: String
+        let status: String
+        let claimedAt: String?
+    }
+
+    /// Postgres emits ISO-8601 with microseconds and an offset.
+    static func parseSpotDate(_ raw: String?) -> Date? {
+        guard let raw else { return nil }
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFraction.date(from: raw) { return date }
+        return ISO8601DateFormatter().date(from: raw)
+    }
+
+    static func resolvePhysicalSpot(id: String) async throws -> PhysicalSpotState {
+        let response: PhysicalSpotStateResponse = try await rpc(
+            "resolve_physical_spot", body: ["input_spot_id": id], authenticated: true
+        )
+        guard let state = PhysicalSpotState(rawValue: response.state) else {
+            throw MivoBackendError.server("invalid_response")
+        }
+        return state
+    }
+
+    static func claimPhysicalSpot(id: String) async throws -> PhysicalSpotClaimOutcome {
+        let response: PhysicalSpotStateResponse = try await rpc(
+            "claim_physical_spot", body: ["input_spot_id": id], authenticated: true
+        )
+        switch response.state {
+        case "claimed":
+            return .claimed(
+                ownerUserID: response.ownerUserId,
+                claimedAt: parseSpotDate(response.claimedAt) ?? Date()
+            )
+        case "taken": return .taken
+        case "disabled": return .disabled
+        case "invalid": return .invalid
+        default: throw MivoBackendError.server("invalid_response")
+        }
+    }
+
+    static func releasePhysicalSpot(id: String) async throws {
+        let _: EmptyRPCResponse = try await rpcAllowingEmpty(
+            "release_physical_spot", body: ["input_spot_id": id], authenticated: true
+        )
+    }
+
+    static func myPhysicalSpots() async throws -> [PhysicalSpotRecord] {
+        let rows: [PhysicalSpotRecordResponse] = try await rpc(
+            "my_physical_spots", body: [:], authenticated: true
+        )
+        return rows.map {
+            PhysicalSpotRecord(
+                spotID: $0.spotId,
+                status: $0.status == "disabled" ? .disabled : .claimed,
+                claimedAt: parseSpotDate($0.claimedAt)
+            )
+        }
+    }
+
+    // MARK: Admin
+
+    static func adminGeneratePhysicalSpots(count: Int, label: String) async throws -> AdminGeneratedPhysicalSpots {
+        try await rpc(
+            "admin_generate_physical_spots",
+            body: ["input_count": count, "input_label": label],
+            authenticated: true
+        )
+    }
+
+    static func adminPhysicalSpotBatches() async throws -> [AdminPhysicalSpotBatch] {
+        try await rpc("admin_physical_spot_batches", body: [:], authenticated: true)
+    }
+
+    static func adminListPhysicalSpots(
+        batchID: String?, status: String?, limit: Int, offset: Int
+    ) async throws -> AdminPhysicalSpotPage {
+        try await rpc(
+            "admin_list_physical_spots",
+            body: [
+                "input_batch_id": batchID ?? NSNull(),
+                "input_status": status ?? NSNull(),
+                "input_limit": limit,
+                "input_offset": offset
+            ],
+            authenticated: true
+        )
+    }
+
+    static func adminPhysicalSpotStatus(id: String) async throws -> AdminPhysicalSpot {
+        try await rpc("admin_physical_spot_status", body: ["input_spot_id": id], authenticated: true)
+    }
+
+    static func adminSetPhysicalSpotDisabled(id: String, disabled: Bool, reason: String?) async throws {
+        let _: EmptyRPCResponse = try await rpcAllowingEmpty(
+            "admin_set_physical_spot_disabled",
+            body: ["input_spot_id": id, "input_disabled": disabled, "input_reason": reason ?? NSNull()],
+            authenticated: true
+        )
+    }
+}

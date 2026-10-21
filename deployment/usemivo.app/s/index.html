@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Your Mivo Spot</title>
+  <style>
+    body { margin: 0; background: #FAF3E8; color: #3D2313; font: 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { min-height: 100vh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
+    section { width: min(440px, 100%); text-align: center; }
+    .logo { width: 72px; height: 72px; margin: 0 auto 18px; display: grid; place-items: center; border-radius: 8px; background: #F3E8D5; color: #B5621E; font-size: 24px; font-weight: 800; }
+    h1 { margin: 0 0 10px; font-size: 27px; letter-spacing: -0.025em; }
+    p { line-height: 1.5; color: #6E5238; }
+    a { display: block; margin-top: 18px; padding: 15px; border-radius: 8px; background: #D4872A; color: white; text-decoration: none; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main><section>
+    <div class="logo">mivo</div>
+    <h1>This is a Mivo Spot</h1>
+    <p>Tap it with an iPhone that has Mivo installed to set it up or start it. If Mivo didn't open on its own, use the button.</p>
+    <a id="open" href="mivo://s">Open in Mivo</a>
+    <p>Don't have Mivo yet? Install Mivo from the App Store, then tap your Mivo Spot again.</p>
+  </section></main>
+  <script>
+    // /s/<ID> -> mivo://s/<ID>. This page never asks the backend about the ID, so it
+    // reveals nothing about a Spot (whether it exists, or who owns it). The ID is only
+    // passed on to the app, which checks it after the person signs in.
+    const parts = location.pathname.split('/').filter(Boolean);
+    const id = (parts[1] || '').toUpperCase();
+    if (/^[A-Z0-9]{6,12}$/.test(id)) {
+      document.getElementById('open').href = `mivo://s/${id}`;
+    }
+  </script>
+</body>
+</html>

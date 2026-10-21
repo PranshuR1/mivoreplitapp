@@ -229,10 +229,12 @@ final class CompanionStateManager: ObservableObject {
     /// allowed to speak now (frequency, daily cap, cooldown, quiet hours), and
     /// records that it did. `nil` means: show the character, say nothing.
     func claimSpeech() -> String? {
-        guard preferences.isActive, let message = presentation.message else { return nil }
+        // `topic == nil` is the passive ambient hello, which is never "spoken".
+        guard preferences.isActive, presentation.topic != nil, let message = presentation.message else { return nil }
         let now = clock()
         guard CompanionSpeechPolicy.canSpeak(
-            runtime: runtime, frequency: preferences.interventionFrequency, now: now, calendar: calendar
+            runtime: runtime, frequency: preferences.interventionFrequency, now: now, calendar: calendar,
+            duringPause: presentation.state == .intervening
         ) else { return nil }
         CompanionSpeechPolicy.recordSpoken(runtime: &runtime, now: now, calendar: calendar)
         persistRuntime()
@@ -267,17 +269,27 @@ final class CompanionStateManager: ObservableObject {
         let signals = effectiveSignals(at: now)
         let result = CompanionBehaviorEngine(calendar: calendar).evaluate(signals: signals, preferences: preferences)
 
+        let hour = calendar.component(.hour, from: now)
+        let context = CompanionMessageContext(
+            companionName: preferences.name,
+            minutes: signals.todayScreenMinutes,
+            targetMinutes: signals.dailyTargetMinutes,
+            hour: hour
+        )
         var message: String?
-        if let topic = result.topic, !result.state.isSilent {
+        if let topic = result.topic {
+            if !result.state.isSilent {
+                message = CompanionMessageProvider.message(
+                    for: topic, personality: preferences.personality, context: context,
+                    variant: runtime.messageVariantCounter
+                )
+            }
+        } else if result.behavior == .normalUse, result.state == .idle {
+            // Nothing stands out: a passive hello so Home and the widget aren't
+            // blank. It changes with the hour and is never claimed as speech.
             message = CompanionMessageProvider.message(
-                for: topic,
-                personality: preferences.personality,
-                context: CompanionMessageContext(
-                    companionName: preferences.name,
-                    minutes: signals.todayScreenMinutes,
-                    targetMinutes: signals.dailyTargetMinutes
-                ),
-                variant: runtime.messageVariantCounter
+                for: .ambient, personality: preferences.personality, context: context,
+                variant: runtime.messageVariantCounter &+ hour
             )
         }
         presentation = CompanionPresentation(

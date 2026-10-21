@@ -10,6 +10,7 @@ private enum AdminCenterTab: String, CaseIterable, Identifiable {
     case approvals = "Approvals"
     case users = "Users"
     case consent = "Consent"
+    case spots = "Spots"
     case security = "Security"
 
     var id: String { rawValue }
@@ -23,6 +24,7 @@ private enum AdminCenterTab: String, CaseIterable, Identifiable {
         case .approvals: return "tray.full.fill"
         case .users: return "person.3.fill"
         case .consent: return "person.crop.circle.badge.checkmark"
+        case .spots: return "wave.3.right"
         case .security: return "lock.shield.fill"
         }
     }
@@ -114,6 +116,7 @@ struct MivoAdminCenterView: View {
         case .approvals: approvals
         case .users: users
         case .consent: consent
+        case .spots: spotsTab
         case .security: security
         }
     }
@@ -248,6 +251,15 @@ struct MivoAdminCenterView: View {
         VStack(alignment: .leading, spacing: 12) {
             AdminSectionTitle("Parent consent", icon: "person.crop.circle.badge.checkmark")
             NavigationLink { ParentalConsentReviewView() } label: { adminNavigationLabel("Review parent consent requests", icon: "checkmark.shield.fill") }
+        }
+    }
+
+    private var spotsTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            AdminSectionTitle("Mivo Spots", icon: "wave.3.right")
+            NavigationLink { AdminSpotsView() } label: { adminNavigationLabel("Generate, list and switch off Mivo Spots", icon: "shippingbox.fill") }
+            Text("Physical Spots are generated here before sale. Each carries only its own ID; what it does stays in the customer's app.")
+                .font(.system(size: 12, weight: .medium)).foregroundColor(MivoColors.textSecondary)
         }
     }
 

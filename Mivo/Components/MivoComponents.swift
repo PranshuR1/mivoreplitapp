@@ -63,29 +63,6 @@ struct MivoButton: View {
     }
 }
 
-// MARK: - MivoCard
-
-struct MivoCard<Content: View>: View {
-    let content: () -> Content
-
-    init(@ViewBuilder content: @escaping () -> Content) {
-        self.content = content
-    }
-
-    var body: some View {
-        content()
-            .padding(.vertical, 16)
-            .padding(.horizontal, 2)
-            .background(MivoColors.surface.opacity(0.24))
-            .overlay(alignment: .top) {
-                Rectangle().fill(MivoColors.border.opacity(0.34)).frame(height: 1)
-            }
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(MivoColors.border.opacity(0.34)).frame(height: 1)
-            }
-    }
-}
-
 // MARK: - MivoLoadingOverlay
 
 struct MivoLoadingOverlay: View {

@@ -189,6 +189,11 @@ enum MivoComeback {
     /// Days after the last open at which a gentle nudge is scheduled.
     static let nudgeDays = [3, 7, 14]
 
+    /// After a fresh start, the flow can't be started again (by a detected lapse
+    /// or by hand) for this many days, so the plan gets a real chance to work
+    /// before it can be reset.
+    static let cooldownDays = 30
+
     static let measuredWindowDays = 14
     static let maxAveragedDays = 7
 
@@ -259,6 +264,26 @@ enum MivoComeback {
     static func startMinutes(baseline: Int, pace: ComebackPace, floor: Int) -> Int {
         let cut = Int((Double(baseline) * pace.openingCut).rounded())
         return max(floor, baseline - cut)
+    }
+
+    /// Whether `anchor` still blocks a new fresh start. An anchor dated in the
+    /// future (the clock was set back) is ignored rather than locking the
+    /// feature out for however long the clock was off.
+    static func isCoolingDown(anchor: ComebackAnchor?, today: String) -> Bool {
+        guard let anchor, let elapsed = daysSince(anchor.startDay, today: today) else { return false }
+        return elapsed >= 0 && elapsed < cooldownDays
+    }
+
+    /// The first day a new fresh start is allowed, as a `MivoDay` key.
+    static func availableAgainDay(anchor: ComebackAnchor) -> String? {
+        guard let start = MivoDay.date(from: anchor.startDay),
+              let day = MivoDay.calendar.date(byAdding: .day, value: cooldownDays, to: start) else { return nil }
+        return MivoDay.key(day)
+    }
+
+    private static func daysSince(_ day: String, today: String) -> Int? {
+        guard let start = MivoDay.date(from: day), let now = MivoDay.date(from: today) else { return nil }
+        return MivoDay.calendar.dateComponents([.day], from: start, to: now).day
     }
 
     /// 1-based plan day for `anchor` on `today`; nil if the anchor starts in

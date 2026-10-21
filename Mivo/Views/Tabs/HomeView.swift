@@ -28,7 +28,10 @@ struct HomeView: View {
     @State private var showMivoStill = false
     @State private var showAttentionReceipt = false
     @State private var showSchedule = false
+    @State private var showSpots = false
+    @State private var showActiveSpot = false
     @ObservedObject private var stillStore = MivoStillStore.shared
+    @ObservedObject private var companion = CompanionStateManager.shared
     @ObservedObject private var expansion = ProductExpansionStore.shared
     @State private var showRecoveryMode = false
     @State private var isRequestingScreenTime = false
@@ -43,62 +46,30 @@ struct HomeView: View {
             MivoColors.background.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
+                // One card per job, in the order a day goes: how much so far,
+                // what is allowed, then everything optional. The optional
+                // features are grouped by what they are for — Practice (the
+                // experiment), Explore (modes and places) and Review (reports
+                // and planning) — instead of one run of identical rows.
+                VStack(alignment: .leading, spacing: MivoMetrics.cardSpacing) {
                     MivoGreetingBar(name: firstName)
                         .padding(.top, 6)
 
+                    SpotActiveBanner { showActiveSpot = true }
+
                     screenTimeHero
-                    MivoHairline()
 
                     ComebackHomeSection()
 
                     if hasScreenTimeAccess {
                         scrollingPlanSection
-                        MivoHairline()
                     }
 
-                    // Everything Mivo offers beyond the plan itself, grouped
-                    // instead of one long run of identical rows. Features that
-                    // used to be buried in Settings (schedule, the 30-day
-                    // forecast) surface here.
-                    groupHeader("Practice")
-
-                    experimentRow
-                    MivoHairline()
-
-                    // Draws nothing (hairline included) until Companion is on.
-                    CompanionHomeRow()
-
-                    // Focus Break (formerly Intent Games) moved off Home and
-                    // behind its own opt-in toggle on Protect — it now reads
-                    // as an explicit trial someone chooses, not a feature
-                    // advertised alongside Still and Clear.
-                    if expansion.isEnabled(.mivoStill) {
-                        MivoStillRow {
-                            HapticsService.selection()
-                            showMivoStill = true
-                        }
-                        MivoHairline()
-                    }
-
-                    if expansion.isEnabled(.mivoClear) {
-                        mivoClearRow
-                        MivoHairline()
-                    }
-
-                    groupHeader("Reflect & plan")
-
-                    attentionReceiptRow
-                    MivoHairline()
-
-                    scheduleRow
-
-                    if let plan = displayedPlan, !plan.collecting {
-                        MivoHairline()
-                        forecastRow
-                    }
+                    practiceSection
+                    exploreSection
+                    reviewSection
                 }
-                .padding(.horizontal, MivoMetrics.screenPadding)
+                .padding(.horizontal, MivoMetrics.tabPadding)
                 .padding(.bottom, MivoMetrics.scrollBottomPadding)
             }
         }
@@ -208,89 +179,111 @@ struct HomeView: View {
         .navigationDestination(isPresented: $showSchedule) {
             SettingsView(page: .schedule)
         }
+        .navigationDestination(isPresented: $showSpots) {
+            SpotsHomeView()
+        }
+        .sheet(isPresented: $showActiveSpot) {
+            SpotActiveView()
+        }
     }
 
-    // MARK: - 1.2 Screen Time hero
+    // MARK: - Screen Time hero
     //
-    // The primary metric, as plain type on the ground — not a card. The eyebrow
-    // is load-bearing: it has to say this is total *device* Screen Time from
-    // Apple, not Mivo-tracked scrolling.
+    // The primary metric. The label is load-bearing: it has to say this is
+    // total *device* Screen Time from Apple, not Mivo-tracked scrolling.
 
     private var screenTimeHero: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MivoEyebrow(
-                text: "Today · Total device screen time",
-                accessibilityText: "Today's total device screen time, read from Apple Screen Time"
-            )
-
-            if hasScreenTimeAccess {
-                // Direct and visible, the way this looked before the hidden,
-                // near-zero-opacity host was introduced to keep this off
-                // Home's face — that hiding is very likely what stopped the
-                // extension from running at all (RunningBoard reported it
-                // stuck at `running-suspended-NotVisible`, and a
-                // DeviceActivityReport is a UI extension that may only get
-                // real execution time while its host is genuinely on
-                // screen). Showing Apple's own report card plainly gives up
-                // the custom big-number treatment, but a report that's
-                // actually visible to iOS beats a prettier one that never
-                // computes.
-                #if canImport(DeviceActivity) && canImport(FamilyControls) && canImport(ManagedSettings)
-                if #available(iOS 16.0, *) {
-                    MivoScreenTimeUsageLiveReport()
-                        .frame(height: 210)
-                        .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.radius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: MivoMetrics.radius, style: .continuous)
-                                .strokeBorder(MivoColors.hairline, lineWidth: 1)
-                        )
-                        .padding(.top, 14)
+        MivoCard(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Screen time today")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.inkBody)
+                    Spacer(minLength: 8)
+                    Text("via Apple Screen Time")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(MivoColors.inkBody)
                 }
-                #endif
+                .padding(.horizontal, MivoMetrics.cardPadding)
+                .padding(.top, MivoMetrics.cardPadding)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Today's total device screen time, read from Apple Screen Time")
 
-                if let sparkline = screenTimeSparkline {
-                    HomeSparkline(values: sparkline)
-                        .padding(.top, 14)
+                if hasScreenTimeAccess {
+                    // Direct and visible: a DeviceActivityReport is a UI
+                    // extension that only gets real execution time while its
+                    // host is genuinely on screen, so it is never hidden or
+                    // faded out.
+                    #if canImport(DeviceActivity) && canImport(FamilyControls) && canImport(ManagedSettings)
+                    if #available(iOS 16.0, *) {
+                        MivoScreenTimeUsageLiveReport()
+                            .frame(height: 210)
+                            .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.tileRadius, style: .continuous))
+                            .padding(.horizontal, 8)
+                            .padding(.top, 6)
+                    }
+                    #endif
+
+                    screenTimeFooter
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Not connected")
+                            .font(.system(size: 27, weight: .bold))
+                            .foregroundColor(MivoColors.inkBody)
+                            .padding(.top, 12)
+
+                        MivoPrimaryButton(
+                            label: isRequestingScreenTime ? "Opening Screen Time…" : "Connect Apple Screen Time",
+                            disabled: isRequestingScreenTime
+                        ) {
+                            requestScreenTimeAccess()
+                        }
+                        .padding(.top, 18)
+                    }
+                    .padding(.horizontal, MivoMetrics.cardPadding)
+                    .padding(.bottom, MivoMetrics.cardPadding)
                 }
+            }
+        }
+    }
 
-                if let comparison = screenTimeComparison {
-                    comparisonRow(comparison)
-                        .padding(.top, 14)
-                }
+    /// Change against last week, the weekly average and the seven-day bars,
+    /// each shown only when the history behind it exists.
+    private var screenTimeFooter: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let comparison = screenTimeComparison {
+                comparisonRow(comparison)
+            }
 
+            HStack(alignment: .center, spacing: 12) {
                 if let average = weeklyAverageMinutes {
                     Text("Weekly average \(formatDuration(average))")
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundColor(MivoColors.inkBody)
-                        .padding(.top, 7)
                 }
-
-                Text(screenTimeFreshnessText)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundColor(MivoColors.inkMuted)
-                    .padding(.top, 9)
-            } else {
-                Text("Not connected")
-                    .font(.system(size: 27, weight: .bold))
-                    .foregroundColor(MivoColors.inkMuted)
-                    .padding(.top, 12)
-
-                MivoPrimaryButton(
-                    label: isRequestingScreenTime ? "Opening Screen Time…" : "Connect Apple Screen Time",
-                    disabled: isRequestingScreenTime
-                ) {
-                    requestScreenTimeAccess()
+                Spacer(minLength: 0)
+                if let sparkline = screenTimeSparkline {
+                    HomeSparkline(values: sparkline, height: 34)
                 }
-                .padding(.top, 18)
             }
+
+            Text(screenTimeFreshnessText)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundColor(MivoColors.inkBody)
         }
-        .padding(.top, 30)
-        .padding(.bottom, 24)
+        .padding(.horizontal, MivoMetrics.cardPadding)
+        .padding(.top, 14)
+        .padding(.bottom, MivoMetrics.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) {
+            MivoHairline(soft: true)
+                .padding(.horizontal, MivoMetrics.cardPadding)
+                .padding(.top, 0)
+        }
     }
 
     private func comparisonRow(_ comparison: HomeScreenTimeComparison) -> some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: comparison.isDown ? "arrow.down" : "arrow.up")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundColor(comparison.tint)
@@ -298,84 +291,76 @@ struct HomeView: View {
                 .background(comparison.tint.opacity(0.16))
                 .clipShape(Circle())
 
-            Text(comparison.magnitudeText)
+            (Text(comparison.magnitudeText)
                 .font(.system(size: 13.5, weight: .semibold))
                 .foregroundColor(comparison.tint)
-                .fixedSize()
-
-            Text(comparison.referenceText)
+             + Text(" \(comparison.referenceText)")
                 .font(.system(size: 13.5, weight: .medium))
-                .foregroundColor(MivoColors.inkBody)
-                .fixedSize()
+                .foregroundColor(MivoColors.inkBody))
 
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - 1.3 Today's scrolling plan
+    // MARK: - Today's scrolling plan
 
     @ViewBuilder
     private var scrollingPlanSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("Today's scrolling plan")
-                    .font(.system(size: 20, weight: .bold))
-                    .tracking(Font.mivoTracking(-0.02, at: 20))
-                    .foregroundColor(MivoColors.ink)
+        MivoCard {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text("Today's scrolling plan")
+                        .font(.system(size: 18, weight: .bold))
+                        .tracking(Font.mivoTracking(-0.02, at: 18))
+                        .foregroundColor(MivoColors.ink)
 
-                Spacer(minLength: 8)
+                    Spacer(minLength: 8)
 
-                if let usage = planUsageText {
-                    Text(usage)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(MivoColors.deep)
-                        .fixedSize()
+                    if let usage = planUsageText {
+                        Text(usage)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(MivoColors.deep)
+                            .fixedSize()
+                    }
                 }
-            }
 
-            if let plan = displayedPlan, plan.collecting {
-                observationLine(plan)
-            } else if planWindows.isEmpty {
-                Text("Your plan appears once today's windows are chosen.")
-                    .font(.system(size: 13.5, weight: .medium))
-                    .foregroundColor(MivoColors.inkBody)
-                    .padding(.top, 7)
+                if let plan = displayedPlan, plan.collecting {
+                    observationLine(plan)
+                } else if planWindows.isEmpty {
+                    Text("Your plan appears once today's windows are chosen.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.inkBody)
+                        .padding(.top, 6)
 
-                MivoPrimaryButton(label: "Choose today's windows") {
-                    appVM.evaluateDailyScrollSchedulePrompt()
+                    MivoPrimaryButton(label: "Choose today's windows") {
+                        appVM.evaluateDailyScrollSchedulePrompt()
+                    }
+                    .padding(.top, 20)
+                } else {
+                    Text(planSubline)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.inkBody)
+                        .padding(.top, 4)
+
+                    HomePlanTimeline(
+                        windows: planWindows,
+                        state: { planWindowState(at: $0, windows: planWindows) },
+                        title: { $0.title.isEmpty ? windowPeriodLabel($0) : $0.title },
+                        meta: { "\(fullWindowTimeText($0)) · \($0.minutes) min allowed" }
+                    )
+                    .padding(.top, 18)
+
+                    // The one action on this screen. ("Open an app on purpose"
+                    // used to repeat it as a second, text-only button.)
+                    MivoPrimaryButton(label: primaryActionLabel) {
+                        HapticsService.selection()
+                        appVM.deepLinkInterventionRequested = true
+                    }
+                    .padding(.top, 22)
                 }
-                .padding(.top, 28)
-            } else {
-                Text(planSubline)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(MivoColors.inkBody)
-                    .padding(.top, 7)
-
-                HomePlanTimeline(
-                    windows: planWindows,
-                    state: { planWindowState(at: $0, windows: planWindows) },
-                    title: { $0.title.isEmpty ? windowPeriodLabel($0) : $0.title },
-                    meta: { "\(fullWindowTimeText($0)) · \($0.minutes) min allowed" }
-                )
-                .padding(.top, 22)
-
-                MivoPrimaryButton(label: primaryActionLabel) {
-                    HapticsService.selection()
-                    appVM.deepLinkInterventionRequested = true
-                }
-                .padding(.top, 28)
-
-                MivoTertiaryButton(label: "or open an app on purpose") {
-                    HapticsService.selection()
-                    appVM.deepLinkInterventionRequested = true
-                }
-                .padding(.top, 6)
             }
         }
-        .padding(.top, 26)
-        .padding(.bottom, 26)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Days 1–3 replace the timeline with a single line and a 3-segment bar
@@ -400,87 +385,113 @@ struct HomeView: View {
         .padding(.top, 12)
     }
 
-    // MARK: - 1.4 / 1.5 Rows
+    // MARK: - Practice, Explore, Review
 
-    private var experimentRow: some View {
-        MivoNavigationRow {
-            HapticsService.selection()
-            showExperimentHub = true
-        } content: {
-            MivoEyebrow(text: experimentEyebrow)
-            Text(appVM.currentWeeklyExperiment?.title ?? "Start a 7-day experiment")
-                .font(.system(size: 15.5, weight: .semibold))
-                .foregroundColor(MivoColors.ink)
-                .multilineTextAlignment(.leading)
-            if let experiment = appVM.currentWeeklyExperiment {
-                MivoSegmentBar(completed: experiment.dayNumber)
-                    .frame(width: 7 * 22 + 6 * 5)
-                    .padding(.top, 3)
+    private var practiceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            MivoSectionTitle(text: "Practice")
+
+            Button {
+                HapticsService.selection()
+                showExperimentHub = true
+            } label: {
+                HStack(spacing: 12) {
+                    MivoIconTile(systemName: "flask")
+                    VStack(alignment: .leading, spacing: 4) {
+                        MivoEyebrow(text: experimentEyebrow, color: MivoColors.inkBody)
+                        Text(appVM.currentWeeklyExperiment?.title ?? "Start a 7-day experiment")
+                            .font(.system(size: 15.5, weight: .semibold))
+                            .foregroundColor(MivoColors.ink)
+                            .multilineTextAlignment(.leading)
+                        if let experiment = appVM.currentWeeklyExperiment {
+                            MivoSegmentBar(completed: experiment.dayNumber)
+                                .frame(width: 7 * 22 + 6 * 5)
+                                .padding(.top, 3)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.inkMuted)
+                        .accessibilityHidden(true)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .mivoCardBackground()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(MivoPressStyle())
+        }
+    }
+
+    /// Modes and places, two to a row. Focus Break (formerly Intent Games) is
+    /// not here: it sits behind its own opt-in toggle on Protect, so it reads
+    /// as an explicit trial someone chooses rather than something advertised
+    /// beside Still and Clear.
+    private var exploreSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            MivoSectionTitle(text: "Explore")
+
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                spacing: 10
+            ) {
+                if expansion.isEnabled(.mivoStill) {
+                    MivoStillRow {
+                        showMivoStill = true
+                    }
+                }
+
+                if expansion.isEnabled(.mivoClear) {
+                    MivoToolTile(icon: "sparkles", title: "Mivo Clear", subtitle: mivoClearMeta) {
+                        showMivoClear = true
+                    }
+                }
+
+                SpotsEntryRow {
+                    showSpots = true
+                }
+
+                // Present while Companion is on; before onboarding it reads "Meet Milo".
+                if companion.isActive || companion.preferences.isAwaitingIntroduction {
+                    CompanionHomeRow()
+                }
             }
         }
     }
 
-    private var mivoClearRow: some View {
-        MivoNavigationRow {
-            HapticsService.selection()
-            showMivoClear = true
-        } content: {
-            Text("Mivo Clear")
-                .font(.system(size: 15.5, weight: .semibold))
-                .foregroundColor(MivoColors.ink)
-            Text(mivoClearMeta)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundColor(MivoColors.inkMuted)
+    private var reviewSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            MivoSectionTitle(text: "Review")
+
+            MivoListGroup {
+                reviewRow(icon: "doc.text", title: "Receipt", subtitle: "What today actually cost you") {
+                    showAttentionReceipt = true
+                }
+
+                MivoListDivider()
+                reviewRow(icon: "calendar", title: "Today's schedule", subtitle: appVM.todayScrollScheduleStatusText) {
+                    showSchedule = true
+                }
+
+                if let plan = displayedPlan, !plan.collecting {
+                    MivoListDivider()
+                    reviewRow(icon: "chart.line.uptrend.xyaxis", title: "30-day forecast", subtitle: "Where your plan is headed, day by day") {
+                        showMonthlyForecast = true
+                    }
+                }
+            }
         }
     }
 
-    private func groupHeader(_ text: String) -> some View {
-        MivoEyebrow(text: text)
-            .padding(.top, 26)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var scheduleRow: some View {
-        MivoNavigationRow {
+    private func reviewRow(icon: String, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+        Button {
             HapticsService.selection()
-            showSchedule = true
-        } content: {
-            Text("Today's schedule")
-                .font(.system(size: 15.5, weight: .semibold))
-                .foregroundColor(MivoColors.ink)
-            Text(appVM.todayScrollScheduleStatusText)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundColor(MivoColors.inkMuted)
-                .multilineTextAlignment(.leading)
+            action()
+        } label: {
+            MivoListRow(icon: icon, title: title, subtitle: subtitle)
         }
-    }
-
-    private var forecastRow: some View {
-        MivoNavigationRow {
-            HapticsService.selection()
-            showMonthlyForecast = true
-        } content: {
-            Text("30-day forecast")
-                .font(.system(size: 15.5, weight: .semibold))
-                .foregroundColor(MivoColors.ink)
-            Text("Where your plan is headed, day by day")
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundColor(MivoColors.inkMuted)
-        }
-    }
-
-    private var attentionReceiptRow: some View {
-        MivoNavigationRow {
-            HapticsService.selection()
-            showAttentionReceipt = true
-        } content: {
-            Text("Receipt")
-                .font(.system(size: 15.5, weight: .semibold))
-                .foregroundColor(MivoColors.ink)
-            Text("What today actually cost you")
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundColor(MivoColors.inkMuted)
-        }
+        .buttonStyle(MivoRowPressStyle())
     }
 
     // MARK: - Derived values
@@ -490,7 +501,13 @@ struct HomeView: View {
     }
 
     private var planWindows: [ScreenScrollWindow] {
-        (displayedPlan?.windows ?? []).sorted {
+        // After a fresh start the old plan is gone. The plan's own suggested
+        // windows are not shown as if they were today's: the card waits for
+        // windows the person has actually chosen.
+        if appVM.isComebackCoolingDown, appVM.dailyScrollSchedule() == nil {
+            return []
+        }
+        return (displayedPlan?.windows ?? []).sorted {
             if $0.startHour == $1.startHour { return $0.endHour < $1.endHour }
             return $0.startHour < $1.startHour
         }
@@ -531,8 +548,7 @@ struct HomeView: View {
 
     private var mivoClearMeta: String {
         let minutes = MivoClearStore.shared.minutesToday
-        let prefix = minutes > 0 ? "\(minutes)m today" : "Not used today"
-        return "\(prefix) · messages and profiles, no feed"
+        return minutes > 0 ? "\(minutes)m today" : "Social without the feed"
     }
 
     // MARK: - Screen Time figures

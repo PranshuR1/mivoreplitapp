@@ -4,6 +4,15 @@ A small meerkat (default name **Milo**) that gives Mivo's existing pauses a quie
 no Screen Time monitor, schedule or enforcement of its own — it only reads what Mivo already knows
 and reports what Mivo's existing flows already did. With Companion off, every entry point is a no-op.
 
+## Defaults and pacing
+
+Companion is on by default but stays inactive until the person finishes the privacy introduction;
+until then Home shows a "Meet Milo" tile that opens it. Pacing is set in
+`CompanionInterventionFrequency` (balanced: 8-minute gap, 12 lines a day, 10-minute rest after a
+pause) and `CompanionThresholds`. A pause screen ignores the gap (45-second floor, daily cap still
+applies). When nothing stands out, Home and the widget show a passive `.ambient` hello that changes
+with the hour; it is never counted as speech and never appears on a pause screen.
+
 ## Layout
 
 | Folder | Role |

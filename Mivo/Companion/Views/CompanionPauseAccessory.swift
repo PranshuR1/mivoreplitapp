@@ -69,54 +69,45 @@ struct CompanionPauseAccessory: View {
     }
 }
 
-/// The Home entry point: one divider row, shown only while Companion is on.
+/// The Home entry point: a tile in the Explore grid. The caller places it while
+/// Companion is active, or on but not yet introduced, when it reads "Meet Milo"
+/// and opens the onboarding. One view covers both so finishing onboarding
+/// doesn't tear down the sheet that is showing it.
 struct CompanionHomeRow: View {
     @ObservedObject private var companion = CompanionStateManager.shared
     @EnvironmentObject private var appVM: AppViewModel
     @State private var showCompanion = false
 
     var body: some View {
-        if companion.isActive {
-            VStack(spacing: 0) {
-                MivoNavigationRow(verticalPadding: 14) {
-                    HapticsService.selection()
-                    showCompanion = true
-                } content: {
-                    HStack(spacing: 14) {
-                        CompanionFigureView(
-                            type: companion.preferences.companionType,
-                            state: companion.presentation.state,
-                            animated: companion.preferences.animationsEnabled,
-                            stretchUnlocked: companion.progress.isUnlocked(.stretching),
-                            accessibilityName: companion.preferences.name
-                        )
-                        .frame(width: 42, height: 55)
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            MivoEyebrow(text: companion.preferences.name)
-                            Text(companion.presentation.message ?? companion.todaySummary)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(MivoColors.ink)
-                                .multilineTextAlignment(.leading)
-                                .lineLimit(2)
+        MivoToolTile(
+            title: companion.isActive ? companion.preferences.name : "Meet \(companion.preferences.name)",
+            subtitle: companion.isActive
+                ? (companion.presentation.message ?? companion.todaySummary)
+                : "A small companion for your pauses."
+        ) {
+            showCompanion = true
+        } leading: {
+            CompanionFigureView(
+                type: companion.preferences.companionType,
+                state: companion.presentation.state,
+                animated: companion.preferences.animationsEnabled,
+                stretchUnlocked: companion.progress.isUnlocked(.stretching),
+                accessibilityName: companion.preferences.name
+            )
+            .frame(width: 30, height: 39)
+        }
+        .sheet(isPresented: $showCompanion) {
+            NavigationStack {
+                CompanionEntryView()
+                    .environmentObject(appVM)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showCompanion = false }
                         }
                     }
-                }
-                MivoHairline()
             }
-            .sheet(isPresented: $showCompanion) {
-                NavigationStack {
-                    CompanionEntryView()
-                        .environmentObject(appVM)
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Button("Done") { showCompanion = false }
-                            }
-                        }
-                }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
     }
 }

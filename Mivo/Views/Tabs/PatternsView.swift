@@ -28,68 +28,59 @@ struct PatternsView: View {
             MivoColors.background.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    MivoGreetingBar(name: firstName)
-                        .padding(.top, 6)
+                VStack(alignment: .leading, spacing: MivoMetrics.cardSpacing) {
+                    MivoScreenHeader(
+                        eyebrow: range == .week ? "Last 7 days" : "Last 30 days",
+                        title: "Patterns"
+                    )
+                    .padding(.top, 6)
 
                     rangeMetricSection(derived)
-                    MivoHairline()
-
                     windowsKeptSection(derived)
-                    MivoHairline()
-
                     noticedSection
-                    MivoHairline()
-
-                    weeklyReportsSection(derived.weeklyReportRows)
-
-                    // Moved here from Settings' "Mivo Tools" page: it is a
-                    // report, so it sits with the other reports.
-                    if expansion.isEnabled(.monthlyEffectReport) {
-                        MivoHairline()
-                        monthlyEffectSection
-                    }
+                    reportsSection(derived.weeklyReportRows)
                 }
-                .padding(.horizontal, MivoMetrics.screenPadding)
+                .padding(.horizontal, MivoMetrics.tabPadding)
                 .padding(.bottom, MivoMetrics.scrollBottomPadding)
             }
         }
         .navigationBarHidden(true)
     }
 
-    // MARK: - 2.1 Range metric + 2.2 bar chart
+    // MARK: - Range metric + bar chart
 
     private func rangeMetricSection(_ derived: Derived) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MivoEyebrow(text: "Intentional scrolling · \(range.label)")
+        MivoCard {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text("Intentional scrolling")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.inkBody)
 
-            HStack(alignment: .bottom) {
+                    Spacer(minLength: 8)
+
+                    MivoSegmentedChips(
+                        options: PatternsRange.allCases.map { ($0, $0.label) },
+                        selection: $range
+                    )
+                }
+
                 Text(formatDuration(derived.totalMinutes))
                     .font(.system(size: 46, weight: .bold))
                     .monospacedDigit()
                     .tracking(Font.mivoTracking(-0.04, at: 46))
                     .foregroundColor(MivoColors.ink)
+                    .padding(.top, 12)
 
-                Spacer(minLength: 12)
+                Text(rangeNote(derived))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .padding(.top, 8)
 
-                MivoSegmentedChips(
-                    options: PatternsRange.allCases.map { ($0, $0.label) },
-                    selection: $range
-                )
+                PatternsBarChart(points: derived.barPoints, range: range, height: derived.totalMinutes > 0 ? 132 : 28)
+                    .padding(.top, 22)
             }
-            .padding(.top, 8)
-
-            Text(rangeNote(derived))
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(MivoColors.inkBody)
-                .padding(.top, 12)
-
-            PatternsBarChart(points: derived.barPoints, range: range)
-                .padding(.top, 26)
         }
-        .padding(.top, 26)
-        .padding(.bottom, 26)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func rangeNote(_ derived: Derived) -> String {
@@ -103,104 +94,97 @@ struct PatternsView: View {
         return "\(direction) \(formatDuration(abs(delta))) from the \(range == .week ? "week" : "four weeks") before. \(keptClause)"
     }
 
-    // MARK: - 2.3 Windows kept
+    // MARK: - Windows kept
 
     private func windowsKeptSection(_ derived: Derived) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            MivoEyebrow(text: "Windows kept")
+        MivoCard {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Windows kept")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.inkBody)
+                    Spacer(minLength: 8)
+                    Text("\(derived.keptCount) of \(derived.totalWindowCount) windows")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.inkBody)
+                }
 
-            HStack(alignment: .lastTextBaseline, spacing: 10) {
                 Text("\(derived.keptPercent)%")
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.system(size: 32, weight: .bold))
+                    .monospacedDigit()
+                    .tracking(Font.mivoTracking(-0.03, at: 32))
                     .foregroundColor(MivoColors.ink)
-                Text("\(derived.keptCount) of \(derived.totalWindowCount) windows")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(MivoColors.inkBody)
-            }
+                    .padding(.top, 10)
 
-            MivoProgressTrack(fraction: derived.totalWindowCount > 0 ? Double(derived.keptCount) / Double(derived.totalWindowCount) : 0)
+                MivoProgressTrack(fraction: derived.totalWindowCount > 0 ? Double(derived.keptCount) / Double(derived.totalWindowCount) : 0)
+                    .padding(.top, 14)
+            }
         }
-        .padding(.vertical, 26)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - 2.4 What Mivo noticed
+    // MARK: - What Mivo noticed
 
     @ViewBuilder
     private var noticedSection: some View {
         let insights = appVM.personalizedPatternInsights(limit: 3)
         if !insights.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                MivoEyebrow(text: "What Mivo noticed")
-                    .padding(.bottom, 16)
+            MivoCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("What Mivo noticed")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.ink)
+                        .accessibilityAddTraits(.isHeader)
 
-                VStack(alignment: .leading, spacing: 18) {
-                    ForEach(Array(insights.enumerated()), id: \.element.id) { index, insight in
-                        PatternsNoticedRow(
-                            dotColor: noticedDotColors[index % noticedDotColors.count],
-                            text: boldingFigures(in: insight.detail)
-                        )
+                    VStack(alignment: .leading, spacing: 16) {
+                        ForEach(Array(insights.enumerated()), id: \.element.id) { index, insight in
+                            PatternsNoticedRow(
+                                dotColor: noticedDotColors[index % noticedDotColors.count],
+                                text: boldingFigures(in: insight.detail)
+                            )
+                        }
                     }
                 }
             }
-            .padding(.vertical, 26)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private var noticedDotColors: [Color] { [MivoColors.accent, MivoColors.info, MivoColors.kept] }
 
-    // MARK: - 2.5 Weekly reports
+    // MARK: - Reports
+    //
+    // The weekly reports and the monthly Mivo Effect are all reports, so they
+    // share one list instead of two sections with a heading each.
 
-    private func weeklyReportsSection(_ rows: [WeeklyReportRow]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MivoEyebrow(text: "Weekly reports")
-                .padding(.bottom, 4)
+    private func reportsSection(_ rows: [WeeklyReportRow]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            MivoSectionTitle(text: "Reports")
 
-            VStack(spacing: 0) {
+            MivoListGroup {
                 ForEach(Array(rows.enumerated()), id: \.element.weekOffset) { index, row in
+                    if index > 0 {
+                        MivoListDivider()
+                    }
                     NavigationLink {
                         WeeklyReportView(initialWeekOffset: row.weekOffset)
                     } label: {
-                        MivoSettingsRow(
-                            label: row.title,
-                            value: row.subtitle,
-                            valueColor: MivoColors.inkMuted
-                        )
+                        MivoListRow(icon: "calendar", title: row.title, subtitle: row.subtitle)
                     }
-                    .buttonStyle(.plain)
-                    if index < rows.count - 1 {
-                        MivoHairline(soft: true)
+                    .buttonStyle(MivoRowPressStyle())
+                }
+
+                if expansion.isEnabled(.monthlyEffectReport) {
+                    if !rows.isEmpty {
+                        MivoListDivider()
                     }
+                    NavigationLink {
+                        MonthlyEffectReportView().environmentObject(appVM)
+                    } label: {
+                        MivoListRow(icon: "sparkles", title: "Mivo Effect", subtitle: "Your monthly change")
+                    }
+                    .buttonStyle(MivoRowPressStyle())
                 }
             }
         }
-        .padding(.top, 26)
-        .padding(.bottom, 26)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: - 2.6 Monthly effect
-
-    private var monthlyEffectSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MivoEyebrow(text: "Monthly")
-                .padding(.bottom, 4)
-
-            NavigationLink {
-                MonthlyEffectReportView().environmentObject(appVM)
-            } label: {
-                MivoSettingsRow(
-                    label: "Mivo Effect",
-                    value: "Your monthly change",
-                    valueColor: MivoColors.inkMuted
-                )
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.top, 26)
-        .padding(.bottom, 26)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Derivation

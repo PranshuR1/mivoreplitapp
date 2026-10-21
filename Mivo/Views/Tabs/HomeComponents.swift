@@ -20,9 +20,9 @@ struct HomeScreenTimeComparison {
 struct HomeSparkline: View {
     let values: [Int]
 
+    var height: CGFloat = 52
     private let barWidth: CGFloat = 7
     private let spacing: CGFloat = 4
-    private let height: CGFloat = 52
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -107,7 +107,7 @@ struct HomePlanTimeline<Window: Identifiable>: View {
                     .foregroundColor(MivoColors.ink)
                 Text(meta(window))
                     .font(.system(size: 12.5, weight: .medium))
-                    .foregroundColor(MivoColors.inkMuted)
+                    .foregroundColor(MivoColors.inkBody)
             }
 
             Spacer(minLength: 8)
@@ -136,7 +136,7 @@ struct HomePlanTimeline<Window: Identifiable>: View {
                 }
                 // Masks the rail behind the dot.
                 .overlay {
-                    Circle().strokeBorder(MivoColors.background, lineWidth: 3)
+                    Circle().strokeBorder(MivoColors.surfaceRaised, lineWidth: 3)
                 }
         }
     }
@@ -145,7 +145,7 @@ struct HomePlanTimeline<Window: Identifiable>: View {
         switch state {
         case .done: return MivoColors.kept
         case .next: return MivoColors.accent
-        case .later: return MivoColors.background
+        case .later: return MivoColors.surfaceRaised
         }
     }
 
@@ -154,14 +154,14 @@ struct HomePlanTimeline<Window: Identifiable>: View {
         if let trailing, case let text = trailing(index, window), !text.isEmpty {
             Text(text)
                 .font(.system(size: 12, weight: .bold))
-                .foregroundColor(MivoColors.kept)
+                .foregroundColor(MivoColors.keptInk)
                 .fixedSize()
         } else {
             switch state {
             case .done:
                 Text("Kept")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(MivoColors.kept)
+                    .foregroundColor(MivoColors.keptInk)
                     .fixedSize()
             case .next:
                 Text("NEXT")
@@ -172,7 +172,7 @@ struct HomePlanTimeline<Window: Identifiable>: View {
             case .later:
                 Text("Later")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(MivoColors.inkMuted)
+                    .foregroundColor(MivoColors.inkBody)
                     .fixedSize()
             }
         }

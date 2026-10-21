@@ -251,6 +251,31 @@ final class CompanionStateManagerTests: XCTestCase {
         XCTAssertEqual(h.manager.runtime.messagesToday, 1)
     }
 
+    func testNothingStandingOutStillGivesHomeAHelloThatIsNeverSpoken() {
+        let h = harness(preferences: activePrefs())
+        XCTAssertEqual(h.manager.presentation.behavior, .normalUse)
+        XCTAssertEqual(h.manager.presentation.state, .idle)
+        XCTAssertNil(h.manager.presentation.topic)
+        XCTAssertNotNil(h.manager.presentation.message, "Home and the widget aren't blank")
+        XCTAssertNil(h.manager.claimSpeech(), "a passive hello isn't speech")
+        XCTAssertEqual(h.manager.runtime.messagesToday, 0)
+
+        let quiet = harness(preferences: activePrefs { $0.personality = .quiet })
+        XCTAssertNil(quiet.manager.presentation.message)
+    }
+
+    func testAPauseScreenGetsALineEvenRightAfterAnother() {
+        let h = harness(preferences: activePrefs())
+        h.manager.interventionBegan()
+        XCTAssertNotNil(h.manager.claimSpeech())
+        h.manager.interventionEnded(continued: true)
+
+        h.advance(2 * 60)
+        h.manager.interventionBegan()
+        XCTAssertNotNil(h.manager.claimSpeech(), "the second pause two minutes later still speaks")
+        XCTAssertEqual(h.manager.runtime.messagesToday, 2)
+    }
+
     func testQuietPersonalityShowsTheCharacterWithoutWords() {
         let h = harness(preferences: activePrefs { $0.personality = .quiet })
         h.manager.interventionBegan()

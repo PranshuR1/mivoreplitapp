@@ -173,6 +173,7 @@ struct MainTabView: View {
             selectedTab = 3
             requestedAdminUser = AdminUserRoute(id: userID)
         }
+        .spotsPresentation()
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: tutorialStep)
         .animation(.easeInOut(duration: 0.22), value: shouldShowTutorial)
     }

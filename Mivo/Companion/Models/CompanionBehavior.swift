@@ -57,6 +57,9 @@ enum CompanionMessageTopic: String, CaseIterable {
     case focusDone
     case focusInvitation
     case bedtime
+    /// A passive hello for Home, the widget and the Companion screen. Never
+    /// spoken on a pause screen.
+    case ambient
 }
 
 /// The engine's full answer for one moment.

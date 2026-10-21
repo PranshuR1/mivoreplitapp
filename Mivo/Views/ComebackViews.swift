@@ -176,6 +176,13 @@ struct ComebackFlowView: View {
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 16)
+
+                Text("This clears your current scrolling plan and its windows. Right after, you'll choose today's windows again. Your sessions, reports and protected apps stay.")
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundColor(MivoColors.ink)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
             }
         }
     }
@@ -503,21 +510,17 @@ struct ComebackHomeSection: View {
 
     var body: some View {
         if let week = appVM.comebackWeek() {
-            VStack(alignment: .leading, spacing: 0) {
+            MivoCard {
                 activeCard(week)
-                MivoHairline()
             }
         } else if appVM.comebackRestartOfferLapseDays != nil {
-            VStack(alignment: .leading, spacing: 0) {
-                restartRow
-                MivoHairline()
-            }
+            restartRow
         }
     }
 
     private func activeCard(_ week: ComebackWeekSummary) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            MivoEyebrow(text: "Fresh start · Day \(week.dayIndex) of \(MivoComeback.cardDays)")
+            MivoEyebrow(text: "Fresh start · Day \(week.dayIndex) of \(MivoComeback.cardDays)", color: MivoColors.inkBody)
 
             Text("Today's target: \(week.todayTarget) min")
                 .font(.system(size: 20, weight: .bold))
@@ -548,34 +551,46 @@ struct ComebackHomeSection: View {
                     .padding(.top, 6)
             }
 
-            Button {
-                appVM.presentComebackFlow()
-            } label: {
-                Text("Change pace")
-                    .font(.system(size: 13.5, weight: .bold))
-                    .foregroundColor(MivoColors.inkMuted)
-                    .frame(minHeight: 44, alignment: .leading)
+            // No "change pace" here: a fresh start can't be redone for 30 days,
+            // so the card says when it can instead of offering a dead control.
+            if let availableAgain = appVM.comebackAvailableAgainText {
+                Text("You can start fresh again from \(availableAgain).")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .padding(.top, 10)
             }
-            .buttonStyle(MivoPressStyle())
-            .padding(.top, 4)
         }
-        .padding(.vertical, 22)
     }
 
     private var restartRow: some View {
-        MivoNavigationRow {
+        Button {
             HapticsService.selection()
             appVM.presentComebackFlow()
-        } content: {
-            MivoEyebrow(text: "Fresh start")
-            Text("Ready to restart?")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundColor(MivoColors.ink)
-            Text("Set a plan from where you are today, not where you left off.")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(MivoColors.inkBody)
-                .fixedSize(horizontal: false, vertical: true)
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    MivoEyebrow(text: "Fresh start", color: MivoColors.inkBody)
+                    Text("Ready to restart?")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(MivoColors.ink)
+                    Text("Set a plan from where you are today, not where you left off.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(MivoColors.inkBody)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .accessibilityHidden(true)
+            }
+            .padding(MivoMetrics.cardPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .mivoCardBackground()
+            .contentShape(Rectangle())
         }
+        .buttonStyle(MivoPressStyle())
     }
 
     @ViewBuilder

@@ -234,6 +234,14 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
             completionHandler([])
             return
         }
+        if (notification.request.content.userInfo["mivoRoute"] as? String) == SpotKeys.notificationRoute {
+            // A Mivo Spot finished, or a Spot's shield asked to open Mivo — and Mivo
+            // is already open, so there is nothing to banner; just act on it.
+            center.removeDeliveredNotifications(withIdentifiers: [notification.request.identifier])
+            NotificationCenter.default.post(name: Notification.Name(SpotKeys.routeChangedNotification), object: nil)
+            completionHandler([])
+            return
+        }
         if (notification.request.content.userInfo["mivoRoute"] as? String) == "mivoClear" {
             persistMivoClearRoute(from: notification.request.content.userInfo)
             center.removeDeliveredNotifications(withIdentifiers: [notification.request.identifier])
@@ -260,6 +268,13 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
+
+        if (userInfo["mivoRoute"] as? String) == SpotKeys.notificationRoute {
+            center.removeDeliveredNotifications(withIdentifiers: [response.notification.request.identifier])
+            NotificationCenter.default.post(name: Notification.Name(SpotKeys.routeChangedNotification), object: nil)
+            completionHandler()
+            return
+        }
 
         if (userInfo["mivoRoute"] as? String) == "mivoClear" {
             persistMivoClearRoute(from: userInfo)
@@ -481,6 +496,14 @@ struct MivoApp: App {
                         appVM.handleDeepLink(url)
                     }
                 }
+                // Background tag reading hands a tapped Mivo Spot to the app as a
+                // universal-link user activity. `onOpenURL` normally sees it too;
+                // this makes sure it is never missed. A repeat delivery is ignored
+                // by `SpotManager`, so it can't turn a Spot straight back off.
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    guard let url = activity.webpageURL, SpotLink.target(from: url) != nil else { return }
+                    appVM.handleDeepLink(url)
+                }
         }
     }
 }
@@ -536,6 +559,8 @@ struct RootView: View {
                 ComebackFlowView(prompt: ComebackPreviewFixtures.prompt)
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewComebackHome") {
                 ComebackHomePreview()
+            } else if let spotScreen = SpotPreviewHost.screen(from: ProcessInfo.processInfo.arguments) {
+                SpotPreviewHost(screen: spotScreen)
             } else if let companionMode = UserDefaults.standard.string(forKey: "MivoPreviewCompanion") {
                 CompanionPreviewHost(mode: companionMode)
             } else {

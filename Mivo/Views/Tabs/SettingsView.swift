@@ -298,75 +298,47 @@ struct SettingsView: View {
     // MARK: - Helpers
 
     private var settingsStatusStrip: some View {
-        HStack(spacing: 8) {
-            settingsStatusCell(
-                title: "Screen Time",
-                value: cachedScreenTimeAuthorization == true ? "Ready" : "Needs access",
-                icon: cachedScreenTimeAuthorization == true ? "checkmark.shield.fill" : "exclamationmark.shield.fill",
-                color: cachedScreenTimeAuthorization == true ? MivoColors.blue : MivoColors.orange
-            )
-            Divider().overlay(MivoColors.border.opacity(0.4)).padding(.vertical, 10)
-            settingsStatusCell(
-                title: "Protection",
-                value: impulseProtectionEnabled ? "On" : "Off",
-                icon: "lock.shield.fill",
-                color: impulseProtectionEnabled ? MivoColors.accent : MivoColors.textMuted
-            )
-            Divider().overlay(MivoColors.border.opacity(0.4)).padding(.vertical, 10)
-            settingsStatusCell(
-                title: "Today",
-                value: appVM.isTodayScrollScheduleLocked ? "Locked" : "Not locked",
-                icon: "calendar.badge.clock",
-                color: appVM.isTodayScrollScheduleLocked ? MivoColors.green : MivoColors.textMuted
-            )
+        MivoCard(padding: 0) {
+            HStack(spacing: 0) {
+                settingsStatusCell(
+                    title: "Screen Time",
+                    value: cachedScreenTimeAuthorization == true ? "Ready" : "Needs access",
+                    icon: cachedScreenTimeAuthorization == true ? "checkmark.shield.fill" : "exclamationmark.shield.fill"
+                )
+                Rectangle().fill(MivoColors.hairline).frame(width: 1, height: 44)
+                settingsStatusCell(
+                    title: "Protection",
+                    value: impulseProtectionEnabled ? "On" : "Off",
+                    icon: "lock.shield.fill"
+                )
+                Rectangle().fill(MivoColors.hairline).frame(width: 1, height: 44)
+                settingsStatusCell(
+                    title: "Today",
+                    value: appVM.isTodayScrollScheduleLocked ? "Locked" : "Not locked",
+                    icon: "calendar.badge.clock"
+                )
+            }
         }
-        .mivoC3Section(verticalPadding: 8)
     }
 
-    private func settingsStatusCell(title: String, value: String, icon: String, color: Color) -> some View {
+    private func settingsStatusCell(title: String, value: String, icon: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(color)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(MivoColors.deep)
             Text(value)
                 .font(.system(size: 13, weight: .bold))
-                .foregroundColor(MivoColors.textPrimary)
+                .foregroundColor(MivoColors.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
             Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(MivoColors.textMuted)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(MivoColors.inkBody)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-        .padding(12)
-    }
-
-    private func settingsCategoryRow(
-        icon: String,
-        color: Color,
-        title: String,
-        subtitle: String,
-        destination: @escaping () -> AnyView
-    ) -> some View {
-        NavigationLink {
-            destination()
-        } label: {
-            HStack(spacing: 13) {
-                Image(systemName: icon)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(color)
-                    .frame(width: 40, height: 40)
-                    .background(color.opacity(0.11))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                rowText(title: title, subtitle: subtitle)
-                Spacer(minLength: 8)
-                chevron
-            }
-            .padding(.vertical, 13)
-            .padding(.horizontal, 2)
-        }
-        .buttonStyle(SettingsRowButtonStyle())
+        .padding(14)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Pages
@@ -384,92 +356,93 @@ struct SettingsView: View {
         }
     }
 
-    /// The Settings tab: account, preferences, privacy, connections, help.
+    /// The Settings tab: account, preferences, privacy, devices and help.
     /// Anything that configures protection or the daily plan lives on Protect
     /// and Home now, next to the thing it changes.
     private var rootPage: some View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 22) {
-                    settingsHeader
+                VStack(alignment: .leading, spacing: MivoMetrics.cardSpacing) {
+                    MivoScreenHeader(eyebrow: "Account & preferences", title: "Settings")
+                        .padding(.top, 6)
 
+                    // Also the way into data export, diagnostics, sign out and
+                    // reset, so there is no second "Account" section for it.
                     NavigationLink {
                         SettingsView(page: .accountAdvanced)
                     } label: {
                         accountSummaryRow
                     }
-                    .buttonStyle(SettingsRowButtonStyle())
+                    .buttonStyle(MivoPressStyle())
 
                     settingsSection("Preferences") {
                         appearancePreferenceRow
                         rowSeparator()
-                        settingsCategoryRow(
-                            icon: "bell.fill",
-                            color: MivoColors.accent,
+                        settingsNavigationRow(
+                            icon: "bell",
                             title: "Notifications",
-                            subtitle: "Daily reminders and alerts",
-                            destination: { AnyView(SettingsView(page: .notifications)) }
-                        )
+                            subtitle: "Daily reminders"
+                        ) {
+                            SettingsView(page: .notifications)
+                        }
                         rowSeparator()
-                        settingsCategoryRow(
-                            icon: "pawprint.fill",
-                            color: MivoColors.accent,
+                        settingsNavigationRow(
+                            icon: "pawprint",
                             title: "Companion",
-                            subtitle: "A small character that keeps you company in pauses",
-                            destination: { AnyView(CompanionEntryView()) }
-                        )
+                            subtitle: "A small character in your pauses"
+                        ) {
+                            CompanionEntryView()
+                        }
                     }
 
                     settingsSection("Privacy & sharing") {
-                        settingsCategoryRow(
-                            icon: "hand.raised.square.fill",
-                            color: MivoColors.blue,
+                        settingsNavigationRow(
+                            icon: "hand.raised",
                             title: "Privacy Center",
-                            subtitle: "Permissions, synced data, export, and deletion",
-                            destination: { AnyView(MivoPrivacyCenterView().environmentObject(appVM)) }
-                        )
+                            subtitle: "Permissions, data, export, deletion"
+                        ) {
+                            MivoPrivacyCenterView().environmentObject(appVM)
+                        }
                         if expansion.isEnabled(.accountabilityPartners) {
                             rowSeparator()
-                            settingsCategoryRow(
-                                icon: "person.2.fill",
-                                color: MivoColors.orange,
+                            settingsNavigationRow(
+                                icon: "person.2",
                                 title: "Accountability partner",
-                                subtitle: "Share a private weekly summary",
-                                destination: { AnyView(AccountabilityPartnersView().environmentObject(appVM)) }
-                            )
+                                subtitle: "Share a private weekly summary"
+                            ) {
+                                AccountabilityPartnersView().environmentObject(appVM)
+                            }
                         }
                         rowSeparator()
-                        settingsCategoryRow(
-                            icon: "person.2.wave.2.fill",
-                            color: MivoColors.orange,
+                        settingsNavigationRow(
+                            icon: "text.bubble",
                             title: "Accountability summary",
-                            subtitle: "Create a private weekly share text",
-                            destination: { AnyView(SettingsView(page: .accountability)) }
-                        )
+                            subtitle: "A private weekly share text"
+                        ) {
+                            SettingsView(page: .accountability)
+                        }
                     }
 
-                    settingsSection("Connected") {
-                        settingsCategoryRow(
+                    settingsSection("Devices & help") {
+                        settingsNavigationRow(
                             icon: "laptopcomputer",
-                            color: MivoColors.accent,
                             title: "Mivo for Mac",
-                            subtitle: "Connect your Mac with this account",
-                            destination: { AnyView(MacPairingSettingsView()) }
-                        )
-                    }
-
-                    settingsSection("Help") {
+                            subtitle: "Connect this account to your Mac"
+                        ) {
+                            MacPairingSettingsView()
+                        }
+                        rowSeparator()
                         settingsActionRow(
-                            icon: "play.rectangle.fill",
+                            icon: "play.circle",
                             title: "Replay app tour",
-                            subtitle: "Practice Mivo’s newest tools again"
+                            subtitle: "Practice the newest tools again"
                         ) {
                             appVM.restartTutorial()
                         }
                         rowSeparator()
                         settingsNavigationRow(
-                            icon: "bubble.left.fill",
+                            icon: "bubble.left",
                             title: "Send feedback",
                             subtitle: "Report a bug or request a feature"
                         ) {
@@ -477,26 +450,16 @@ struct SettingsView: View {
                         }
                     }
 
-                    settingsSection("Account") {
-                        settingsCategoryRow(
-                            icon: "arrow.down.to.line",
-                            color: MivoColors.accent,
-                            title: "Data & advanced",
-                            subtitle: "Export, diagnostics, sign out, and reset",
-                            destination: { AnyView(SettingsView(page: .accountAdvanced)) }
-                        )
-                    }
-
                     adminSections
 
                     Text("Mivo \(appVersionText) · Data stays on your device")
-                        .font(.system(size: 12))
-                        .foregroundColor(MivoColors.textMuted)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(MivoColors.inkBody)
                         .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.bottom, 100)
+                        .padding(.top, 4)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
+                .padding(.horizontal, MivoMetrics.tabPadding)
+                .padding(.bottom, MivoMetrics.scrollBottomPadding)
                 .mivoReadableWidth()
             }
         }
@@ -582,12 +545,15 @@ struct SettingsView: View {
                 settingsActionRow(
                     icon: "arrow.counterclockwise.circle.fill",
                     title: "Start fresh",
-                    subtitle: appVM.comebackAnchor == nil
-                        ? "Restart your plan from where you are today"
-                        : "Change your fresh-start pace"
+                    // A fresh start can't be redone for 30 days; say when instead
+                    // of hiding the row.
+                    subtitle: appVM.comebackAvailableAgainText.map { "Available again from \($0)" }
+                        ?? "Clear your plan and restart from today"
                 ) {
                     appVM.presentComebackFlow()
                 }
+                .disabled(appVM.isComebackCoolingDown)
+                .opacity(appVM.isComebackCoolingDown ? 0.5 : 1)
             }
         }
     }
@@ -617,35 +583,32 @@ struct SettingsView: View {
     }
 
     private var appearancePreferenceRow: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack(spacing: 13) {
-                Image(systemName: "circle.lefthalf.filled")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(MivoColors.blue)
-                    .frame(width: 40, height: 40)
-                    .background(MivoColors.blue.opacity(0.11))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+        HStack(spacing: 12) {
+            settingsIcon("circle.lefthalf.filled")
 
-                rowText(title: "Appearance", subtitle: "System follows your iPhone automatically")
-            }
+            Text("Appearance")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(MivoColors.ink)
 
-            Picker("Appearance", selection: Binding(
-                get: { appVM.appearanceMode },
-                set: { mode in
-                    appVM.setAppearanceMode(mode)
-                    HapticsService.selection()
-                }
-            )) {
-                ForEach(AppAppearanceMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .tint(MivoColors.accent)
-            .accessibilityHint("Choose whether Mivo follows the iPhone appearance or always uses light or dark mode")
+            Spacer(minLength: 8)
+
+            MivoSegmentedChips(
+                options: [
+                    (value: AppAppearanceMode.system, label: "Auto"),
+                    (value: AppAppearanceMode.light, label: "Light"),
+                    (value: AppAppearanceMode.dark, label: "Dark")
+                ],
+                selection: Binding(
+                    get: { appVM.appearanceMode },
+                    set: { appVM.setAppearanceMode($0) }
+                ),
+                horizontalPadding: 9,
+                accessibilityLabels: [.system: "System"]
+            )
         }
-        .padding(.vertical, 13)
-        .padding(.horizontal, 2)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .accessibilityHint("Choose whether Mivo follows the iPhone appearance or always uses light or dark mode")
     }
 
     /// Protect tab's "Apps & Screen Time" page.
@@ -723,14 +686,15 @@ struct SettingsView: View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: MivoMetrics.cardSpacing) {
                     Text(subtitle)
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(MivoColors.textSecondary)
+                        .foregroundColor(MivoColors.inkBody)
                         .lineSpacing(3)
+                        .padding(.horizontal, 4)
                     content()
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, MivoMetrics.tabPadding)
                 .padding(.top, 12)
                 .padding(.bottom, MivoMetrics.scrollBottomPadding)
             }
@@ -740,64 +704,50 @@ struct SettingsView: View {
         .onAppear { refreshSettingsSnapshot() }
     }
 
-    private var settingsHeader: some View {
-        HStack(alignment: .top, spacing: 12) {
-            MivoLogo(size: 38)
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Settings")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundColor(MivoColors.textPrimary)
-                Text("Your account, preferences, and privacy.")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(MivoColors.textSecondary)
-            }
-            Spacer()
-        }
-        .padding(.top, 4)
-        .padding(.bottom, 4)
-    }
-
     private var accountSummaryRow: some View {
-        HStack(spacing: 13) {
-            ZStack {
-                Circle()
-                    .fill(MivoColors.accent)
-                    .frame(width: 44, height: 44)
-                Text(String(appVM.user?.name.prefix(1).uppercased() ?? "?"))
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(MivoColors.heroText)
-            }
+        HStack(spacing: 14) {
+            Text(String(appVM.user?.name.prefix(1).uppercased() ?? "?"))
+                .font(.system(size: 19, weight: .bold))
+                .foregroundColor(MivoColors.heroText)
+                .frame(width: 46, height: 46)
+                .background(MivoColors.accent)
+                .clipShape(Circle())
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(appVM.user?.name ?? "Anonymous")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(MivoColors.textPrimary)
-                HStack(spacing: 6) {
-                    Text(maskedAccountEmail)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(MivoColors.textSecondary)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(appVM.user?.name ?? "Anonymous")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(MivoColors.ink)
                         .lineLimit(1)
                     if appVM.accountRole != "user" {
-                        Text(roleBadgeText)
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundColor(MivoColors.heroText)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(MivoColors.accent)
-                            .clipShape(Capsule())
+                        MivoBadge(
+                            text: roleBadgeText,
+                            background: MivoColors.info.opacity(0.13),
+                            foreground: Color(hex: "#3C5C8A")
+                        )
                     }
                 }
+                Text(maskedAccountEmail)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
+
             Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(MivoColors.textMuted)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(MivoColors.inkMuted)
+                .accessibilityHidden(true)
         }
+        .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .mivoCardBackground()
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Account, data and sign out")
     }
 
     private var maskedAccountEmail: String {
@@ -1359,18 +1309,14 @@ struct SettingsView: View {
         .padding(15)
     }
 
+    /// A titled group: a section title over one card of rows. Sub-pages build
+    /// on this, so a change here restyles every Settings page at once.
     @ViewBuilder
     private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(MivoColors.textMuted)
-                .textCase(.uppercase)
-                .padding(.horizontal, 2)
+            MivoSectionTitle(text: title)
             settingsCard {
-                VStack(spacing: 0) {
-                    content()
-                }
+                content()
             }
         }
     }
@@ -1380,16 +1326,18 @@ struct SettingsView: View {
             HStack(spacing: 12) {
                 settingsIcon(icon, color: destructive ? .red : MivoColors.textSecondary)
                 rowText(title: title, subtitle: subtitle, destructive: destructive)
-                Spacer()
+                Spacer(minLength: 8)
                 if destructive {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.red)
+                        .foregroundColor(MivoColors.timerRed)
                 } else {
                     chevron
                 }
             }
-            .padding(15)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(minHeight: 58)
         }
         .buttonStyle(SettingsRowButtonStyle())
     }
@@ -1401,10 +1349,12 @@ struct SettingsView: View {
             HStack(spacing: 12) {
                 settingsIcon(icon, color: MivoColors.textSecondary)
                 rowText(title: title, subtitle: subtitle)
-                Spacer()
+                Spacer(minLength: 8)
                 chevron
             }
-            .padding(15)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(minHeight: 58)
         }
         .buttonStyle(SettingsRowButtonStyle())
     }
@@ -1413,18 +1363,21 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(destructive ? .red : MivoColors.textPrimary)
+                .foregroundColor(destructive ? MivoColors.timerRed : MivoColors.ink)
+                .multilineTextAlignment(.leading)
             Text(subtitle)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(MivoColors.textMuted)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(MivoColors.inkBody)
+                .multilineTextAlignment(.leading)
                 .lineLimit(2)
         }
     }
 
     private var chevron: some View {
         Image(systemName: "chevron.right")
-            .font(.system(size: 13, weight: .bold))
-            .foregroundColor(MivoColors.textMuted)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(MivoColors.inkMuted)
+            .accessibilityHidden(true)
     }
 
     private var screenTimeStatusText: String {
@@ -1711,13 +1664,17 @@ struct SettingsView: View {
         }
     }
 
-    private func settingsIcon(_ icon: String, color: Color) -> some View {
-        Image(systemName: icon)
-            .font(.system(size: 15, weight: .bold))
-            .foregroundColor(color)
+    /// Every icon shares one tone so a page is never a rainbow. The `color`
+    /// argument survives only so a destructive row (`.red`) keeps its warning.
+    private func settingsIcon(_ icon: String, color: Color = MivoColors.deep) -> some View {
+        let destructive = color == .red
+        return Image(systemName: icon)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundColor(destructive ? MivoColors.timerRed : MivoColors.deep)
             .frame(width: 34, height: 34)
-            .background(color.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(destructive ? MivoColors.timerRed.opacity(0.12) : MivoColors.surfaceV2)
+            .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.tileRadius, style: .continuous))
+            .accessibilityHidden(true)
     }
 
     private var totalTimeLabel: String {
@@ -1893,12 +1850,8 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             content()
         }
-        .overlay(alignment: .top) {
-            Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
-        }
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(MivoColors.border.opacity(0.30)).frame(height: 1)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .mivoCardBackground()
     }
 
     private func statCell(value: String, label: String) -> some View {
@@ -1914,9 +1867,7 @@ struct SettingsView: View {
     }
 
     private func rowSeparator() -> some View {
-        Divider()
-            .background(MivoColors.border)
-            .padding(.horizontal, 2)
+        MivoListDivider(inset: 16)
     }
 
     private func settingsRow(icon: String, label: String, destructive: Bool = false, action: @escaping () -> Void) -> some View {

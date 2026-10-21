@@ -51,6 +51,9 @@ enum StorageKey: String {
     case comebackAnchor = "mivo_comeback_anchor"
     case comebackLapse = "mivo_comeback_lapse"
     case lastActiveDay = "mivo_last_active_day"
+    case mivoSpots = "mivo_spots"
+    case mivoSpotSessions = "mivo_spot_sessions"
+    case mivoSpotActiveSession = "mivo_spot_active_session"
     // AI dataset storage - aggregated inputs for the AI engine
     case aiDataset = "mivo_ai_dataset"
 }

@@ -99,6 +99,24 @@ final class MivoComebackTests: XCTestCase {
         XCTAssertEqual(MivoComeback.target(anchor: running, dayIndex: 100, floor: 30), 30)
     }
 
+    func testFreshStartBlocksAnotherForThirtyDays() {
+        XCTAssertFalse(MivoComeback.isCoolingDown(anchor: nil, today: today))
+        XCTAssertTrue(MivoComeback.isCoolingDown(anchor: anchor(startOffset: 0, startMinutes: 90, step: 3), today: today))
+        XCTAssertTrue(MivoComeback.isCoolingDown(anchor: anchor(startOffset: -29, startMinutes: 90, step: 3), today: today))
+        XCTAssertFalse(MivoComeback.isCoolingDown(anchor: anchor(startOffset: -30, startMinutes: 90, step: 3), today: today),
+                       "day 30 after the start is the first day it is allowed again")
+        XCTAssertFalse(MivoComeback.isCoolingDown(anchor: anchor(startOffset: -200, startMinutes: 90, step: 3), today: today))
+    }
+
+    func testCooldownNamesTheFirstAllowedDay() {
+        let started = anchor(startOffset: -5, startMinutes: 90, step: 3)
+        XCTAssertEqual(MivoComeback.availableAgainDay(anchor: started), MivoDay.key(offsetFromToday: 25))
+    }
+
+    func testFutureDatedAnchorDoesNotLockTheFeature() {
+        XCTAssertFalse(MivoComeback.isCoolingDown(anchor: anchor(startOffset: 3, startMinutes: 90, step: 3), today: today))
+    }
+
     func testAnchorStartingInTheFutureIsIgnored() {
         XCTAssertNil(MivoComeback.dayIndex(anchor: anchor(startOffset: 2, startMinutes: 90, step: 3), today: today))
     }

@@ -44,8 +44,9 @@ final class CompanionBehaviorTests: XCTestCase {
         XCTAssertEqual(defaults.companionType, .meerkat)
         XCTAssertEqual(defaults.name, "Milo")
         XCTAssertEqual(CompanionType.available, [.meerkat])
-        XCTAssertFalse(defaults.isEnabled, "Companion is opt-in")
-        XCTAssertFalse(defaults.isActive)
+        XCTAssertTrue(defaults.isEnabled, "Companion is on by default")
+        XCTAssertFalse(defaults.isActive, "but stays inactive until the privacy introduction is finished")
+        XCTAssertTrue(defaults.isAwaitingIntroduction)
     }
 
     func testActiveNeedsBothTheSwitchAndFinishedOnboarding() {
@@ -140,8 +141,11 @@ final class CompanionBehaviorTests: XCTestCase {
         XCTAssertEqual(result.topic, .repeatedPauses)
         XCTAssertEqual(result.recommendation, .startFocus)
 
+        let one = engine.evaluate(signals: signals(date(14)) { $0.interventionsLastHour = 1 }, preferences: prefs())
+        XCTAssertEqual(one.behavior, .normalUse)
+
         let two = engine.evaluate(signals: signals(date(14)) { $0.interventionsLastHour = 2 }, preferences: prefs())
-        XCTAssertEqual(two.behavior, .normalUse)
+        XCTAssertEqual(two.behavior, .repeatedIntervention)
     }
 
     func testContinuingAfterAPauseIsNoticedOnlyWhenUsageActuallyGrew() {
@@ -222,8 +226,8 @@ final class CompanionBehaviorTests: XCTestCase {
                 $0.typicalDaysCount = days
             }, preferences: prefs()).behavior
         }
-        XCTAssertEqual(evaluate(days: 5), .extendedUse)
-        XCTAssertEqual(evaluate(days: 4), .normalUse, "not enough history to call anything unusual")
+        XCTAssertEqual(evaluate(days: 3), .extendedUse)
+        XCTAssertEqual(evaluate(days: 2), .normalUse, "not enough history to call anything unusual")
     }
 
     // MARK: - Late night and bedtime
@@ -377,14 +381,35 @@ final class CompanionBehaviorTests: XCTestCase {
         XCTAssertTrue(CompanionSpeechPolicy.canSpeak(runtime: runtime, frequency: .balanced, now: now, calendar: cal))
 
         CompanionSpeechPolicy.recordSpoken(runtime: &runtime, now: now, calendar: cal)
-        XCTAssertFalse(CompanionSpeechPolicy.canSpeak(runtime: runtime, frequency: .balanced, now: now.addingTimeInterval(19 * 60), calendar: cal))
-        XCTAssertTrue(CompanionSpeechPolicy.canSpeak(runtime: runtime, frequency: .balanced, now: now.addingTimeInterval(21 * 60), calendar: cal))
-        XCTAssertFalse(CompanionSpeechPolicy.canSpeak(runtime: runtime, frequency: .minimal, now: now.addingTimeInterval(21 * 60), calendar: cal))
+        XCTAssertFalse(CompanionSpeechPolicy.canSpeak(runtime: runtime, frequency: .balanced, now: now.addingTimeInterval(7 * 60), calendar: cal))
+        XCTAssertTrue(CompanionSpeechPolicy.canSpeak(runtime: runtime, frequency: .balanced, now: now.addingTimeInterval(9 * 60), calendar: cal))
+        XCTAssertFalse(CompanionSpeechPolicy.canSpeak(runtime: runtime, frequency: .minimal, now: now.addingTimeInterval(19 * 60), calendar: cal))
 
         runtime.messagesToday = CompanionInterventionFrequency.balanced.dailyMessageCap
         runtime.messageCountDayKey = CompanionDay.key(now, calendar: cal)
         XCTAssertFalse(CompanionSpeechPolicy.canSpeak(runtime: runtime, frequency: .balanced, now: now.addingTimeInterval(4 * 3600), calendar: cal))
         XCTAssertTrue(CompanionSpeechPolicy.canSpeak(runtime: runtime, frequency: .balanced, now: date(9, day: 20), calendar: cal), "a new day resets the cap")
+    }
+
+    func testAPauseScreenIgnoresTheGapButNotTheDailyCap() {
+        let cal = calendar()
+        let now = date(14)
+        var runtime = CompanionRuntime()
+        CompanionSpeechPolicy.recordSpoken(runtime: &runtime, now: now, calendar: cal)
+
+        func canSpeak(after seconds: TimeInterval, duringPause: Bool) -> Bool {
+            CompanionSpeechPolicy.canSpeak(
+                runtime: runtime, frequency: .balanced, now: now.addingTimeInterval(seconds),
+                calendar: cal, duringPause: duringPause
+            )
+        }
+        XCTAssertFalse(canSpeak(after: 120, duringPause: false))
+        XCTAssertFalse(canSpeak(after: 10, duringPause: true), "one screen is never claimed twice")
+        XCTAssertTrue(canSpeak(after: 120, duringPause: true))
+
+        runtime.messagesToday = CompanionInterventionFrequency.balanced.dailyMessageCap
+        runtime.messageCountDayKey = CompanionDay.key(now, calendar: cal)
+        XCTAssertFalse(canSpeak(after: 3600, duringPause: true))
     }
 
     func testAClockMovedBackwardsIsTreatedAsRecentNotFree() {

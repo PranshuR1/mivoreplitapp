@@ -5,27 +5,36 @@ struct InterventionsView: View {
     var onSessionFinished: (() -> Void)? = nil
 
     @ObservedObject private var expansion = ProductExpansionStore.shared
+    @ObservedObject private var spots = SpotManager.shared
     @State private var showFlow = false
+    @State private var showActiveSpot = false
 
     var body: some View {
         let attempts = weekAttempts
         let sessions = weekSessions
+        let protectionOn = FamilyControlsManager.shared.isImpulseProtectionEnabled()
 
         return ZStack {
             MivoColors.background.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    introBlock
-                    weekStatRow(attempts: attempts, sessions: sessions)
-                    MivoHairline()
+                VStack(alignment: .leading, spacing: MivoMetrics.cardSpacing) {
+                    MivoScreenHeader(
+                        eyebrow: protectionOn ? "Protection on" : "Protection off",
+                        title: "Protect",
+                        eyebrowColor: protectionOn ? MivoColors.keptInk : MivoColors.inkBody,
+                        showsStatusDot: true
+                    )
+                    .padding(.top, 6)
 
+                    SpotActiveBanner { showActiveSpot = true }
+
+                    heroCard
+                    weekStatsCard(attempts: attempts, sessions: sessions)
                     todaysSessionsSection
-                    MivoHairline()
-
                     protectionSetupSection
                 }
-                .padding(.horizontal, MivoMetrics.screenPadding)
+                .padding(.horizontal, MivoMetrics.tabPadding)
                 .padding(.bottom, MivoMetrics.scrollBottomPadding)
             }
         }
@@ -34,6 +43,9 @@ struct InterventionsView: View {
             InterventionFlowView { onSessionFinished?() }
                 .environmentObject(appVM)
         }
+        .sheet(isPresented: $showActiveSpot) {
+            SpotActiveView()
+        }
         .onAppear {
             // The flow's own duration step reads this fresh; a stale value here
             // only matters for the moment before the flow opens.
@@ -41,143 +53,177 @@ struct InterventionsView: View {
         }
     }
 
-    // MARK: - 3.1 Intro block
+    // MARK: - Hero
+    //
+    // The one action on this screen, on the one dark card, so it is the first
+    // thing the eye lands on.
 
-    private var introBlock: some View {
+    private var heroCard: some View {
         VStack(alignment: .leading, spacing: 0) {
+            MivoEyebrow(text: "Pause before you scroll", color: MivoColors.heroText.opacity(0.78))
+
             Text("Open an app on purpose")
-                .font(.system(size: 27, weight: .bold))
-                .tracking(Font.mivoTracking(-0.025, at: 27))
-                .foregroundColor(MivoColors.ink)
-                .frame(maxWidth: 280, alignment: .leading)
+                .font(.system(size: 25, weight: .bold))
+                .tracking(Font.mivoTracking(-0.025, at: 25))
+                .foregroundColor(MivoColors.heroText)
+                .frame(maxWidth: 260, alignment: .leading)
+                .padding(.top, 8)
 
             Text("Name the reason, pick a length, take five seconds. Mivo lets you in and closes the door behind you.")
                 .font(.system(size: 13.5, weight: .medium))
-                .foregroundColor(MivoColors.inkBody)
-                .lineSpacing(0.55 * 13.5)
+                .foregroundColor(MivoColors.heroText.opacity(0.88))
+                .lineSpacing(0.5 * 13.5)
                 .frame(maxWidth: 300, alignment: .leading)
                 .padding(.top, 10)
 
-            MivoPrimaryButton(label: "Start a window") {
+            MivoOnHeroButton(label: "Start a window") {
                 HapticsService.selection()
                 showFlow = true
             }
-            .padding(.top, 24)
+            .padding(.top, 20)
         }
-        .padding(.top, 30)
+        .padding(EdgeInsets(top: 22, leading: 20, bottom: 20, trailing: 20))
         .frame(maxWidth: .infinity, alignment: .leading)
+        .mivoCardBackground(fill: MivoColors.heroBg, bordered: false)
     }
 
-    // MARK: - 3.2 Week stat row
+    // MARK: - This week
 
-    private func weekStatRow(attempts: [InterventionAttemptRecord], sessions: [Session]) -> some View {
+    private func weekStatsCard(attempts: [InterventionAttemptRecord], sessions: [Session]) -> some View {
         let average = sessions.isEmpty ? "—" : "\(max(1, sessions.reduce(0) { $0 + $1.actualDuration } / sessions.count))m"
-        return MivoStatColumns(items: [
-            .init(value: "\(attempts.count)", label: "paused"),
-            .init(value: "\(attempts.filter { $0.continued == false }.count)", label: "walked away"),
-            .init(value: average, label: "avg session")
-        ])
-        .padding(.top, 30)
-        .overlay(alignment: .top) { MivoHairline() }
-        .overlay(alignment: .bottom) { MivoHairline() }
+        return MivoCard(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("This week")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MivoColors.inkBody)
+                    .padding(.horizontal, MivoMetrics.cardPadding)
+                    .padding(.top, 16)
+
+                MivoStatColumns(items: [
+                    .init(value: "\(attempts.count)", label: "paused"),
+                    .init(value: "\(attempts.filter { $0.continued == false }.count)", label: "walked away"),
+                    .init(value: average, label: "avg session")
+                ])
+                .padding(.top, -4)
+            }
+        }
     }
 
-    // MARK: - 3.3 Today's sessions
+    // MARK: - Today's sessions
 
     private var todaysSessionsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MivoEyebrow(text: "Today")
-                .padding(.top, 26)
-                .padding(.bottom, 4)
+        VStack(alignment: .leading, spacing: 8) {
+            MivoSectionTitle(text: "Today")
 
             if todaysSessions.isEmpty {
-                Text("Nothing yet today")
-                    .font(.system(size: 14.5, weight: .semibold))
-                    .foregroundColor(MivoColors.inkMuted)
-                    .padding(.vertical, 16)
+                MivoCard(padding: 16) {
+                    Text("Nothing yet today")
+                        .font(.system(size: 14.5, weight: .semibold))
+                        .foregroundColor(MivoColors.inkBody)
+                }
             } else {
-                VStack(spacing: 0) {
+                MivoListGroup {
                     ForEach(Array(todaysSessions.enumerated()), id: \.element.id) { index, session in
-                        sessionRow(session)
-                        if index < todaysSessions.count - 1 {
-                            MivoHairline(soft: true)
+                        if index > 0 {
+                            MivoListDivider(inset: 16)
                         }
+                        sessionRow(session)
                     }
                 }
             }
         }
-        .padding(.bottom, 26)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func sessionRow(_ session: Session) -> some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.intention.rawValue)
-                    .font(.system(size: 14.5, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(MivoColors.ink)
                     .lineLimit(1)
                 Text(sessionMeta(session))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(MivoColors.inkMuted)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
             }
             Spacer(minLength: 8)
             MivoOutcomeBadge(outcome: outcome(for: session))
         }
-        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
     }
 
-    // MARK: - 3.4 Protection setup
+    // MARK: - Protection setup
     //
     // Everything that configures the pause lives here, beside the pause itself,
     // instead of being spread across Settings.
 
     private var protectionSetupSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MivoEyebrow(text: "Protection setup")
-                .padding(.top, 26)
-                .padding(.bottom, 4)
+        VStack(alignment: .leading, spacing: 8) {
+            MivoSectionTitle(text: "Protection setup")
 
-            setupLink(label: "Apps & Screen Time", value: protectionStateText) {
-                SettingsView(page: .protection)
-            }
-            MivoHairline(soft: true)
+            MivoListGroup {
+                setupLink(
+                    icon: "checkmark.shield",
+                    label: "Apps & Screen Time",
+                    value: protectionStateText,
+                    tone: FamilyControlsManager.shared.isImpulseProtectionEnabled() ? .positive : .muted
+                ) {
+                    SettingsView(page: .protection)
+                }
 
-            setupLink(label: "Late-night protection", value: appVM.lateNightProtectionEnabled ? "On" : "Off") {
-                SettingsView(page: .lateNight)
-            }
+                MivoListDivider()
+                setupLink(
+                    icon: "moon",
+                    label: "Late-night protection",
+                    value: appVM.lateNightProtectionEnabled ? "On" : "Off",
+                    tone: appVM.lateNightProtectionEnabled ? .positive : .muted
+                ) {
+                    SettingsView(page: .lateNight)
+                }
 
-            if expansion.isEnabled(.appPersonalities) {
-                MivoHairline(soft: true)
-                setupLink(label: "App personalities", value: nil) {
-                    AppPersonalitiesView().environmentObject(appVM)
+                if expansion.isEnabled(.appPersonalities) {
+                    MivoListDivider()
+                    setupLink(icon: "face.smiling", label: "App personalities", value: nil) {
+                        AppPersonalitiesView().environmentObject(appVM)
+                    }
+                }
+
+                MivoListDivider()
+                setupLink(icon: "arrow.left.arrow.right", label: "Your swap", value: appVM.userSwap == nil ? "Not set" : "Set") {
+                    SwapSettingsView()
+                }
+
+                MivoListDivider()
+                setupLink(icon: "mappin.and.ellipse", label: "Mivo Spots", value: spotsStateText) {
+                    SpotsHomeView()
+                }
+
+                MivoListDivider()
+                setupLink(icon: "play.circle", label: "Practice the pause", value: nil) {
+                    InterventionView(intention: nil, duration: nil)
                 }
             }
-
-            MivoHairline(soft: true)
-            setupLink(label: "Your swap", value: appVM.userSwap == nil ? "Not set" : "Set") {
-                SwapSettingsView()
-            }
-
-            MivoHairline(soft: true)
-            setupLink(label: "Practice the pause", value: nil) {
-                InterventionView(intention: nil, duration: nil)
-            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func setupLink<Destination: View>(
+        icon: String,
         label: String,
         value: String?,
+        tone: MivoListRow.ValueTone = .muted,
         @ViewBuilder destination: () -> Destination
     ) -> some View {
         NavigationLink {
             destination()
         } label: {
-            MivoSettingsRow(label: label, value: value)
+            MivoListRow(icon: icon, title: label, value: value, valueTone: tone)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MivoRowPressStyle())
+    }
+
+    private var spotsStateText: String? {
+        if let active = spots.activeSession { return "\(active.spotName) on" }
+        return spots.spots.isEmpty ? nil : "\(spots.spots.count)"
     }
 
     private var protectionStateText: String {

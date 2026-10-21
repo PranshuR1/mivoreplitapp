@@ -485,6 +485,26 @@ async function handleAuth(req, res) {
     return;
   }
 
+  if (req.url === "/auth/delete-account") {
+    // Self-serve deletion: authenticated by the caller's own password, not an
+    // admin token. Required by App Store guideline 5.1.1(v).
+    if (!existing || !validatePassword(payload.password) || !verifyPassword(payload.password, existing)) {
+      jsonResponse(res, 401, { error: "invalidCredentials" });
+      return;
+    }
+    if (existing.role === "admin" || email === adminEmail) {
+      jsonResponse(res, 400, { error: "cannotDeleteAdmin" });
+      return;
+    }
+    delete db.users[email];
+    for (const [token, session] of Object.entries(db.adminSessions)) {
+      if (normalizeEmail(session.email) === email) delete db.adminSessions[token];
+    }
+    await writeUsers(db);
+    jsonResponse(res, 200, { ok: true });
+    return;
+  }
+
   if (req.url === "/auth/admin/users") {
     const admin = requireAdmin(db, payload);
     if (!admin) {
@@ -601,7 +621,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(port, () => {
   console.log(`Mivo backend listening on port ${port}`);
   console.log(`Health check: /health`);
-  console.log(`Auth endpoints: /auth/register /auth/login /auth/exists /auth/reset-password /auth/profile`);
+  console.log(`Auth endpoints: /auth/register /auth/login /auth/exists /auth/reset-password /auth/profile /auth/delete-account`);
   console.log(`AI endpoints: /api/ai/recommend-focus /api/ai/recommend-protected-apps /api/ai/estimate-saved /api/ai/estimate-life-breakdown /api/ai/screen-time-plan`);
   console.log(`Auth database: ${usersPath}`);
 });

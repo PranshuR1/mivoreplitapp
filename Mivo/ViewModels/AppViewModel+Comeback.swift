@@ -22,8 +22,22 @@ struct ComebackWeekSummary: Equatable {
 // MARK: - Comeback (fresh start for people who stopped using Mivo)
 
 extension AppViewModel {
+    /// True for 30 days after a fresh start begins. While it holds, no entry
+    /// point offers the flow: not a detected lapse, not Settings, not Home.
+    var isComebackCoolingDown: Bool {
+        MivoComeback.isCoolingDown(anchor: comebackAnchor, today: todayKey())
+    }
+
+    /// "Nov 18" — when the flow becomes available again, while cooling down.
+    var comebackAvailableAgainText: String? {
+        guard isComebackCoolingDown, let anchor = comebackAnchor,
+              let day = MivoComeback.availableAgainDay(anchor: anchor) else { return nil }
+        return MivoComeback.shortDate(day)
+    }
+
     /// Home shows a quiet restart row for this long after a dismissed offer.
     var comebackRestartOfferLapseDays: Int? {
+        guard !isComebackCoolingDown else { return nil }
         guard comebackAnchor == nil || comebackAnchorIsOlderThanLapse,
               let lapse = comebackLapse, lapse.status == .snoozed,
               let detected = MivoDay.daysSince(lapse.detectedDay),
@@ -51,6 +65,15 @@ extension AppViewModel {
         let lastActive = stored ?? inferredLastActiveDay()
         if stored != today {
             StorageService.save(today, forKey: .lastActiveDay, email: email)
+        }
+
+        // Inside the cooldown a lapse is not offered a restart, and an offer left
+        // over from before the restart is dropped.
+        if isComebackCoolingDown {
+            if comebackLapse != nil { clearComebackLapse() }
+            pendingComebackPrompt = nil
+            scheduleComebackNudges()
+            return
         }
 
         if let lastActive,
@@ -118,22 +141,25 @@ extension AppViewModel {
     /// time someone taps it, "it's been N days" describes a gap they've already
     /// come back from.
     func presentComebackFlow() {
-        guard isLoggedIn, settings.onboardingComplete else { return }
+        guard isLoggedIn, settings.onboardingComplete, !isComebackCoolingDown else { return }
         pendingComebackPrompt = makeComebackPrompt(lapseDays: 0, isManual: true)
     }
 
     // MARK: Resolving
 
-    /// Starting a fresh start replaces the plan state that was there before,
-    /// rather than layering on it:
+    /// Starting a fresh start is a reset, not an adjustment: the old plan is
+    /// removed rather than re-sized.
     ///   - the daily goal is whatever was chosen in the flow;
-    ///   - today's already-locked windows keep their times but are re-sized to
-    ///     the new target (they carry minutes from the old plan);
+    ///   - every locked scroll schedule (today's and earlier days') and the
+    ///     saved preferred windows are cleared, so nothing from the old plan is
+    ///     suggested back. Home hides the plan until today's windows are chosen
+    ///     again, and the prompt to choose them opens straight away;
     ///   - loans and Drop Path penalties taken against the old plan are cleared;
     ///   - prompts that belong to the old ramp (goal question, forecast) are
     ///     dropped, since the flow already answered or replaced them.
-    /// Protections the person chose themselves (selected apps, pause style,
-    /// experiments) are deliberately left alone.
+    /// Session history, reports, Screen Time history, experiments and the
+    /// protections the person chose themselves (selected apps, pause style) are
+    /// deliberately left alone: this resets the plan, not the person's record.
     func startComeback(
         prompt: ComebackPrompt,
         baseline: ComebackBaseline,
@@ -143,19 +169,20 @@ extension AppViewModel {
         why: String?,
         nudges: Bool
     ) {
-        guard let email = user?.email else { return }
+        guard let email = user?.email, !isComebackCoolingDown else {
+            pendingComebackPrompt = nil
+            return
+        }
         let floor = max(15, goalMinutes)
 
         let startMinutes = MivoComeback.startMinutes(baseline: baseline.minutes, pace: pace, floor: floor)
 
         // Goal first: every number below is measured against it. The saved
-        // preferred windows keep their times but are re-sized too, since
-        // Settings offers them as the starting point for the next schedule.
+        // preferred windows are dropped, not re-sized: they are the old plan's
+        // shape, and Settings would offer them back as the next schedule.
         var profile = onboardingProfile
         profile.dailyScrollGoalMinutes = goalMinutes
-        if let preferred = profile.preferredScrollWindows, !preferred.isEmpty {
-            profile.preferredScrollWindows = MivoComeback.fit(preferred, toTarget: startMinutes)
-        }
+        profile.preferredScrollWindows = nil
         saveOnboardingProfile(profile)
         saveForCurrentUser(true, forKey: .scrollGoalPromptShown)
         pendingScrollGoalPrompt = nil
@@ -178,7 +205,7 @@ extension AppViewModel {
         clearComebackLapse()
         pendingComebackPrompt = nil
 
-        resizeTodaysScheduleToTarget(startMinutes)
+        clearAllScrollSchedules()
         // A schedule prompt raised before the restart carries windows sized
         // for the old plan, and would be reused as-is. Rebuild it.
         pendingDailyScrollSchedulePrompt = nil
@@ -194,21 +221,14 @@ extension AppViewModel {
         evaluateDailyScrollSchedulePrompt()
     }
 
-    /// Today's schedule may already be locked from before the restart, with
-    /// window minutes drawn from the old plan. The times stay; the minutes are
-    /// re-split in the same proportions so they add up to the new target.
-    private func resizeTodaysScheduleToTarget(_ target: Int) {
-        let today = todayKey()
-        guard let index = dailyScrollSchedules.firstIndex(where: { $0.date == today }) else { return }
-        let existing = dailyScrollSchedules[index]
-        guard !existing.windows.isEmpty else { return }
-
-        dailyScrollSchedules[index] = DailyScrollSchedule(
-            id: existing.id,
-            date: existing.date,
-            windows: MivoComeback.fit(existing.windows, toTarget: target),
-            createdAt: existing.createdAt
-        )
+    /// Removes every locked schedule. An empty list is saved rather than the
+    /// key removed: with the key gone, a later restore from the backup would
+    /// treat this device as having no schedules and bring the old ones back.
+    /// With no schedule at all, the next evaluation also treats the day as a
+    /// brand-new schedule and asks for windows immediately, not at the usual
+    /// morning time.
+    private func clearAllScrollSchedules() {
+        dailyScrollSchedules = []
         saveForCurrentUser(dailyScrollSchedules, forKey: .dailyScrollSchedules)
     }
 

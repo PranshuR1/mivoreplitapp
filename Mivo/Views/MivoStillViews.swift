@@ -1,20 +1,12 @@
 import SwiftUI
 
-/// Home's entry point for Still — a `MivoNavigationRow` matching the
-/// experiment and Mivo Clear rows.
+/// Home's entry point for Still: a tile in the Explore grid.
 struct MivoStillRow: View {
     @ObservedObject private var store = MivoStillStore.shared
     let action: () -> Void
 
     var body: some View {
-        MivoNavigationRow(action: action) {
-            Text("Mivo Still")
-                .font(.system(size: 15.5, weight: .semibold))
-                .foregroundColor(MivoColors.ink)
-            Text(meta)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundColor(MivoColors.inkMuted)
-        }
+        MivoToolTile(icon: "moon", title: "Mivo Still", subtitle: meta, action: action)
     }
 
     private var meta: String {
@@ -23,7 +15,7 @@ struct MivoStillRow: View {
             let streakSuffix = streak > 1 ? " · \(streak)-day streak" : ""
             return "\(store.minutesToday)m still today\(streakSuffix)"
         }
-        return "Put your phone face-down and focus"
+        return "Phone face-down, focus on"
     }
 }
 

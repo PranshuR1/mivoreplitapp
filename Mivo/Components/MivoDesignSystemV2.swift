@@ -11,6 +11,10 @@ enum MivoMetrics {
     /// Screen horizontal padding. Was 18 before the redesign.
     static let screenPadding: CGFloat = 24
 
+    /// Horizontal padding on the four card-based tabs. Cards carry their own
+    /// 18pt inset, so the gutter is tighter than on divider-based screens.
+    static let tabPadding: CGFloat = 20
+
     /// Bottom padding on scroll content so it clears the tab bar.
     static let scrollBottomPadding: CGFloat = 130
 
@@ -23,6 +27,15 @@ enum MivoMetrics {
 
     /// Spacing scale: 4, 6, 8, 10, 14, 18, 22, 26, 30, 44.
     static let sectionSpacing: CGFloat = 26
+
+    // Cards: the four main tabs sit on white cards over the cream ground,
+    // replacing the hairline-divided sections. `radius` stays 8 for buttons
+    // and chips; cards are rounder so they read as containers, not controls.
+    static let cardRadius: CGFloat = 16
+    static let tileRadius: CGFloat = 10
+    static let cardPadding: CGFloat = 18
+    /// Vertical gap between cards on a tab.
+    static let cardSpacing: CGFloat = 18
 }
 
 enum MivoMotion {
@@ -399,8 +412,8 @@ struct MivoStatColumns: View {
                         .monospacedDigit()
                         .foregroundColor(MivoColors.ink)
                     Text(item.label)
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundColor(MivoColors.inkMuted)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(MivoColors.inkBody)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
@@ -495,13 +508,18 @@ struct MivoToggle: View {
 
 // MARK: - Chips
 
-/// Segmented range control (`7 days` / `30 days`) — no track, no border.
+/// Segmented control (`7 days` / `30 days`, `Auto` / `Light` / `Dark`): a quiet
+/// tinted track with an ink thumb.
 struct MivoSegmentedChips<Value: Hashable>: View {
     let options: [(value: Value, label: String)]
     @Binding var selection: Value
+    var horizontalPadding: CGFloat = 12
+    /// Spoken in place of the visible label when the two differ (`Auto` reads
+    /// as `System`).
+    var accessibilityLabels: [Value: String] = [:]
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
             ForEach(options, id: \.value) { option in
                 Button {
                     selection = option.value
@@ -511,14 +529,19 @@ struct MivoSegmentedChips<Value: Hashable>: View {
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(selection == option.value ? MivoColors.background : MivoColors.ink)
                         .padding(.vertical, 7)
-                        .padding(.horizontal, 13)
+                        .padding(.horizontal, horizontalPadding)
                         .background(selection == option.value ? MivoColors.ink : .clear)
-                        .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.radius))
+                        .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.radius, style: .continuous))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(accessibilityLabels[option.value] ?? option.label)
                 .accessibilityAddTraits(selection == option.value ? .isSelected : [])
             }
         }
+        .padding(3)
+        .background(MivoColors.surfaceV2)
+        .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.tileRadius, style: .continuous))
         .animation(MivoMotion.standard(0.18), value: selection)
     }
 }
@@ -558,23 +581,38 @@ struct MivoChoiceChips<Value: Hashable>: View {
     }
 }
 
-// MARK: - Greeting bar
+// MARK: - Screen header
 
-/// Shared by Home and Patterns: date eyebrow, greeting, and the transparent
-/// logo mark. No avatar, no settings gear — Settings is a tab.
-struct MivoGreetingBar: View {
-    let name: String
+/// The header every tab shares: one quiet eyebrow, a 26pt title, and the logo
+/// mark. No avatar, no settings gear — Settings is a tab.
+struct MivoScreenHeader: View {
+    let eyebrow: String
+    let title: String
+    var eyebrowColor: Color = MivoColors.inkBody
+    /// A filled dot before the eyebrow, for a live status ("Protection on").
+    var showsStatusDot: Bool = false
 
     var body: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 3) {
-                MivoEyebrow(text: Self.dateLabel())
-                Text("\(greeting()), \(name)")
-                    .font(.system(size: 21, weight: .bold))
-                    .tracking(Font.mivoTracking(-0.02, at: 21))
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    if showsStatusDot {
+                        Circle()
+                            .fill(eyebrowColor)
+                            .frame(width: 7, height: 7)
+                            .accessibilityHidden(true)
+                    }
+                    MivoEyebrow(text: eyebrow, color: eyebrowColor)
+                }
+                Text(title)
+                    .font(.system(size: 26, weight: .bold))
+                    .tracking(Font.mivoTracking(-0.02, at: 26))
                     .foregroundColor(MivoColors.ink)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .accessibilityAddTraits(.isHeader)
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: 0)
             // The asset is a template so onboarding can knock it out to cream;
             // here it needs its own colours.
             Image("MivoLogoMark")
@@ -586,11 +624,253 @@ struct MivoGreetingBar: View {
                 .accessibilityHidden(true)
         }
     }
+}
+
+/// Home's header: today's date over a greeting.
+struct MivoGreetingBar: View {
+    let name: String
+
+    var body: some View {
+        MivoScreenHeader(eyebrow: Self.dateLabel(), title: "\(greeting()), \(name)")
+    }
 
     static func dateLabel(_ date: Date = Date()) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMM d"
         return formatter.string(from: date).uppercased()
+    }
+}
+
+// MARK: - Cards and lists
+
+/// The one surface: white on the cream ground (raised brown in dark mode), a
+/// hairline edge and no shadow.
+struct MivoCardBackground: ViewModifier {
+    var fill: Color = MivoColors.surfaceRaised
+    var bordered: Bool = true
+
+    func body(content: Content) -> some View {
+        content
+            .background(fill)
+            .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.cardRadius, style: .continuous))
+            .overlay {
+                if bordered {
+                    RoundedRectangle(cornerRadius: MivoMetrics.cardRadius, style: .continuous)
+                        .strokeBorder(MivoColors.hairline, lineWidth: 1)
+                }
+            }
+    }
+}
+
+extension View {
+    func mivoCardBackground(fill: Color = MivoColors.surfaceRaised, bordered: Bool = true) -> some View {
+        modifier(MivoCardBackground(fill: fill, bordered: bordered))
+    }
+}
+
+/// A padded card for free-form content (a metric, a chart, a timeline).
+struct MivoCard<Content: View>: View {
+    var padding: CGFloat = MivoMetrics.cardPadding
+    var fill: Color = MivoColors.surfaceRaised
+    var bordered: Bool = true
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .mivoCardBackground(fill: fill, bordered: bordered)
+    }
+}
+
+/// A card holding `MivoListRow`s. Put a `MivoListDivider` between rows.
+struct MivoListGroup<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .mivoCardBackground()
+    }
+}
+
+/// The hairline between rows of one group, inset to line up with the title.
+struct MivoListDivider: View {
+    var inset: CGFloat = 62
+
+    var body: some View {
+        Rectangle()
+            .fill(MivoColors.hairlineSoft)
+            .frame(height: 1)
+            .padding(.leading, inset)
+    }
+}
+
+/// Section title above a card. Sentence case, 14pt — eyebrows are kept for
+/// metadata, not for every group.
+struct MivoSectionTitle: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 14, weight: .bold))
+            .foregroundColor(MivoColors.ink)
+            .padding(.horizontal, 4)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// The 34pt tile behind a row or tool icon. One tone for every icon in the app,
+/// so no screen ends up as a rainbow.
+struct MivoIconTile: View {
+    let systemName: String
+    var size: CGFloat = 34
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: size * 0.44, weight: .semibold))
+            .foregroundColor(MivoColors.deep)
+            .frame(width: size, height: size)
+            .background(MivoColors.surfaceV2)
+            .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.tileRadius, style: .continuous))
+            .accessibilityHidden(true)
+    }
+}
+
+/// Highlights a pressed row instead of scaling it, so a row inside a card does
+/// not shift against its neighbours.
+struct MivoRowPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? MivoColors.ink.opacity(0.05) : Color.clear)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+/// The row used everywhere a list opens something: icon tile, title, one line
+/// of meta, an optional value, and a chevron.
+struct MivoListRow: View {
+    enum ValueTone {
+        case muted
+        case positive
+    }
+
+    var icon: String?
+    let title: String
+    var subtitle: String?
+    var value: String?
+    var valueTone: ValueTone = .muted
+    var showsChevron: Bool = true
+    var isDestructive: Bool = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if let icon {
+                MivoIconTile(systemName: icon)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(isDestructive ? MivoColors.timerRed : MivoColors.ink)
+                    .multilineTextAlignment(.leading)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(MivoColors.inkBody)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 8)
+            if let value {
+                Text(value)
+                    .font(.system(size: 13, weight: valueTone == .positive ? .bold : .semibold))
+                    .foregroundColor(valueTone == .positive ? MivoColors.keptInk : MivoColors.inkBody)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(minHeight: 58)
+        .contentShape(Rectangle())
+    }
+}
+
+/// A compact entry point shown two to a row — the tools that used to be a run
+/// of full-width rows. `leading` is normally an icon tile; Companion passes its
+/// figure.
+struct MivoToolTile<Leading: View>: View {
+    let title: String
+    let subtitle: String
+    let action: () -> Void
+    @ViewBuilder let leading: () -> Leading
+
+    var body: some View {
+        Button {
+            HapticsService.selection()
+            action()
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                leading()
+                    .frame(height: 40, alignment: .topLeading)
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(MivoColors.ink)
+                    .padding(.top, 12)
+                Text(subtitle)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .padding(.top, 2)
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+            .mivoCardBackground()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(MivoPressStyle())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+extension MivoToolTile where Leading == MivoIconTile {
+    init(icon: String, title: String, subtitle: String, action: @escaping () -> Void) {
+        self.init(title: title, subtitle: subtitle, action: action) {
+            MivoIconTile(systemName: icon)
+        }
+    }
+}
+
+/// Primary action on a brown hero card: cream, so it reads on `heroBg` where
+/// amber (2.3:1) would not.
+struct MivoOnHeroButton: View {
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 15.5, weight: .bold))
+                // Fixed, not `ink`: the button is cream in both appearances,
+                // and `ink` turns cream in dark mode.
+                .foregroundColor(Color(hex: "#3D2313"))
+                .frame(maxWidth: .infinity)
+                .frame(height: MivoMetrics.buttonHeight)
+                .background(Color(hex: "#FAF3E8"))
+                .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.cardRadius - 4, style: .continuous))
+        }
+        .buttonStyle(MivoPressStyle())
     }
 }
 
@@ -631,7 +911,7 @@ struct MivoTabBar: View {
                             Text(item.title)
                                 .font(.system(size: 10, weight: .bold))
                         }
-                        .foregroundColor(selection == index ? MivoColors.accent : MivoColors.inkMuted)
+                        .foregroundColor(selection == index ? MivoColors.deep : MivoColors.inkBody)
                         .frame(maxWidth: .infinity)
                         .frame(height: 49)
                         .contentShape(Rectangle())

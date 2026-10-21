@@ -13,20 +13,21 @@ struct PatternsBarPoint: Identifiable {
 struct PatternsBarChart: View {
     let points: [PatternsBarPoint]
     let range: PatternsRange
-    private let height: CGFloat = 132
+    /// Collapsed to a row of day marks while there is nothing to plot.
+    var height: CGFloat = 132
 
     var body: some View {
         HStack(alignment: .bottom, spacing: range == .week ? 10 : 3) {
             ForEach(Array(points.enumerated()), id: \.element.id) { index, point in
                 VStack(spacing: 8) {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: 3)
                         .fill(point.isToday ? MivoColors.accent : MivoColors.barTrack)
                         .frame(height: barHeight(point.minutes))
                         .frame(maxHeight: height, alignment: .bottom)
                     if showsLabel(index: index) {
                         Text(point.label)
-                            .font(.system(size: 9.5, weight: .semibold))
-                            .foregroundColor(MivoColors.inkMuted)
+                            .font(.system(size: 10, weight: point.isToday ? .bold : .semibold))
+                            .foregroundColor(point.isToday ? MivoColors.deep : MivoColors.inkBody)
                             .fixedSize()
                     } else {
                         Text(" ")

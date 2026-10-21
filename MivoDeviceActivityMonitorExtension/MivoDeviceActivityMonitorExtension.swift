@@ -105,6 +105,15 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
             endAlwaysBlockDrift()
             return
         }
+        // Mivo Spots: the same "schedule starts at the moment it should happen" alarms.
+        if activity.rawValue == SpotKeys.endActivityName {
+            endSpot()
+            return
+        }
+        if activity.rawValue == SpotKeys.relockActivityName {
+            relockSpot()
+            return
+        }
     }
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
@@ -144,6 +153,14 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
             endAlwaysBlockDrift()
             return
         }
+        if activity.rawValue == SpotKeys.endActivityName {
+            endSpot()
+            return
+        }
+        if activity.rawValue == SpotKeys.relockActivityName {
+            relockSpot()
+            return
+        }
         // Primary fallback for relock schedule.
         guard activity.rawValue == sessionRelockActivityName else { return }
         relockForEndedSession(source: "session-end")
@@ -152,6 +169,11 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
         super.eventDidReachThreshold(event, activity: activity)
         logger.info("eventDidReachThreshold: event=\(event.rawValue) activity=\(activity.rawValue)")
+        // Mivo Spots: a usage threshold crossed while a Spot was running.
+        if activity.rawValue == SpotKeys.usageActivityName {
+            recordSpotUsage(event: event)
+            return
+        }
         // Watcher usage limit: user consumed the full session duration while interval was active.
         if activity.rawValue == sessionEndWatcherActivityName {
             relockForEndedSession(source: "endwatcher-usage")
@@ -255,6 +277,53 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
         defaults.removeObject(forKey: stillLockEndsAtKey)
         defaults.synchronize()
         logger.info("Still Lock ended from extension")
+    }
+
+    // MARK: - Mivo Spots
+
+    private var spotStore: ManagedSettingsStore {
+        ManagedSettingsStore(named: ManagedSettingsStore.Name(SpotKeys.storeName))
+    }
+
+    /// The Spot's time is up: lift its shield and mark it ended. Only the shield and
+    /// the live flag are touched here — the app finishes the session (usage,
+    /// history, summary) the next time it opens.
+    private func endSpot() {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return }
+        // An alarm left over from a Spot that already ended must not touch the next one.
+        let endsAt = defaults.double(forKey: SpotKeys.liveEndsAt)
+        if defaults.bool(forKey: SpotKeys.liveActive), endsAt > Date().timeIntervalSince1970 + 5 {
+            logger.info("Spot end alarm ignored: the running Spot isn't due yet")
+            return
+        }
+        spotStore.shield.applications = nil
+        spotStore.shield.applicationCategories = nil
+        spotStore.shield.webDomains = nil
+        defaults.set(false, forKey: SpotKeys.liveActive)
+        defaults.synchronize()
+        logger.info("Spot ended from extension")
+    }
+
+    /// A pause the person chose to continue past has run out: shield the Spot's apps again.
+    private func relockSpot() {
+        guard let defaults = UserDefaults(suiteName: appGroup),
+              let live = SpotLiveState.read(from: defaults), live.wantsShield(),
+              let data = defaults.data(forKey: SpotKeys.liveSelection),
+              let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else { return }
+        apply(selection: selection, to: spotStore)
+        defaults.removeObject(forKey: SpotKeys.liveShieldLiftedUntil)
+        defaults.synchronize()
+        logger.info("Spot shield re-applied from extension")
+    }
+
+    /// Keeps the highest usage threshold reached, per app and for the Spot as a whole.
+    private func recordSpotUsage(event: DeviceActivityEvent.Name) {
+        guard let defaults = UserDefaults(suiteName: appGroup),
+              defaults.string(forKey: SpotKeys.usageSessionID) != nil else { return }
+        var tally = (defaults.dictionary(forKey: SpotKeys.usageLive) as? [String: Int]) ?? [:]
+        SpotUsageLadder.record(eventName: event.rawValue, into: &tally)
+        defaults.set(tally, forKey: SpotKeys.usageLive)
+        defaults.synchronize()
     }
 
     /// Unconditional clear, same shape as `endStillLock()` — "Block my

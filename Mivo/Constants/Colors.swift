@@ -64,6 +64,10 @@ struct MivoColors {
     /// Positive, "kept" and completed states, and downward-trend indicators.
     static let kept = adaptive(light: "#5F7F63", dark: "#7C9C80")
 
+    /// "Kept" and positive values as *text* on a card. `kept` is 4.2:1 on white,
+    /// which is not enough for 12–13pt type; this is.
+    static let keptInk = adaptive(light: "#4A6A4E", dark: "#9CBB9F")
+
     /// Sheet emphasis blocks, avatar and app tiles, selected chips. Never
     /// nested inside another surface.
     static let surfaceV2 = adaptive(light: "#F3E8D5", dark: "#2A1D14")

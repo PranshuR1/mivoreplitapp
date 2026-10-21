@@ -1,3 +1,4 @@
+import FamilyControls
 import ManagedSettings
 import ManagedSettingsUI
 import UIKit
@@ -38,16 +39,20 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         makeConfiguration(applicationToken: application.token)
     }
     override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
-        makeConfiguration(applicationToken: application.token)
+        makeConfiguration(applicationToken: application.token, categoryToken: category.token)
     }
     override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
-        makeConfiguration()
+        makeConfiguration(webDomainToken: webDomain.token)
     }
     override func configuration(shielding webDomain: WebDomain, in category: ActivityCategory) -> ShieldConfiguration {
-        makeConfiguration()
+        makeConfiguration(categoryToken: category.token, webDomainToken: webDomain.token)
     }
 
-    private func makeConfiguration(applicationToken: ApplicationToken? = nil) -> ShieldConfiguration {
+    private func makeConfiguration(
+        applicationToken: ApplicationToken? = nil,
+        categoryToken: ActivityCategoryToken? = nil,
+        webDomainToken: WebDomainToken? = nil
+    ) -> ShieldConfiguration {
         let hasActiveSession  = isSessionActive()
         let needsMivoSetup    = pendingInterventionSetup() && !hasActiveSession
         let sessionExpired    = sessionExpiredAfterTimer()
@@ -92,6 +97,15 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
                 primaryButtonBackgroundColor: nil,
                 secondaryButtonLabel: nil
             )
+        }
+
+        // ── 1. Mivo Spot ──
+        // A running Spot shields only its own apps, so this applies only when the
+        // tapped app (or its category/site) belongs to the Spot. Copy is calm and
+        // never a dead end: every Spot shield has "Open Mivo", where the Spot can
+        // be ended.
+        if let spot = spotShield(application: applicationToken, category: categoryToken, webDomain: webDomainToken) {
+            return spotConfiguration(for: spot)
         }
 
         // ── 2. Session expired ──
@@ -213,6 +227,59 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
                 color: textMuted
             ),
             primaryButtonLabel: label("Open Mivo", color: .white),
+            primaryButtonBackgroundColor: btnBrown,
+            secondaryButtonLabel: label("Not now", color: textMuted)
+        )
+    }
+
+    // MARK: - Mivo Spots
+
+    /// The running Spot, if it wants a shield right now and covers what was tapped.
+    private func spotShield(
+        application: ApplicationToken?,
+        category: ActivityCategoryToken?,
+        webDomain: WebDomainToken?
+    ) -> SpotLiveState? {
+        let defaults = UserDefaults(suiteName: SpotKeys.appGroup)
+        guard let live = SpotLiveState.read(from: defaults), live.wantsShield(),
+              let data = defaults?.data(forKey: SpotKeys.liveSelection),
+              let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else { return nil }
+        if let application, selection.applicationTokens.contains(application) { return live }
+        if let category, selection.categoryTokens.contains(category) { return live }
+        if let webDomain, selection.webDomainTokens.contains(webDomain) { return live }
+        return nil
+    }
+
+    private func spotConfiguration(for spot: SpotLiveState) -> ShieldConfiguration {
+        let minutesLeft = max(1, Int(ceil(spot.endsAt.timeIntervalSinceNow / 60)))
+        let title: String
+        let subtitle: String
+        let primary: String
+        switch spot.mode {
+        case .pause:
+            title = "\(spot.name) is on"
+            subtitle = "Take a breath first. Open Mivo for a short pause, then decide."
+            primary = "Open Mivo"
+        case .focus:
+            title = "Focus at \(spot.name)"
+            subtitle = "\(minutesLeft) min left. You can end this Spot any time from Mivo."
+            primary = "Open Mivo"
+        case .intention:
+            title = "What did you come here to do?"
+            subtitle = "One quick answer in Mivo, and \(spot.name) won't ask again."
+            primary = "Answer in Mivo"
+        case .awareness:
+            title = "\(spot.name) is on"
+            subtitle = "Open Mivo to see this Spot."
+            primary = "Open Mivo"
+        }
+        return ShieldConfiguration(
+            backgroundBlurStyle: .systemUltraThinMaterialLight,
+            backgroundColor: cream,
+            icon: timerIcon(state: .timer),
+            title: label(title, color: textPrimary),
+            subtitle: label(subtitle, color: textMuted),
+            primaryButtonLabel: label(primary, color: .white),
             primaryButtonBackgroundColor: btnBrown,
             secondaryButtonLabel: label("Not now", color: textMuted)
         )

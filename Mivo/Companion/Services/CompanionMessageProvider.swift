@@ -6,6 +6,22 @@ struct CompanionMessageContext: Equatable {
     var companionName: String = "Milo"
     var minutes: Int?
     var targetMinutes: Int?
+    /// Hour of day (0–23) for time-aware greetings; `nil` uses generic wording.
+    var hour: Int?
+
+    var dayPart: CompanionDayPart {
+        guard let hour else { return .any }
+        switch hour {
+        case 5..<12: return .morning
+        case 12..<17: return .afternoon
+        case 17..<22: return .evening
+        default: return .any
+        }
+    }
+}
+
+enum CompanionDayPart {
+    case morning, afternoon, evening, any
 }
 
 /// All companion copy. Content only — which topic fires is the engine's
@@ -125,6 +141,29 @@ enum CompanionMessageProvider {
             return ["\(name) is going to sleep."]
         case (.bedtime, _):
             return ["\(name)'s settling down for the night."]
+
+        // Passive hellos for Home and the widget; never shown on a pause screen.
+        case (.ambient, .gentle):
+            switch context.dayPart {
+            case .morning: return ["Good morning.", "A fresh start to the day.", "I'm here whenever you need a pause."]
+            case .afternoon: return ["Hope the day's going gently.", "I'm here whenever you need a pause.", "A good moment to look up."]
+            case .evening: return ["Evening already.", "A good time to ease off.", "I'm here whenever you need a pause."]
+            case .any: return ["I'm here whenever you need a pause.", "A calm moment."]
+            }
+        case (.ambient, .playful):
+            switch context.dayPart {
+            case .morning: return ["Morning! Paws stretched, ready.", "Rise and shine, whiskers first."]
+            case .afternoon: return ["Afternoon patrol: all calm.", "Midday lookout reporting in."]
+            case .evening: return ["Evening patrol: all calm.", "Sunset lookout reporting in."]
+            case .any: return ["Lookout duty: all calm.", "Still here, standing tall."]
+            }
+        case (.ambient, .direct):
+            switch context.dayPart {
+            case .morning: return ["Good morning.", "Morning check-in."]
+            case .afternoon: return ["Afternoon check-in.", "Midday."]
+            case .evening: return ["Evening check-in.", "Evening."]
+            case .any: return ["Checking in.", "All steady."]
+            }
 
         // Quiet personality: body language, not words.
         case (_, .quiet):
