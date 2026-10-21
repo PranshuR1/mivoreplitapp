@@ -1161,6 +1161,13 @@ private struct DailyScrollScheduleCheckView: View {
                     }
 
                     VStack(spacing: 12) {
+                        SameAsYesterdayButton(
+                            yesterdayHours: appVM.yesterdayScrollStartHours,
+                            currentHours: windows.map(\.startHour),
+                            action: applyYesterdayTimes
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
                         ForEach(windows.indices, id: \.self) { index in
                             scheduleStepper(index: index)
                         }
@@ -1186,44 +1193,22 @@ private struct DailyScrollScheduleCheckView: View {
 
     private func scheduleStepper(index: Int) -> some View {
         let window = windows[index]
-        let duration = max(1, window.endHour - window.startHour)
-        return HStack(spacing: 12) {
+        return VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Session \(index + 1)")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(MivoColors.textPrimary)
-                Text("\(hourLabel(window.startHour))-\(hourLabel(window.endHour)) · \(window.minutes)m allowed · \(duration)h window")
+                Text("\(hourLabel(window.startHour))-\(hourLabel(window.endHour)) · \(window.minutes)m allowed · \(window.durationHours)h window")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(MivoColors.textMuted)
             }
-            Spacer()
-            Menu {
-                ForEach(0...max(0, 24 - duration), id: \.self) { candidate in
-                    Button {
-                        setWindowStart(at: index, to: candidate)
-                    } label: {
-                        if candidate == window.startHour {
-                            Label(hourLabel(candidate), systemImage: "checkmark")
-                        } else {
-                            Text(hourLabel(candidate))
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 7) {
-                    Text(hourLabel(window.startHour))
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 10, weight: .bold))
-                }
-                .foregroundColor(MivoColors.textPrimary)
-                .padding(.horizontal, 12)
-                .frame(height: 40)
-                .background(MivoColors.background)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-            .buttonStyle(.plain)
+            ScrollTimeStrip(
+                selectedHour: window.startHour,
+                duration: window.durationHours,
+                takenHours: windows.hoursCovered(excluding: index)
+            ) { setWindowStart(at: index, to: $0) }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(MivoColors.surface.opacity(0.72))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -1232,18 +1217,17 @@ private struct DailyScrollScheduleCheckView: View {
     private func setWindowStart(at index: Int, to requestedStart: Int) {
         guard windows.indices.contains(index) else { return }
         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-            let window = windows[index]
-            let duration = max(1, window.endHour - window.startHour)
-            let maxStart = max(0, 24 - duration)
-            let start = min(max(0, requestedStart), maxStart)
-            windows[index] = ScreenScrollWindow(
-                id: window.id,
-                title: window.title,
-                startHour: start,
-                endHour: min(24, start + duration),
-                minutes: window.minutes,
-                reason: window.reason
-            )
+            windows[index] = windows[index].startingAt(requestedStart)
+        }
+        HapticsService.selection()
+    }
+
+    private func applyYesterdayTimes() {
+        guard let hours = appVM.yesterdayScrollStartHours else { return }
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            for index in windows.indices where hours.indices.contains(index) {
+                windows[index] = windows[index].startingAt(hours[index])
+            }
         }
         HapticsService.selection()
     }

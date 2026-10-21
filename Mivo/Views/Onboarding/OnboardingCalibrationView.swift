@@ -177,6 +177,7 @@ private struct OnboardingScrollWindowsView: View {
                                 title: "Scroll session 1",
                                 subtitle: "Pick the first time you want scrolling to be allowed.",
                                 hour: $firstStartHour,
+                                otherHour: secondStartHour,
                                 icon: "sun.max.fill"
                             )
                             .onboardingEntrance(appear, delay: 0.08)
@@ -185,6 +186,7 @@ private struct OnboardingScrollWindowsView: View {
                                 title: "Scroll session 2",
                                 subtitle: "Pick the second time. You can change it later in Settings.",
                                 hour: $secondStartHour,
+                                otherHour: firstStartHour,
                                 icon: "moon.fill"
                             )
                             .onboardingEntrance(appear, delay: 0.14)
@@ -245,7 +247,7 @@ private struct OnboardingScrollWindowsView: View {
         }
     }
 
-    private func scrollWindowPicker(title: String, subtitle: String, hour: Binding<Int>, icon: String) -> some View {
+    private func scrollWindowPicker(title: String, subtitle: String, hour: Binding<Int>, otherHour: Int, icon: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
@@ -266,47 +268,25 @@ private struct OnboardingScrollWindowsView: View {
                 Spacer()
             }
 
-            HStack(spacing: 12) {
-                VStack(spacing: 3) {
-                    Text(hourLabel(hour.wrappedValue))
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .foregroundColor(MivoColors.textPrimary)
-                        .contentTransition(.numericText())
-                    Text("1-hour window")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(MivoColors.textMuted)
-                }
-                .frame(maxWidth: .infinity)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(hourLabel(hour.wrappedValue))
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundColor(MivoColors.textPrimary)
+                    .contentTransition(.numericText())
+                Text("1-hour window")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(MivoColors.textMuted)
+            }
 
-                Menu {
-                    ForEach(0..<24, id: \.self) { candidate in
-                        Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                hour.wrappedValue = candidate
-                            }
-                            HapticsService.selection()
-                        } label: {
-                            if hour.wrappedValue == candidate {
-                                Label(hourLabel(candidate), systemImage: "checkmark")
-                            } else {
-                                Text(hourLabel(candidate))
-                            }
-                        }
-                    }
-                } label: {
-                    Label("Pick time", systemImage: "clock.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(OnboardingTheme.textPrimary)
-                        .padding(.horizontal, 14)
-                        .frame(height: 42)
-                        .background(Color.white.opacity(0.7))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.58), lineWidth: 1)
-                        }
+            ScrollTimeStrip(
+                selectedHour: hour.wrappedValue,
+                duration: 1,
+                takenHours: [otherHour]
+            ) { candidate in
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    hour.wrappedValue = candidate
                 }
-                .buttonStyle(.plain)
+                HapticsService.selection()
             }
         }
         .padding(16)

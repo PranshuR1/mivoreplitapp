@@ -862,6 +862,36 @@ struct ScreenScrollWindow: Codable, Identifiable, Equatable {
     let reason: String
 }
 
+extension ScreenScrollWindow {
+    var durationHours: Int { max(1, endHour - startHour) }
+
+    /// The same window moved to begin at `requestedStart`, keeping its length
+    /// and minutes and pulling it back so it still ends by midnight.
+    func startingAt(_ requestedStart: Int) -> ScreenScrollWindow {
+        let start = min(max(0, requestedStart), max(0, 24 - durationHours))
+        return ScreenScrollWindow(
+            id: id,
+            title: title,
+            startHour: start,
+            endHour: min(24, start + durationHours),
+            minutes: minutes,
+            reason: reason
+        )
+    }
+}
+
+extension Array where Element == ScreenScrollWindow {
+    /// Hours already taken by every window except the one at `index`, so a
+    /// session being edited cannot be dropped on top of another.
+    func hoursCovered(excluding index: Int) -> Set<Int> {
+        var hours = Set<Int>()
+        for (offset, window) in enumerated() where offset != index {
+            hours.formUnion(window.startHour..<Swift.max(window.startHour, window.endHour))
+        }
+        return hours
+    }
+}
+
 struct ScreenTimeReductionPlan: Codable, Identifiable {
     let id: String
     let collecting: Bool

@@ -415,3 +415,108 @@ struct MivoDataUnavailable: View {
         }
     }
 }
+
+// MARK: - ScrollTimeStrip
+
+/// Start-time picker for one scroll session. Every hour sits on a strip that
+/// opens centred on the current choice, so setting a time is a single tap
+/// instead of opening a 24-row dropdown.
+struct ScrollTimeStrip: View {
+    let selectedHour: Int
+    /// Session length in hours; starts that would run past midnight are unavailable.
+    let duration: Int
+    /// Hours already covered by the user's other sessions.
+    var takenHours: Set<Int> = []
+    var isEnabled = true
+    let onSelect: (Int) -> Void
+
+    static func hourLabel(_ hour: Int) -> String {
+        let normalized = ((hour % 24) + 24) % 24
+        if normalized == 0 { return "12a" }
+        if normalized < 12 { return "\(normalized)a" }
+        if normalized == 12 { return "12p" }
+        return "\(normalized - 12)p"
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(0..<24, id: \.self) { hour in
+                        hourChip(hour)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            .onAppear {
+                DispatchQueue.main.async { proxy.scrollTo(selectedHour, anchor: .center) }
+            }
+            .onChange(of: selectedHour) { _, hour in
+                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(hour, anchor: .center) }
+            }
+        }
+        .opacity(isEnabled ? 1 : 0.5)
+        .allowsHitTesting(isEnabled)
+    }
+
+    private func isAvailable(_ hour: Int) -> Bool {
+        hour + duration <= 24 && (hour..<hour + duration).allSatisfy { !takenHours.contains($0) }
+    }
+
+    private func hourChip(_ hour: Int) -> some View {
+        let selected = hour == selectedHour
+        let available = isAvailable(hour)
+        let twelveHour = hour % 12 == 0 ? 12 : hour % 12
+        let period = hour < 12 ? "AM" : "PM"
+        return Button {
+            onSelect(hour)
+        } label: {
+            VStack(spacing: 1) {
+                Text("\(twelveHour)")
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                Text(period)
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .foregroundColor(selected ? MivoColors.white : MivoColors.textPrimary)
+            .frame(width: 46, height: 50)
+            .background(selected ? MivoColors.accent : MivoColors.background)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .opacity(available || selected ? 1 : 0.3)
+        }
+        .buttonStyle(.plain)
+        .disabled(!available && !selected)
+        .id(hour)
+        .accessibilityLabel("\(twelveHour) \(period)")
+        .accessibilityHint(available || selected ? "" : "Overlaps another session")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// Repeats the start times locked yesterday. Hides itself when there is no
+/// schedule from yesterday or today's times already match it.
+struct SameAsYesterdayButton: View {
+    let yesterdayHours: [Int]?
+    let currentHours: [Int]
+    var isEnabled = true
+    let action: () -> Void
+
+    var body: some View {
+        if isEnabled,
+           let yesterdayHours,
+           yesterdayHours != Array(currentHours.prefix(yesterdayHours.count)) {
+            Button(action: action) {
+                Label(
+                    "Same as yesterday · \(yesterdayHours.map(ScrollTimeStrip.hourLabel).joined(separator: ", "))",
+                    systemImage: "arrow.counterclockwise"
+                )
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(MivoColors.accent)
+                .padding(.horizontal, 14)
+                .frame(height: 38)
+                .background(MivoColors.accent.opacity(0.12))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}

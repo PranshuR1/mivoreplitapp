@@ -224,3 +224,33 @@ final class MivoComebackTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 }
+
+/// The pure helpers behind the one-tap scroll time picker.
+final class ScrollWindowPickerTests: XCTestCase {
+    private func window(_ start: Int, _ end: Int, minutes: Int = 15) -> ScreenScrollWindow {
+        ScreenScrollWindow(id: "w\(start)", title: "W", startHour: start, endHour: end, minutes: minutes, reason: "r")
+    }
+
+    func testStartingAtKeepsLengthAndMinutes() {
+        let moved = window(14, 16, minutes: 40).startingAt(9)
+        XCTAssertEqual(moved.startHour, 9)
+        XCTAssertEqual(moved.endHour, 11)
+        XCTAssertEqual(moved.minutes, 40)
+    }
+
+    func testStartingAtPullsBackSoTheWindowEndsByMidnight() {
+        let moved = window(14, 16).startingAt(23)
+        XCTAssertEqual(moved.startHour, 22)
+        XCTAssertEqual(moved.endHour, 24)
+    }
+
+    func testStartingAtClampsNegativeStart() {
+        XCTAssertEqual(window(14, 15).startingAt(-3).startHour, 0)
+    }
+
+    func testHoursCoveredExcludesTheEditedWindow() {
+        let windows = [window(9, 10), window(14, 16), window(20, 21)]
+        XCTAssertEqual(windows.hoursCovered(excluding: 1), [9, 20])
+        XCTAssertEqual(windows.hoursCovered(excluding: 0), [14, 15, 20])
+    }
+}

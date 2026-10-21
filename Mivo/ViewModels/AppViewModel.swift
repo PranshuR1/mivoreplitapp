@@ -1268,6 +1268,13 @@ class AppViewModel: ObservableObject {
         dailyScrollSchedule() != nil
     }
 
+    /// Start hours of the schedule locked yesterday, in session order, so
+    /// today's times can be repeated in one tap.
+    var yesterdayScrollStartHours: [Int]? {
+        let hours = dailyScrollSchedule(for: MivoDay.key(offsetFromToday: -1))?.windows.map(\.startHour)
+        return (hours?.isEmpty == false) ? hours : nil
+    }
+
     var todayScrollScheduleStatusText: String {
         if let schedule = dailyScrollSchedule() {
             let times = schedule.windows.map { "\(hourLabel($0.startHour))-\(hourLabel($0.endHour))" }.joined(separator: " and ")
