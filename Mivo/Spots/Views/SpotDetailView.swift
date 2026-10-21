@@ -10,6 +10,7 @@ struct SpotDetailView: View {
 
     @State private var showEdit = false
     @State private var showPair = false
+    @State private var showInstant = false
     @State private var showActive = false
     @State private var confirmDelete = false
     @State private var confirmDisconnect = false
@@ -39,6 +40,11 @@ struct SpotDetailView: View {
         }
         .sheet(isPresented: $showActive) {
             SpotActiveView()
+        }
+        .sheet(isPresented: $showInstant) {
+            SpotInstantSheet(spotName: manager.spot(id: spotID)?.name ?? "this Spot")
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .confirmationDialog("Delete this Spot?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete Spot", role: .destructive) {
@@ -208,6 +214,7 @@ struct SpotDetailView: View {
                         .foregroundColor(MivoColors.inkBody)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                MivoTertiaryButton(label: "Skip the banner when you tap") { showInstant = true }
                 MivoTertiaryButton(
                     label: isDisconnecting ? "Disconnecting…" : "Disconnect this Mivo Spot",
                     color: MivoColors.inkBody

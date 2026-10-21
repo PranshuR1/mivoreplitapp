@@ -265,6 +265,13 @@ struct SpotSetupFlowView: View {
                 .lineSpacing(5)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 12)
+
+            MivoHairline()
+                .padding(.top, 26)
+                .padding(.bottom, 24)
+
+            // iOS shows a banner on every tap; this is the one thing that removes it.
+            SpotInstantSteps(spotName: spot?.name ?? "your Spot")
         }
     }
 

@@ -105,7 +105,7 @@ struct AdminSpotsView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(batch.label).font(.body.weight(.semibold))
-                        Text("\(batch.spotCount) Spots · \(batch.claimedCount) claimed · \(batch.disabledCount) off")
+                        Text("\(batch.spotCount) Spots · \(batch.programmedCount ?? 0) on stickers · \(batch.claimedCount) claimed · \(batch.disabledCount) off")
                             .font(.caption).foregroundColor(.secondary)
                     }
                 }
@@ -252,8 +252,16 @@ struct AdminSpotBatchView: View {
         List {
             Section {
                 LabeledContent("Spots", value: "\(batch.spotCount)")
+                LabeledContent("On stickers", value: "\(spots.isEmpty ? batch.programmedCount ?? 0 : spots.filter { $0.programmedAt != nil }.count)")
                 LabeledContent("Claimed", value: "\(batch.claimedCount)")
                 LabeledContent("Switched off", value: "\(batch.disabledCount)")
+                if SpotNFCService.isAvailable {
+                    NavigationLink {
+                        AdminSpotProgramView(batch: batch, appVM: appVM)
+                    } label: {
+                        Label("Program stickers", systemImage: "wave.3.right")
+                    }
+                }
                 if !spots.isEmpty {
                     ShareLink(item: exportText, subject: Text("Mivo Spots — \(batch.label)")) {
                         Label("Export CSV", systemImage: "square.and.arrow.up")
@@ -268,7 +276,7 @@ struct AdminSpotBatchView: View {
                 ForEach(spots) { spot in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(spot.spotId).font(.system(.body, design: .monospaced).weight(.semibold))
-                        Text("\(spot.status.capitalized)\(spot.ownerEmail.map { " · \($0)" } ?? "")")
+                        Text("\(spot.status.capitalized)\(spot.programmedAt == nil ? " · not on a sticker" : " · on a sticker")\(spot.ownerEmail.map { " · \($0)" } ?? "")")
                             .font(.caption).foregroundColor(.secondary)
                     }
                     .textSelection(.enabled)
@@ -301,5 +309,62 @@ struct AdminSpotBatchView: View {
         } catch {
             message = error.localizedDescription
         }
+    }
+}
+
+/// Program a whole batch of stickers by holding them to the phone one after another.
+/// The next unwritten code is picked automatically; the person never types a code.
+struct AdminSpotProgramView: View {
+    let batch: AdminPhysicalSpotBatch
+    @StateObject private var programmer: SpotBatchProgrammer
+
+    init(batch: AdminPhysicalSpotBatch, appVM: AppViewModel) {
+        self.batch = batch
+        _programmer = StateObject(wrappedValue: SpotBatchProgrammer(
+            batchID: batch.id,
+            backend: BackendSpotProgramming(prepare: { try await appVM.prepareAuthenticatedSession() }),
+            writer: NFCSpotStickerWriter()
+        ))
+    }
+
+    var body: some View {
+        List {
+            Section {
+                VStack(spacing: 6) {
+                    Text("\(programmer.programmed) of \(max(programmer.total, batch.spotCount))")
+                        .font(.system(size: 34, weight: .bold)).monospacedDigit()
+                    Text("stickers programmed").font(.footnote).foregroundColor(.secondary)
+                    if let last = programmer.lastProgrammed {
+                        Text(last)
+                            .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                            .padding(.top, 8)
+                            .textSelection(.enabled)
+                        Text("Last sticker — write this code on its backing card.")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+
+            Section {
+                if programmer.isFinished {
+                    Label("Batch complete", systemImage: "checkmark.circle.fill").foregroundColor(.green)
+                } else {
+                    Button(programmer.isRunning ? "Waiting for a sticker…" : (programmer.unrecorded == nil ? "Start programming" : "Save last code and continue")) {
+                        programmer.start()
+                    }
+                    .disabled(programmer.isRunning)
+                }
+                if let message = programmer.message {
+                    Text(message).font(.footnote).foregroundColor(.secondary)
+                }
+            } footer: {
+                Text("Hold each blank sticker to the top of your iPhone. When it says programmed, the next sticker starts automatically. A sticker that already has a Mivo Spot code is refused and no code is used up. To stop, dismiss the scan sheet.")
+            }
+        }
+        .navigationTitle("Program stickers")
+        .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { programmer.stop() }
     }
 }

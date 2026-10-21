@@ -1353,3 +1353,152 @@ final class PhysicalSpotManagerTests: XCTestCase {
         XCTAssertNil(manager.claimRequest)
     }
 }
+
+// MARK: - Programming a batch of stickers (staff)
+
+@MainActor
+final class SpotBatchProgrammerTests: XCTestCase {
+    private final class FakeBackend: SpotProgrammingBackend {
+        let codes: [String]
+        var done: Set<String> = []
+        var marks: [String] = []
+        var markFailures = 0
+
+        init(_ codes: [String]) { self.codes = codes }
+
+        func next(batchID: String) async throws -> SpotProgrammingNext {
+            SpotProgrammingNext(spotID: codes.first { !done.contains($0) }, programmed: done.count, total: codes.count)
+        }
+
+        func markProgrammed(_ spotID: String) async throws {
+            if markFailures > 0 {
+                markFailures -= 1
+                throw URLError(.notConnectedToInternet)
+            }
+            done.insert(spotID)
+            marks.append(spotID)
+        }
+    }
+
+    @MainActor
+    private final class FakeWriter: SpotStickerWriting {
+        /// One entry per sticker held to the phone; an empty script means every sticker works.
+        var script: [SpotNFCError?] = []
+        var written: [String] = []
+
+        func program(_ spotID: String, prompt: String) async throws {
+            if !script.isEmpty, let failure = script.removeFirst() { throw failure }
+            written.append(spotID)
+        }
+    }
+
+    private let codes = ["AAAA2222", "BBBB3333", "CCCC4444"]
+
+    private func make(_ backend: FakeBackend, _ writer: FakeWriter) -> SpotBatchProgrammer {
+        SpotBatchProgrammer(batchID: "batch-1", backend: backend, writer: writer, pause: {})
+    }
+
+    func testEveryCodeGoesOntoAStickerInOrderThenItFinishes() async {
+        let backend = FakeBackend(codes), writer = FakeWriter()
+        let programmer = make(backend, writer)
+
+        await programmer.run()
+
+        XCTAssertEqual(writer.written, codes)
+        XCTAssertEqual(backend.marks, codes)
+        XCTAssertTrue(programmer.isFinished)
+        XCTAssertEqual(programmer.programmed, 3)
+        XCTAssertEqual(programmer.lastProgrammed, "CCCC4444")
+        XCTAssertEqual(programmer.message, "All 3 stickers are programmed.")
+        XCTAssertFalse(programmer.isRunning)
+    }
+
+    func testAStickerThatAlreadyHasACodeIsRefusedAndNoCodeIsUsedUp() async {
+        let backend = FakeBackend(codes), writer = FakeWriter()
+        writer.script = [.alreadyProgrammed("ZZZZ9999")]   // the first sticker is not blank
+        let programmer = make(backend, writer)
+
+        await programmer.run()
+
+        XCTAssertEqual(writer.written, codes, "the first code still went onto the next, blank sticker")
+        XCTAssertEqual(backend.marks, codes)
+        XCTAssertTrue(programmer.isFinished)
+    }
+
+    func testACodeIsNeverHandedOutTwiceWhenSavingItFails() async {
+        let backend = FakeBackend(codes), writer = FakeWriter()
+        backend.markFailures = SpotBatchProgrammer.recordAttempts   // offline right after the first sticker
+        let programmer = make(backend, writer)
+
+        await programmer.run()
+
+        XCTAssertEqual(writer.written, ["AAAA2222"])
+        XCTAssertEqual(programmer.unrecorded, "AAAA2222")
+        XCTAssertTrue(backend.marks.isEmpty)
+        XCTAssertFalse(programmer.isFinished)
+        XCTAssertTrue(programmer.message?.contains("couldn't be saved") == true)
+
+        // Back online: that code is saved first, and is not written to a second sticker.
+        await programmer.run()
+
+        XCTAssertEqual(writer.written, codes)
+        XCTAssertEqual(backend.marks, codes)
+        XCTAssertNil(programmer.unrecorded)
+        XCTAssertTrue(programmer.isFinished)
+    }
+
+    func testABriefOutageWhileSavingIsRetried() async {
+        let backend = FakeBackend(codes), writer = FakeWriter()
+        backend.markFailures = 1
+        let programmer = make(backend, writer)
+
+        await programmer.run()
+
+        XCTAssertEqual(backend.marks, codes)
+        XCTAssertTrue(programmer.isFinished)
+    }
+
+    func testDismissingTheScanSheetStopsCleanly() async {
+        let backend = FakeBackend(codes), writer = FakeWriter()
+        writer.script = [nil, .cancelled]   // one sticker done, then the sheet is dismissed
+        let programmer = make(backend, writer)
+
+        await programmer.run()
+
+        XCTAssertEqual(writer.written, ["AAAA2222"])
+        XCTAssertEqual(backend.marks, ["AAAA2222"])
+        XCTAssertEqual(programmer.message, "Stopped.")
+        XCTAssertFalse(programmer.isFinished)
+        XCTAssertNil(programmer.unrecorded)
+    }
+
+    func testAnUnwritableStickerStopsWithAReadableMessageAndUsesNoCode() async {
+        let backend = FakeBackend(codes), writer = FakeWriter()
+        writer.script = [.notWritable]
+        let programmer = make(backend, writer)
+
+        await programmer.run()
+
+        XCTAssertEqual(programmer.message, SpotNFCError.notWritable.message)
+        XCTAssertTrue(backend.marks.isEmpty)
+        XCTAssertTrue(writer.written.isEmpty)
+    }
+
+    func testAFinishedBatchWritesNothing() async {
+        let backend = FakeBackend(codes), writer = FakeWriter()
+        backend.done = Set(codes)
+        let programmer = make(backend, writer)
+
+        await programmer.run()
+
+        XCTAssertTrue(programmer.isFinished)
+        XCTAssertTrue(writer.written.isEmpty)
+    }
+
+    func testTheRefusalNamesTheCodeAlreadyOnTheSticker() {
+        XCTAssertEqual(
+            SpotNFCError.alreadyProgrammed("ZZZZ9999").message,
+            "That sticker is already programmed as ZZZZ9999. Use a blank one."
+        )
+    }
+}

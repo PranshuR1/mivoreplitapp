@@ -19,6 +19,8 @@ Mivo sells NFC **Mivo Spots**. Each is programmed by Mivo before it ships with o
 | `disabled` | "This Mivo Spot is switched off." |
 | `invalid` | "We couldn't find this Mivo Spot." |
 
+After the first setup the flow shows **Skip the banner** (`SpotInstantSteps`): the four Shortcuts steps (NFC trigger → *Tap a Mivo Spot* → Run Immediately) that make a tap start the Spot with no banner. iOS offers no other way; the same steps are on each Mivo Spot's page.
+
 Logged out: the ID is kept (30 min) and the flow continues after sign-in. Changing a Spot's name, icon, apps, mode or duration never touches the Mivo Spot, so a Study Spot can become a Sleep Spot.
 
 **Where things live.** The backend (Supabase `physical_spots`, only reachable through security-definer RPCs) knows `spot_id`, owner, status, claimed/created timestamps. The Spot's configuration stays on the phone as before (`MivoSpot`, per account) with a `PhysicalSpotLink` pointing at the ID. `SpotManager` re-checks the backend at most every 15 min: a Spot Mivo switched off stops working; one released elsewhere becomes a Digital Spot.

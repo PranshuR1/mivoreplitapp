@@ -12,6 +12,10 @@ enum SpotNFCError: Error, Equatable {
     case notWritable
     case tooSmall
     case multipleTags
+    /// The sticker already carries an official Mivo Spot code (staff programming).
+    case alreadyProgrammed(String)
+    /// The write didn't read back as what was written.
+    case verificationFailed
     /// A tag was read, but it doesn't carry a Mivo Spot link.
     case notAMivoSpot
     case failed(String)
@@ -28,6 +32,10 @@ enum SpotNFCError: Error, Equatable {
             return "That sticker is too small to hold the Spot link. Try an NTAG213 or larger."
         case .multipleTags:
             return "More than one tag is in range. Hold just one sticker near the top of your iPhone."
+        case .alreadyProgrammed(let id):
+            return "That sticker is already programmed as \(id). Use a blank one."
+        case .verificationFailed:
+            return "The sticker didn't read back correctly. Try that sticker again, or use another."
         case .notAMivoSpot:
             return "That tag doesn't have a Mivo Spot on it."
         case .failed(let detail):
@@ -82,13 +90,22 @@ final class SpotNFCService: ObservableObject {
     /// Programs an official Mivo Spot's URL (`https://usemivo.app/s/<ID>`) onto a
     /// tag held to the phone. Only the ID is written — never any setting. Staff
     /// only: the customer-facing app has no way to reach this.
-    func writeOfficialSpot(_ physicalID: String) async throws -> SpotTagWriteResult {
+    ///
+    /// By default a sticker that already carries an official Mivo Spot code is
+    /// refused, so a batch run can never overwrite a code it already handed out.
+    /// `overwrite` is for staff deliberately re-programming one. The write is read
+    /// back before it counts as done.
+    func writeOfficialSpot(
+        _ physicalID: String,
+        overwrite: Bool = true,
+        prompt: String? = nil
+    ) async throws -> SpotTagWriteResult {
         #if canImport(CoreNFC)
         guard Self.isAvailable else { throw SpotNFCError.unavailable }
         guard let id = PhysicalSpotID.normalize(physicalID) else { throw SpotNFCError.notAMivoSpot }
         isWorking = true
         defer { isWorking = false; activeWriter = nil }
-        let writer = SpotTagWriter(url: SpotLink.physicalURL(for: id))
+        let writer = SpotTagWriter(url: SpotLink.physicalURL(for: id), overwrite: overwrite, prompt: prompt)
         activeWriter = writer
         return try await writer.run()
         #else
@@ -141,8 +158,14 @@ private final class SpotTagWriter: NSObject, NFCTagReaderSessionDelegate {
     private var continuation: CheckedContinuation<SpotTagWriteResult, Error>?
     private let lock = NSLock()
     private var finished = false
+    private let overwrite: Bool
+    private let prompt: String?
 
-    init(url: URL) { self.url = url }
+    init(url: URL, overwrite: Bool, prompt: String?) {
+        self.url = url
+        self.overwrite = overwrite
+        self.prompt = prompt
+    }
 
     func run() async throws -> SpotTagWriteResult {
         try await withCheckedThrowingContinuation { continuation in
@@ -151,7 +174,7 @@ private final class SpotTagWriter: NSObject, NFCTagReaderSessionDelegate {
                 finish(.failure(SpotNFCError.unavailable))
                 return
             }
-            session.alertMessage = "Hold the top of your iPhone near the sticker."
+            session.alertMessage = prompt ?? "Hold the top of your iPhone near the sticker."
             self.session = session
             session.begin()
         }
@@ -224,18 +247,46 @@ private final class SpotTagWriter: NSObject, NFCTagReaderSessionDelegate {
                     self.finish(.failure(SpotNFCError.tooSmall))
                     return
                 }
-                ndefTag.writeNDEF(message) { error in
-                    if let error {
-                        session.invalidate(errorMessage: "Couldn't write to the sticker. Try again.")
-                        self.finish(.failure(mapNFCError(error)))
-                    } else {
-                        session.alertMessage = "Mivo Spot programmed."
-                        self.finish(.success(SpotTagWriteResult(identifier: identifier)))
-                        session.invalidate()
+
+                // A blank sticker has nothing to read (that is not an error); one that
+                // already holds a Mivo Spot code must not be overwritten by accident.
+                ndefTag.readNDEF { existing, _ in
+                    if !self.overwrite, let id = Self.officialID(in: existing) {
+                        let failure = SpotNFCError.alreadyProgrammed(id)
+                        session.invalidate(errorMessage: failure.message)
+                        self.finish(.failure(failure))
+                        return
+                    }
+                    ndefTag.writeNDEF(message) { error in
+                        if let error {
+                            session.invalidate(errorMessage: "Couldn't write to the sticker. Try again.")
+                            self.finish(.failure(mapNFCError(error)))
+                            return
+                        }
+                        // Read it back: a code only counts once it is really on the sticker.
+                        ndefTag.readNDEF { written, _ in
+                            let readBack = written?.records.compactMap { $0.wellKnownTypeURIPayload() }.first
+                            guard readBack == self.url else {
+                                session.invalidate(errorMessage: SpotNFCError.verificationFailed.message)
+                                self.finish(.failure(SpotNFCError.verificationFailed))
+                                return
+                            }
+                            session.alertMessage = "Mivo Spot programmed."
+                            self.finish(.success(SpotTagWriteResult(identifier: identifier)))
+                            session.invalidate()
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// The official Spot code on a tag's NDEF message, if it carries one.
+    private static func officialID(in message: NFCNDEFMessage?) -> String? {
+        message?.records
+            .compactMap { $0.wellKnownTypeURIPayload() }
+            .compactMap { SpotLink.physicalSpotID(from: $0) }
+            .first
     }
 }
 

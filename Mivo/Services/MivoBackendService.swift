@@ -708,6 +708,8 @@ struct AdminPhysicalSpot: Decodable, Identifiable, Equatable {
     let ownerEmail: String?
     let disabledAt: String?
     let disabledReason: String?
+    /// When staff wrote this code onto a tag. nil until then.
+    let programmedAt: String?
 
     var id: String { spotId }
 }
@@ -724,6 +726,17 @@ struct AdminPhysicalSpotBatch: Decodable, Identifiable, Equatable {
     let createdAt: String
     let claimedCount: Int
     let disabledCount: Int
+    /// How many of the batch's codes are written onto a tag.
+    let programmedCount: Int?
+}
+
+/// The next code in a batch that is not on a tag yet, with progress.
+struct AdminNextPhysicalSpot: Decodable, Equatable {
+    /// nil when every code in the batch has been written.
+    let spotId: String?
+    let url: String?
+    let programmed: Int
+    let total: Int
 }
 
 struct AdminGeneratedPhysicalSpots: Decodable {
@@ -835,6 +848,22 @@ extension MivoBackendService {
 
     static func adminPhysicalSpotStatus(id: String) async throws -> AdminPhysicalSpot {
         try await rpc("admin_physical_spot_status", body: ["input_spot_id": id], authenticated: true)
+    }
+
+    static func adminNextUnprogrammedPhysicalSpot(batchID: String) async throws -> AdminNextPhysicalSpot {
+        try await rpc(
+            "admin_next_unprogrammed_physical_spot",
+            body: ["input_batch_id": batchID],
+            authenticated: true
+        )
+    }
+
+    static func adminMarkPhysicalSpotProgrammed(id: String) async throws {
+        let _: EmptyRPCResponse = try await rpcAllowingEmpty(
+            "admin_mark_physical_spot_programmed",
+            body: ["input_spot_id": id, "input_programmed": true],
+            authenticated: true
+        )
     }
 
     static func adminSetPhysicalSpotDisabled(id: String, disabled: Bool, reason: String?) async throws {

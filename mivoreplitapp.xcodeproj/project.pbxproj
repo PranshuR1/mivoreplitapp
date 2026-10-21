@@ -99,6 +99,7 @@
 		877B96462FABC7EE6EAB85FA /* CompanionBehaviorEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F158B42FAD9B0581E939EBA1 /* CompanionBehaviorEngine.swift */; };
 		898C382FB7BBA30CBB52E1C0 /* IntentGameModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC80D1E83507916CB672C84D /* IntentGameModels.swift */; };
 		89B4C80CDA98E1FFEED13276 /* CompanionStateManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F4131BBF5289DB7307C81D /* CompanionStateManagerTests.swift */; };
+		8C9D862B7C64FCCDCBDA232C /* SpotBatchProgrammer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A744F4ED1A32DE68D231D542 /* SpotBatchProgrammer.swift */; };
 		9010523442824157F59BBDCE /* SpotShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27BDF0D6ED77801B60EB868 /* SpotShared.swift */; };
 		9174BF527DE8B59224F7C721 /* CompanionFigureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25145B5AC8BA57669B7DB0D1 /* CompanionFigureView.swift */; };
 		91F6020A8ABC435042A0C98D /* CompanionDeviceActivityAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D82300FE75EFF0052DA4A3ED /* CompanionDeviceActivityAdapter.swift */; };
@@ -361,6 +362,7 @@
 		9F0AE1C02B3D4E5F6A7B8C9E /* AttentionReceiptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionReceiptView.swift; sourceTree = "<group>"; };
 		A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionView.swift; sourceTree = "<group>"; };
 		A32F88595EE93F7622346254 /* FocusTimerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerView.swift; sourceTree = "<group>"; };
+		A744F4ED1A32DE68D231D542 /* SpotBatchProgrammer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotBatchProgrammer.swift; sourceTree = "<group>"; };
 		A82228E0BCFCD9DE2A442FB0 /* CompanionWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionWidget.swift; sourceTree = "<group>"; };
 		A927AC28F9838387580E5F7C /* WeeklyReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyReportView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF02 /* MivoRatingPromptService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoRatingPromptService.swift; sourceTree = "<group>"; };
@@ -843,6 +845,7 @@
 				0E58E469B602AB466CDF1333 /* SpotPersistence.swift */,
 				E9522D192BDFB69E56E3255D /* SpotScreenTime.swift */,
 				6849ACC7BE9284A0104FF2F3 /* SpotRegistry.swift */,
+				A744F4ED1A32DE68D231D542 /* SpotBatchProgrammer.swift */,
 			);
 			name = Services;
 			path = Services;
@@ -1358,6 +1361,7 @@
 				851BAE810F0769D3CA064884 /* PhysicalSpot.swift in Sources */,
 				31E854EDB55FF8A59E00706C /* SpotRegistry.swift in Sources */,
 				5E7F644086B4AC45BFF59FFB /* SpotAdminView.swift in Sources */,
+				8C9D862B7C64FCCDCBDA232C /* SpotBatchProgrammer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

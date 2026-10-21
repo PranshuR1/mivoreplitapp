@@ -10,6 +10,7 @@ import SwiftUI
 ///     -MivoPreviewSpotSetup        the create flow
 ///     -MivoPreviewSpotConnect      connecting a Mivo Spot to an existing Spot
 ///     -MivoPreviewSpotClaim        "Meet your new Mivo Spot" (first scan, with existing Spots)
+///     -MivoPreviewSpotInstant      the "Skip the banner" steps
 ///     -MivoPreviewSpotActive       the running Spot
 ///     -MivoPreviewSpotSummary      a finished session, with a comparison
 ///     -MivoPreviewSpotPause        the Mivo pause for a Pause-mode Spot
@@ -23,6 +24,7 @@ struct SpotPreviewHost: View {
         case setup = "-MivoPreviewSpotSetup"
         case connect = "-MivoPreviewSpotConnect"
         case claim = "-MivoPreviewSpotClaim"
+        case instant = "-MivoPreviewSpotInstant"
         case active = "-MivoPreviewSpotActive"
         case summary = "-MivoPreviewSpotSummary"
         case pause = "-MivoPreviewSpotPause"
@@ -113,7 +115,7 @@ struct SpotPreviewHost: View {
         switch screen {
         case .list, .detail, .active, .notice: Self.seed(running: screen != .detail)
         case .empty: SpotManager.shared.loadPreviewState(spots: [], sessions: [], active: nil)
-        case .setup, .connect, .claim: Self.seed(running: false)
+        case .setup, .connect, .claim, .instant: Self.seed(running: false)
         case .summary, .pause, .intention: Self.seed(running: false)
         }
         if screen == .notice {
@@ -137,6 +139,8 @@ struct SpotPreviewHost: View {
             SpotPairSheet(spotID: Self.bedside.id)
         case .claim:
             SpotSetupFlowView(editing: nil, claim: PhysicalSpotClaimRequest(physicalID: "M3P82Q"))
+        case .instant:
+            SpotInstantSheet(spotName: "Study Desk")
         case .active:
             SpotActiveView()
         case .notice:
