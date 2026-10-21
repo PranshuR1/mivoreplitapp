@@ -34,6 +34,12 @@ struct ReflectionView: View {
     @State private var note = ""
     @State private var saving = false
     @State private var recordedBaseSession = false
+    @State private var autoEndDeadline = Date().addingTimeInterval(ReflectionView.autoEndSeconds)
+    @State private var autoEndRemaining = Int(ReflectionView.autoEndSeconds)
+
+    /// How long the reflection screen waits for the user before it ends the
+    /// session on their behalf. Any interaction restarts the countdown.
+    private static let autoEndSeconds: TimeInterval = 60
 
     var overBy: Int { actualDuration - plannedDuration }
     private var sessionDateKey: String {
@@ -67,6 +73,33 @@ struct ReflectionView: View {
         .navigationBarHidden(true)
         .onAppear {
             recordBaseSessionIfNeeded()
+            restartAutoEndCountdown()
+        }
+        .task {
+            await runAutoEndCountdown()
+        }
+        .onChange(of: reflection) { _, _ in restartAutoEndCountdown() }
+        .onChange(of: outcomeScore) { _, _ in restartAutoEndCountdown() }
+        .onChange(of: note) { _, _ in restartAutoEndCountdown() }
+    }
+
+    private func restartAutoEndCountdown() {
+        autoEndDeadline = Date().addingTimeInterval(Self.autoEndSeconds)
+        autoEndRemaining = Int(Self.autoEndSeconds)
+    }
+
+    /// Ticks once a second against a wall-clock deadline so time spent with the
+    /// app backgrounded still counts, then saves whatever has been filled in.
+    private func runAutoEndCountdown() async {
+        while !Task.isCancelled && !saving {
+            autoEndRemaining = max(0, Int(ceil(autoEndDeadline.timeIntervalSinceNow)))
+            if autoEndRemaining == 0 {
+                let answered = reflection != nil || outcomeScore != nil
+                    || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                saveSession(withReflection: answered)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
     }
 
@@ -218,6 +251,9 @@ struct ReflectionView: View {
                 .foregroundColor(MivoColors.textMuted)
                 .padding(.vertical, 14)
                 .disabled(saving)
+            Text("Session ends automatically in \(autoEndRemaining)s")
+                .font(.system(size: 12))
+                .foregroundColor(MivoColors.textMuted)
         }
     }
 
@@ -235,6 +271,7 @@ struct ReflectionView: View {
     }
 
     func saveSession(withReflection: Bool) {
+        guard !saving else { return }
         saving = true
         let session = makeSession(withReflection: withReflection)
         let inserted = appVM.upsertSession(session)
