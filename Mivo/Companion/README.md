@@ -51,8 +51,24 @@ continuous session has been, which app is on screen, or anything about content. 
 exist in `CompanionSignals`; add one only when Mivo can fill it truthfully. The Companion screen shows
 which of the available signals are missing (`CompanionDataLimit`).
 
-No floating overlay, private API or new entitlement is used. The App Group
+No system-wide overlay, private API or new entitlement is used (see Roaming for the in-app one). The App Group
 (`group.com.mivo.mivoapp`) was already configured for the app, widget and shield extension.
+
+## Roaming
+
+While Mivo is open, a small Milo wanders over the tabs (`Views/CompanionRoaming.swift`, one overlay in
+`MainTabView`). iOS offers nothing that draws over other apps or the Home Screen, so this stops the
+moment Mivo leaves the foreground.
+
+- Strolls between standing spots, rests (looks around, breathes, stretches once unlocked), repeats. Taps
+  hop him; everywhere else touches pass straight through.
+- State decides the pace: `tired` is slow; `sleeping`, `focused`, `resting` and `intervening` park him on
+  the tab bar's bottom-right corner in the state's own pose.
+- Off when Companion is off or not yet introduced, animations are off, Reduce Motion is on, or the
+  preference `roamingEnabled` (Settings → Companion → Animations) is off. Hidden during the app tutorial
+  and on screens that show him large (`.hidesRoamingCompanion()`).
+- Where he goes is plain values (`CompanionRoamPlanner`, `RoamPhase`, `MeerkatWalk`), covered by
+  `CompanionRoamingTests`. Review it without signing in: `-MivoPreviewCompanion roam` (or `roam-sleeping`).
 
 ## Live Activities / Dynamic Island
 

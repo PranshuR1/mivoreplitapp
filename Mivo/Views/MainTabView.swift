@@ -214,6 +214,8 @@ struct MainTabView: View {
                 MivoTabBar(selection: $selectedTab)
             }
 
+            CompanionRoamingOverlay(isSuppressed: shouldShowTutorial)
+
             if shouldShowTutorial {
                 AppTutorialOverlay(
                     step: currentTutorialStep,

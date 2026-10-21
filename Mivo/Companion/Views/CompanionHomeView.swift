@@ -48,6 +48,7 @@ struct CompanionHomeView: View {
         }
         .navigationTitle("Companion")
         .navigationBarTitleDisplayMode(.inline)
+        .hidesRoamingCompanion()
         .onAppear { CompanionDeviceActivityAdapter.sync(with: appVM) }
         .onDisappear { companion.acknowledgeUnlocks() }
     }

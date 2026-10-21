@@ -55,7 +55,7 @@ widget.add_file_references([widget_ref]) unless in_target?(widget, widget_ref)
 tests = project.targets.find { |t| t.name == 'MivoClearGuardTests' }
 if tests
   tests_group = project.main_group['MivoClearGuardTests']
-  %w[CompanionBehaviorTests.swift CompanionStateManagerTests.swift].each do |file|
+  %w[CompanionBehaviorTests.swift CompanionStateManagerTests.swift CompanionRoamingTests.swift].each do |file|
     ref = tests_group.files.find { |f| f.path == file } || tests_group.new_reference(file)
     tests.add_file_references([ref]) unless in_target?(tests, ref)
   end

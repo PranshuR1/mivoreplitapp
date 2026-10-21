@@ -73,6 +73,8 @@ struct CompanionPreferences: Codable, Equatable {
     var quietHours: CompanionTimeWindow = .defaultQuietHours
     var bedtime: CompanionBedtime = .default
     var animationsEnabled: Bool = true
+    /// Whether the companion wanders around inside Mivo. Needs animations on.
+    var roamingEnabled: Bool = true
     var notificationsEnabled: Bool = false
 
     static let `default` = CompanionPreferences()
@@ -116,6 +118,7 @@ struct CompanionPreferences: Codable, Equatable {
         quietHours = c.value(.quietHours, default: .defaultQuietHours)
         bedtime = c.value(.bedtime, default: .default)
         animationsEnabled = c.value(.animationsEnabled, default: true)
+        roamingEnabled = c.value(.roamingEnabled, default: true)
         notificationsEnabled = c.value(.notificationsEnabled, default: false)
         name = Self.sanitizedName(c.value(.name, default: ""), for: companionType)
     }

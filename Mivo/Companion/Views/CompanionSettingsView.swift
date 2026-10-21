@@ -33,6 +33,7 @@ struct CompanionSettingsView: View {
         }
         .navigationTitle("Companion settings")
         .navigationBarTitleDisplayMode(.inline)
+        .hidesRoamingCompanion()
         .onAppear { draftName = preferences.name }
         .onChange(of: nameFocused) { _, focused in if !focused { commitName() } }
         .confirmationDialog("Reset companion settings?", isPresented: $confirmReset, titleVisibility: .visible) {
@@ -198,6 +199,17 @@ struct CompanionSettingsView: View {
                 get: { preferences.animationsEnabled },
                 set: { value in companion.updatePreferences { $0.animationsEnabled = value } }
             ))
+            MivoHairline(soft: true)
+            toggleRow("Wander around the app", isOn: Binding(
+                get: { preferences.roamingEnabled },
+                set: { value in companion.updatePreferences { $0.roamingEnabled = value } }
+            ))
+            if !preferences.animationsEnabled {
+                Text("Wandering needs animations on.")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .padding(.bottom, 8)
+            }
             if reduceMotion {
                 Text("Reduce Motion is on in iOS, so the companion stays still. Previews below are paused too.")
                     .font(.system(size: 12.5, weight: .medium))

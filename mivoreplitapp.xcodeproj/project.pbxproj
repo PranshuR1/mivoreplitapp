@@ -24,6 +24,7 @@
 		11A1B2C3D4E5F60718293A53 /* HapticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A52 /* HapticsService.swift */; };
 		11A1B2C3D4E5F60718293A55 /* OnboardingPolish.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A54 /* OnboardingPolish.swift */; };
 		14767C07F56755AAD17FADF1 /* SpotActiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4423A50D4E49C71DBA1B67D6 /* SpotActiveView.swift */; };
+		1B2CB2B60C9555AC6B55E4D2 /* CompanionRoaming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7AE910623AA6A67CE4BCCF /* CompanionRoaming.swift */; };
 		1CF6068386174BD891D19CA4 /* AppViewModel+Comeback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 686E806F9FA14222A617E60D /* AppViewModel+Comeback.swift */; };
 		20A82EE6F8B6B67DA6720D84 /* CompanionDebugPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = E26817C81C75C43CE8E5536E /* CompanionDebugPreview.swift */; };
 		20F6403C2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F6403B2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift */; };
@@ -78,6 +79,7 @@
 		5E7F644086B4AC45BFF59FFB /* SpotAdminView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FB1703A902DDC029DACE16 /* SpotAdminView.swift */; };
 		5EDF876ACF25A46138FF7014 /* CompanionSignals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 214F97BA51D076646279B86A /* CompanionSignals.swift */; };
 		627204F34D11044D49004F0D /* SpotNFCService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 989F3E3D3C56080BB7C83365 /* SpotNFCService.swift */; };
+		62884B7C63533F6C54A081E8 /* CompanionRoamingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C777D6FC08D48F91F44EA47 /* CompanionRoamingTests.swift */; };
 		63A27CAF4DE0412D44CAF62F /* SpotShieldPromptViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE072F1918BDB6C1CE4FF87 /* SpotShieldPromptViews.swift */; };
 		640C7E011844F4B081AC0B94 /* SpotSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05406F03E245541CAF428255 /* SpotSummaryView.swift */; };
 		6668F4B03B79553896BE99A0 /* SpotsHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 746D3211887AF65AF1352E1E /* SpotsHomeView.swift */; };
@@ -251,6 +253,7 @@
 		08ADAD790E394F9330FC39D3 /* CompanionArtwork.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionArtwork.swift; sourceTree = "<group>"; };
 		09AD9852B9517D6F653CFD17 /* CompanionOnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionOnboardingView.swift; sourceTree = "<group>"; };
 		0B26CF7A1E3CE8B59CD64843 /* CompanionStateManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionStateManager.swift; sourceTree = "<group>"; };
+		0B7AE910623AA6A67CE4BCCF /* CompanionRoaming.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionRoaming.swift; sourceTree = "<group>"; };
 		0E2DE554D7F546FD8555BB04 /* ComebackModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComebackModels.swift; sourceTree = "<group>"; };
 		0E58E469B602AB466CDF1333 /* SpotPersistence.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotPersistence.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A4A /* SecureAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureAuthService.swift; sourceTree = "<group>"; };
@@ -332,6 +335,7 @@
 		6849ACC7BE9284A0104FF2F3 /* SpotRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotRegistry.swift; sourceTree = "<group>"; };
 		686E806F9FA14222A617E60D /* AppViewModel+Comeback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppViewModel+Comeback.swift"; sourceTree = "<group>"; };
 		6B1CD2E03F4A5B6C7D8E9F02 /* InstagramWrapperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramWrapperView.swift; sourceTree = "<group>"; };
+		6C777D6FC08D48F91F44EA47 /* CompanionRoamingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionRoamingTests.swift; sourceTree = "<group>"; };
 		6E370DDD6B01BFB27797A7B5 /* SpotSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotSession.swift; sourceTree = "<group>"; };
 		703D28B097E6BB5166A73FAF /* SpotConnectView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotConnectView.swift; sourceTree = "<group>"; };
 		71F4131BBF5289DB7307C81D /* CompanionStateManagerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionStateManagerTests.swift; sourceTree = "<group>"; };
@@ -658,6 +662,7 @@
 				EE6D7A071ECF2164B2613BE9 /* CompanionBehaviorTests.swift */,
 				71F4131BBF5289DB7307C81D /* CompanionStateManagerTests.swift */,
 				D00DDC7AFBC166A24432A3EF /* MivoSpotsTests.swift */,
+				6C777D6FC08D48F91F44EA47 /* CompanionRoamingTests.swift */,
 			);
 			name = MivoClearGuardTests;
 			path = MivoClearGuardTests;
@@ -765,6 +770,7 @@
 				746D9E526584247F84DE1F90 /* CompanionSettingsView.swift */,
 				AEE46205DC5883F17C28046E /* MeerkatArt.swift */,
 				E26817C81C75C43CE8E5536E /* CompanionDebugPreview.swift */,
+				0B7AE910623AA6A67CE4BCCF /* CompanionRoaming.swift */,
 			);
 			name = Views;
 			path = Views;
@@ -1202,6 +1208,7 @@
 				4A421458D8AA83AF4A95DAD8 /* CompanionBehaviorTests.swift in Sources */,
 				89B4C80CDA98E1FFEED13276 /* CompanionStateManagerTests.swift in Sources */,
 				26A6759AC421BF3415A4F783 /* MivoSpotsTests.swift in Sources */,
+				62884B7C63533F6C54A081E8 /* CompanionRoamingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1362,6 +1369,7 @@
 				31E854EDB55FF8A59E00706C /* SpotRegistry.swift in Sources */,
 				5E7F644086B4AC45BFF59FFB /* SpotAdminView.swift in Sources */,
 				8C9D862B7C64FCCDCBDA232C /* SpotBatchProgrammer.swift in Sources */,
+				1B2CB2B60C9555AC6B55E4D2 /* CompanionRoaming.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

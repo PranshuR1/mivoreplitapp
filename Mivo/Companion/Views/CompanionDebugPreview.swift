@@ -2,7 +2,8 @@
 import SwiftUI
 
 /// Debug-only launch targets for reviewing the Companion screens without
-/// signing in: `-MivoPreviewCompanion <home|settings|onboarding|pause|sleeping|focus|session>`.
+/// signing in: `-MivoPreviewCompanion <home|settings|onboarding|pause|sleeping|focus|session|roam|roam-sleeping>`.
+/// `roam` opens the whole tab shell so the wandering companion can be watched.
 /// Uses a throwaway account key, wiped on each launch.
 struct CompanionPreviewHost: View {
     let mode: String
@@ -18,6 +19,8 @@ struct CompanionPreviewHost: View {
                     NavigationStack { CompanionSettingsView() }
                 case "pause":
                     MidScrollCheckInView(seconds: 600)
+                case "roam", "roam-sleeping":
+                    MainTabView()
                 default:
                     NavigationStack { CompanionEntryView() }
                 }
@@ -57,7 +60,7 @@ struct CompanionPreviewHost: View {
                 kind: mode == "focus" ? "focus" : nil
             )
         }
-        if mode == "sleeping" {
+        if mode == "sleeping" || mode == "roam-sleeping" {
             manager.updatePreferences { $0.quietHours = CompanionTimeWindow(isEnabled: true, start: .init(hour: 0), end: .init(hour: 23, minute: 59)) }
         }
     }
