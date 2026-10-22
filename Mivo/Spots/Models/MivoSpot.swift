@@ -169,6 +169,12 @@ struct SpotTemplate: Identifiable, Equatable {
         SpotTemplate(id: "kitchen", name: "Kitchen", icon: SpotIcon.symbol("fork.knife"), suggestedMode: .intention),
         SpotTemplate(id: "car", name: "Car", icon: SpotIcon.symbol("car"), suggestedMode: .awareness),
         SpotTemplate(id: "gym", name: "Gym", icon: SpotIcon.symbol("dumbbell"), suggestedMode: .focus),
+        SpotTemplate(id: "office", name: "Office", icon: SpotIcon.symbol("briefcase"), suggestedMode: .focus),
+        SpotTemplate(id: "library", name: "Library", icon: SpotIcon.symbol("building.columns"), suggestedMode: .focus),
+        SpotTemplate(id: "living-room", name: "Living Room", icon: SpotIcon.symbol("sofa"), suggestedMode: .intention),
+        SpotTemplate(id: "commute", name: "Commute", icon: SpotIcon.symbol("tram"), suggestedMode: .awareness),
+        SpotTemplate(id: "bathroom", name: "Bathroom", icon: SpotIcon.symbol("shower"), suggestedMode: .pause),
+        SpotTemplate(id: "cafe", name: "Café", icon: SpotIcon.symbol("cup.and.saucer"), suggestedMode: .awareness),
         SpotTemplate(id: "custom", name: "", icon: SpotIcon.defaultIcon, suggestedMode: .pause)
     ]
 
@@ -180,7 +186,8 @@ struct SpotTemplate: Identifiable, Equatable {
 enum SpotIconChoices {
     static let symbols = [
         "books.vertical", "desktopcomputer", "bed.double", "fork.knife", "car", "dumbbell",
-        "house", "door.left.hand.open", "sofa", "figure.walk", "cup.and.saucer", "leaf"
+        "house", "door.left.hand.open", "sofa", "figure.walk", "cup.and.saucer", "leaf",
+        "briefcase", "building.columns", "tram", "shower"
     ]
 }
 

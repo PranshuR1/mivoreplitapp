@@ -340,6 +340,21 @@ final class SpotModelTests: XCTestCase {
         XCTAssertEqual(SpotIcon.emoji(from: "  "), SpotIcon.defaultIcon)
     }
 
+    func testTemplatesAreUniqueRealAndEndWithCustom() {
+        let templates = SpotTemplate.all
+        XCTAssertEqual(Set(templates.map(\.id)).count, templates.count)
+        XCTAssertEqual(templates.last?.id, "custom")
+        XCTAssertEqual(templates.count % 2, 0, "the picker is a two-column grid")
+        for template in templates where !template.isCustom {
+            XCTAssertFalse(template.name.isEmpty)
+            guard case .symbol(let name) = SpotIcon.kind(of: template.icon) else {
+                XCTFail("\(template.id) should use a symbol"); continue
+            }
+            XCTAssertNotNil(UIImage(systemName: name), "\(name) is not an SF Symbol")
+            XCTAssertTrue(SpotIconChoices.symbols.contains(name), "\(name) is missing from the icon picker")
+        }
+    }
+
     func testDurationLabels() {
         XCTAssertEqual(MivoSpot(name: "A", defaultDurationMinutes: 25).durationLabel, "25 min")
         XCTAssertEqual(MivoSpot(name: "A", defaultDurationMinutes: 60).durationLabel, "1 hr")
