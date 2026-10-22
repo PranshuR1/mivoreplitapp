@@ -6,7 +6,7 @@ A Spot is a place — a desk, a bedside, the car — with its own way of nudging
 
 Mivo sells NFC **Mivo Spots**. Each is programmed by Mivo before it ships with one URL, `https://usemivo.app/s/<ID>`, and nothing else — no apps, timer, name or user data. A customer never programs anything.
 
-1. Mivo generates IDs (random, 8 chars, unambiguous alphabet) in the Admin Center → **Spots**, or from SQL: `select * from public._generate_physical_spots(100, 'Batch 1');`
+1. Mivo generates IDs (random, 8 chars, unambiguous alphabet) in the Admin Center → **Spots**: pick a count, tap **Generate N & start programming** (the batch name is optional) and hold blank stickers to the phone one after another. **Continue programming** at the top resumes an unfinished batch. Or from SQL: `select * from public._generate_physical_spots(100, 'Batch 1');`
 2. Mivo exports `spot_id,url,status,batch` and programs the URLs onto tags (bulk tool, or one at a time from the same Admin screen). Tags may be write-locked.
 3. The customer taps the Mivo Spot. Mivo reads the ID and asks the backend what it is to them:
 

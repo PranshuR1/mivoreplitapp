@@ -881,6 +881,32 @@ final class PhysicalSpotModelTests: XCTestCase {
 
         """)
     }
+
+    func testNewBatchesNameThemselvesWithoutTyping() {
+        let day = Date(timeIntervalSince1970: 1_792_000_000)   // 2026-10-14 UTC
+        let utc = TimeZone(identifier: "UTC")!
+        XCTAssertEqual(AdminSpotsView.defaultBatchLabel(on: day, timeZone: utc, existing: []), "Batch 14 Oct")
+        XCTAssertEqual(
+            AdminSpotsView.defaultBatchLabel(on: day, timeZone: utc, existing: ["Batch 14 Oct", "Launch"]),
+            "Batch 14 Oct (2)"
+        )
+        XCTAssertEqual(
+            AdminSpotsView.defaultBatchLabel(on: day, timeZone: utc, existing: ["Batch 14 Oct", "Batch 14 Oct (2)"]),
+            "Batch 14 Oct (3)"
+        )
+    }
+
+    func testBatchKnowsHowManyStickersAreLeft() {
+        func batch(_ count: Int, programmed: Int?) -> AdminPhysicalSpotBatch {
+            AdminPhysicalSpotBatch(
+                id: "b", label: "B", spotCount: count, createdAt: "", claimedCount: 0,
+                disabledCount: 0, programmedCount: programmed
+            )
+        }
+        XCTAssertEqual(batch(100, programmed: 40).remainingToProgram, 60)
+        XCTAssertEqual(batch(100, programmed: nil).remainingToProgram, 100)
+        XCTAssertEqual(batch(10, programmed: 12).remainingToProgram, 0)
+    }
 }
 
 @MainActor

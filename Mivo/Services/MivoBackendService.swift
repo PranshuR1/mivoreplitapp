@@ -719,7 +719,7 @@ struct AdminPhysicalSpotPage: Decodable {
     let spots: [AdminPhysicalSpot]
 }
 
-struct AdminPhysicalSpotBatch: Decodable, Identifiable, Equatable {
+struct AdminPhysicalSpotBatch: Decodable, Identifiable, Hashable {
     let id: String
     let label: String
     let spotCount: Int
@@ -728,6 +728,9 @@ struct AdminPhysicalSpotBatch: Decodable, Identifiable, Equatable {
     let disabledCount: Int
     /// How many of the batch's codes are written onto a tag.
     let programmedCount: Int?
+
+    /// Codes in this batch that still need a sticker.
+    var remainingToProgram: Int { max(spotCount - (programmedCount ?? 0), 0) }
 }
 
 /// The next code in a batch that is not on a tag yet, with progress.
@@ -747,6 +750,14 @@ struct AdminGeneratedPhysicalSpots: Decodable {
     let batchId: String
     let label: String
     let spots: [Item]
+
+    /// The batch just made, ready to program: nothing is on a sticker yet.
+    var batch: AdminPhysicalSpotBatch {
+        AdminPhysicalSpotBatch(
+            id: batchId, label: label, spotCount: spots.count, createdAt: "",
+            claimedCount: 0, disabledCount: 0, programmedCount: 0
+        )
+    }
 }
 
 extension MivoBackendService {

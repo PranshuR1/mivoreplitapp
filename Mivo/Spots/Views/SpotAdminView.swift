@@ -3,10 +3,10 @@ import UIKit
 
 /// Manufacturing for Mivo Spots, inside the existing super-admin center.
 ///
-/// The workflow it supports: generate a batch of IDs → export `spot_id,url` → program
-/// the URLs onto NFC tags before sale (with a bulk tool, or one at a time from here)
-/// → look up or switch off a Spot later. Customers never see any of this; every
-/// call is a super-admin-only RPC (`admin_*_physical_spot*`).
+/// The workflow it supports: generate a batch of IDs → program the URLs onto NFC
+/// tags before sale (straight from here, one sticker after another; or export
+/// `spot_id,url` for a bulk tool) → look up or switch off a Spot later. Customers
+/// never see any of this; every call is a super-admin-only RPC (`admin_*_physical_spot*`).
 struct AdminSpotsView: View {
     @EnvironmentObject private var appVM: AppViewModel
 
@@ -19,13 +19,27 @@ struct AdminSpotsView: View {
     @State private var lookupID = ""
     @State private var found: AdminPhysicalSpot?
     @State private var disableReason = ""
+    @State private var programTarget: AdminPhysicalSpotBatch?
+
+    static let countPresets = [25, 50, 100, 250, 500]
 
     private var canGenerate: Bool {
-        !isWorking && !label.trimmingCharacters(in: .whitespaces).isEmpty && (1...5000).contains(count)
+        !isWorking && (1...5000).contains(count)
+    }
+
+    /// What the batch is called when the name field is left empty.
+    private var suggestedLabel: String {
+        Self.defaultBatchLabel(existing: batches.map(\.label))
+    }
+
+    /// The newest batch that still has codes without a sticker.
+    private var unfinishedBatch: AdminPhysicalSpotBatch? {
+        batches.first { $0.remainingToProgram > 0 }
     }
 
     var body: some View {
         List {
+            if let unfinishedBatch { continueSection(unfinishedBatch) }
             generateSection
             if let generated { resultSection(generated) }
             batchSection
@@ -37,29 +51,65 @@ struct AdminSpotsView: View {
         }
         .navigationTitle("Mivo Spots")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $programTarget) { batch in
+            AdminSpotProgramView(batch: batch, appVM: appVM, autoStart: true)
+        }
         .task { await loadBatches() }
         .refreshable { await loadBatches() }
+    }
+
+    // MARK: Continue
+
+    private func continueSection(_ batch: AdminPhysicalSpotBatch) -> some View {
+        Section {
+            NavigationLink {
+                AdminSpotProgramView(batch: batch, appVM: appVM, autoStart: true)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Continue programming").font(.body.weight(.semibold))
+                    Text("\(batch.label) · \(batch.remainingToProgram) stickers to go")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+            }
+        }
     }
 
     // MARK: Generate
 
     private var generateSection: some View {
         Section {
+            HStack(spacing: 8) {
+                ForEach(Self.countPresets, id: \.self) { preset in
+                    Button("\(preset)") { count = preset }
+                        .buttonStyle(.borderless)
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity)
+                        .background(count == preset ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
             Stepper(value: $count, in: 1...5000, step: count >= 100 ? 50 : 10) {
                 LabeledContent("Spots", value: "\(count)")
             }
-            TextField("Batch name, e.g. Launch run 1", text: $label)
+            TextField("Batch name (optional) — \(suggestedLabel)", text: $label)
                 .textInputAutocapitalization(.sentences)
             Button {
-                Task { await generate() }
+                Task { await generate(startProgramming: true) }
             } label: {
-                if isWorking { ProgressView() } else { Text("Generate \(count) Mivo Spots") }
+                if isWorking { ProgressView() } else { Label("Generate \(count) & start programming", systemImage: "wave.3.right") }
+            }
+            .disabled(!canGenerate)
+            Button {
+                Task { await generate(startProgramming: false) }
+            } label: {
+                Text("Generate only, export CSV")
             }
             .disabled(!canGenerate)
         } header: {
-            Text("Generate a batch")
+            Text("Make more Spots")
         } footer: {
-            Text("Each Spot gets a random ID and the URL https://usemivo.app/s/<ID>, unclaimed. Nothing about what it does is stored on the tag.")
+            Text("Each Spot gets a random ID and the URL https://usemivo.app/s/<ID>, unclaimed. Nothing about what it does is stored on the tag. Then hold blank stickers to the phone one after another; no codes to type.")
         }
     }
 
@@ -157,17 +207,21 @@ struct AdminSpotsView: View {
 
     // MARK: Actions
 
-    private func generate() async {
+    private func generate(startProgramming: Bool) async {
         isWorking = true
         message = nil
         defer { isWorking = false }
         do {
             try await appVM.prepareAuthenticatedSession()
-            generated = try await MivoBackendService.adminGeneratePhysicalSpots(
-                count: count, label: label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let typed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let result = try await MivoBackendService.adminGeneratePhysicalSpots(
+                count: count, label: typed.isEmpty ? suggestedLabel : typed
             )
+            generated = result
+            label = ""
             HapticsService.success()
             await loadBatches()
+            if startProgramming { programTarget = result.batch }
         } catch {
             message = error.localizedDescription
         }
@@ -229,6 +283,23 @@ struct AdminSpotsView: View {
         }
     }
 
+    // MARK: Naming
+
+    /// "Batch 21 Oct", then "Batch 21 Oct (2)" … so a second batch on the same day
+    /// never needs a name typed in.
+    static func defaultBatchLabel(on date: Date = Date(), timeZone: TimeZone = .current, existing: [String]) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "d MMM"
+        let base = "Batch \(formatter.string(from: date))"
+        let taken = Set(existing)
+        if !taken.contains(base) { return base }
+        var number = 2
+        while taken.contains("\(base) (\(number))") { number += 1 }
+        return "\(base) (\(number))"
+    }
+
     // MARK: CSV
 
     /// `spot_id,url,status,batch` — the file used to program tags.
@@ -257,7 +328,7 @@ struct AdminSpotBatchView: View {
                 LabeledContent("Switched off", value: "\(batch.disabledCount)")
                 if SpotNFCService.isAvailable {
                     NavigationLink {
-                        AdminSpotProgramView(batch: batch, appVM: appVM)
+                        AdminSpotProgramView(batch: batch, appVM: appVM, autoStart: true)
                     } label: {
                         Label("Program stickers", systemImage: "wave.3.right")
                     }
@@ -316,10 +387,13 @@ struct AdminSpotBatchView: View {
 /// The next unwritten code is picked automatically; the person never types a code.
 struct AdminSpotProgramView: View {
     let batch: AdminPhysicalSpotBatch
+    /// Opens the scan sheet as soon as the screen appears, so the first sticker needs no extra tap.
+    let autoStart: Bool
     @StateObject private var programmer: SpotBatchProgrammer
 
-    init(batch: AdminPhysicalSpotBatch, appVM: AppViewModel) {
+    init(batch: AdminPhysicalSpotBatch, appVM: AppViewModel, autoStart: Bool = false) {
         self.batch = batch
+        self.autoStart = autoStart
         _programmer = StateObject(wrappedValue: SpotBatchProgrammer(
             batchID: batch.id,
             backend: BackendSpotProgramming(prepare: { try await appVM.prepareAuthenticatedSession() }),
@@ -365,6 +439,12 @@ struct AdminSpotProgramView: View {
         }
         .navigationTitle("Program stickers")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            guard autoStart else { return }
+            // Let the push finish before iOS covers it with the scan sheet.
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            if !Task.isCancelled { programmer.start() }
+        }
         .onDisappear { programmer.stop() }
     }
 }
