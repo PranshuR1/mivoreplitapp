@@ -468,12 +468,23 @@ struct InstagramWrapperSession: Codable, Identifiable {
     /// Seconds between the page loading and the first scroll — how long
     /// before they actually started engaging.
     let firstScrollDelaySeconds: Int
+    /// Whether replay mode was swapping new reels for repeats this session.
+    /// False during the 3-day baseline, so those sessions stay a clean
+    /// measure of how the person scrolls on their own.
+    let replayActive: Bool
+    /// Reels that were new to the person and were watched.
+    let freshReelCount: Int
+    /// Repeats watched, whether Instagram or Mivo served them.
+    let repeatReelCount: Int
+    /// New reels Mivo swapped for a repeat.
+    let replacedReelCount: Int
 
     enum CodingKeys: String, CodingKey {
         case id, date, startedAt, endedAt, scrollCount
         case videoPlayCount, videoWatchSeconds, tapCount
         case scrollDistancePoints, sectionChanges
         case longestPauseSeconds, firstScrollDelaySeconds
+        case replayActive, freshReelCount, repeatReelCount, replacedReelCount
     }
 
     init(
@@ -488,7 +499,11 @@ struct InstagramWrapperSession: Codable, Identifiable {
         scrollDistancePoints: Int = 0,
         sectionChanges: Int = 0,
         longestPauseSeconds: Int = 0,
-        firstScrollDelaySeconds: Int = 0
+        firstScrollDelaySeconds: Int = 0,
+        replayActive: Bool = false,
+        freshReelCount: Int = 0,
+        repeatReelCount: Int = 0,
+        replacedReelCount: Int = 0
     ) {
         self.id = id
         self.date = date
@@ -502,6 +517,10 @@ struct InstagramWrapperSession: Codable, Identifiable {
         self.sectionChanges = sectionChanges
         self.longestPauseSeconds = longestPauseSeconds
         self.firstScrollDelaySeconds = firstScrollDelaySeconds
+        self.replayActive = replayActive
+        self.freshReelCount = freshReelCount
+        self.repeatReelCount = repeatReelCount
+        self.replacedReelCount = replacedReelCount
     }
 
     init(from decoder: Decoder) throws {
@@ -518,6 +537,10 @@ struct InstagramWrapperSession: Codable, Identifiable {
         sectionChanges = try container.decodeIfPresent(Int.self, forKey: .sectionChanges) ?? 0
         longestPauseSeconds = try container.decodeIfPresent(Int.self, forKey: .longestPauseSeconds) ?? 0
         firstScrollDelaySeconds = try container.decodeIfPresent(Int.self, forKey: .firstScrollDelaySeconds) ?? 0
+        replayActive = try container.decodeIfPresent(Bool.self, forKey: .replayActive) ?? false
+        freshReelCount = try container.decodeIfPresent(Int.self, forKey: .freshReelCount) ?? 0
+        repeatReelCount = try container.decodeIfPresent(Int.self, forKey: .repeatReelCount) ?? 0
+        replacedReelCount = try container.decodeIfPresent(Int.self, forKey: .replacedReelCount) ?? 0
     }
 }
 

@@ -706,6 +706,8 @@ class AppViewModel: ObservableObject {
                 CompanionStateManager.shared.prepare(forEmail: nil)
                 // Ends a running Spot and lifts its shield; the account's Spots stay saved.
                 SpotManager.shared.signOut()
+                // Lifts a running lock's shield so it can't outlive the account that set it.
+                LockInManager.shared.signOut()
                 self.user = nil
                 self.adminToken = nil
                 self.isLoggedIn = false
@@ -743,6 +745,7 @@ class AppViewModel: ObservableObject {
         DeviceBindingService.releaseIfBound(email: email)
         ParentalConsentTicketStore.clear()
         SpotManager.shared.eraseAllData()
+        LockInManager.shared.eraseAllData()
 
         logout()
     }
@@ -1824,6 +1827,7 @@ class AppViewModel: ObservableObject {
         let resetEmail = user?.email ?? StorageService.activeUserEmail
         mivoLaunchGateActive = false
         SpotManager.shared.eraseAllData()
+        LockInManager.shared.eraseAllData()
 
         SecureAuthService.deleteAllRecords()
         StorageService.removeAllMivoData()
@@ -2049,7 +2053,11 @@ class AppViewModel: ObservableObject {
         scrollDistancePoints: Int = 0,
         sectionChanges: Int = 0,
         longestPauseSeconds: Int = 0,
-        firstScrollDelaySeconds: Int = 0
+        firstScrollDelaySeconds: Int = 0,
+        replayActive: Bool = false,
+        freshReelCount: Int = 0,
+        repeatReelCount: Int = 0,
+        replacedReelCount: Int = 0
     ) {
         let session = InstagramWrapperSession(
             id: UUID().uuidString,
@@ -2063,7 +2071,11 @@ class AppViewModel: ObservableObject {
             scrollDistancePoints: scrollDistancePoints,
             sectionChanges: sectionChanges,
             longestPauseSeconds: longestPauseSeconds,
-            firstScrollDelaySeconds: firstScrollDelaySeconds
+            firstScrollDelaySeconds: firstScrollDelaySeconds,
+            replayActive: replayActive,
+            freshReelCount: freshReelCount,
+            repeatReelCount: repeatReelCount,
+            replacedReelCount: replacedReelCount
         )
         instagramWrapperSessions.append(session)
         saveForCurrentUser(instagramWrapperSessions, forKey: .instagramWrapperSessions)

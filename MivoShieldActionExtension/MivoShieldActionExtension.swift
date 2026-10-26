@@ -63,6 +63,7 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         for application: ApplicationToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
+        if handleLockInShield(action: action, application: application, category: nil, webDomain: nil, completionHandler: completionHandler) { return }
         if handleSpotShield(action: action, application: application, category: nil, webDomain: nil, completionHandler: completionHandler) { return }
         handleShieldAction(action: action, application: application, completionHandler: completionHandler)
     }
@@ -72,6 +73,7 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         for category: ActivityCategoryToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
+        if handleLockInShield(action: action, application: nil, category: category, webDomain: nil, completionHandler: completionHandler) { return }
         if handleSpotShield(action: action, application: nil, category: category, webDomain: nil, completionHandler: completionHandler) { return }
         handleShieldAction(action: action, application: nil, completionHandler: completionHandler)
     }
@@ -81,8 +83,69 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         for webDomain: WebDomainToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
+        if handleLockInShield(action: action, application: nil, category: nil, webDomain: webDomain, completionHandler: completionHandler) { return }
         if handleSpotShield(action: action, application: nil, category: nil, webDomain: webDomain, completionHandler: completionHandler) { return }
         handleShieldAction(action: action, application: nil, completionHandler: completionHandler)
+    }
+
+    // MARK: - Lock-in
+
+    /// A tap on a shield that a running lock put up. Returns false when the tapped
+    /// thing isn't the lock's, so every other Mivo flow handles it exactly as before.
+    ///
+    /// Like the other flows here, the extension can't show UI or reliably open the
+    /// app; it records the request and posts the same "Open Mivo" local notification.
+    private func handleLockInShield(
+        action: ShieldAction,
+        application: ApplicationToken?,
+        category: ActivityCategoryToken?,
+        webDomain: WebDomainToken?,
+        completionHandler: @escaping (ShieldActionResponse) -> Void
+    ) -> Bool {
+        let defaults = UserDefaults(suiteName: LockInKeys.appGroup)
+        guard let live = LockInLiveState.read(from: defaults),
+              let data = defaults?.data(forKey: LockInKeys.liveSelection),
+              let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else { return false }
+        let covered = (application.map { selection.applicationTokens.contains($0) } ?? false)
+            || (category.map { selection.categoryTokens.contains($0) } ?? false)
+            || (webDomain.map { selection.webDomainTokens.contains($0) } ?? false)
+        guard covered else { return false }
+
+        switch action {
+        case .primaryButtonPressed:
+            logger.info("ShieldAction primary: Lock-in → Open Mivo")
+            requestLockInRoute(live, defaults: defaults)
+            completionHandler(.defer)
+        case .secondaryButtonPressed:
+            completionHandler(.close)
+        @unknown default:
+            completionHandler(.close)
+        }
+        return true
+    }
+
+    private func requestLockInRoute(_ live: LockInLiveState, defaults: UserDefaults?) {
+        defaults?.set("show", forKey: LockInKeys.pendingRoute)
+        defaults?.set(Date().timeIntervalSince1970, forKey: LockInKeys.pendingAt)
+        defaults?.synchronize()
+
+        if let url = URL(string: "mivo://lockin") {
+            openWithExtensionContextIfAvailable(url)
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Show Milo what you did"
+        content.body = "Tap to open Mivo and unlock."
+        content.sound = .default
+        content.categoryIdentifier = "MIVO_SESSION_ENDED"
+        content.userInfo = ["mivoRoute": LockInKeys.notificationRoute]
+        if #available(iOS 15.0, *) { content.interruptionLevel = .timeSensitive }
+        let request = UNNotificationRequest(
+            identifier: "\(openMivoNotificationPrefix).lockin.\(Int(Date().timeIntervalSince1970 * 1000))",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 
     // MARK: - Mivo Spots

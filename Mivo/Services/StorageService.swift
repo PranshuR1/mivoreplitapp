@@ -54,6 +54,10 @@ enum StorageKey: String {
     case mivoSpots = "mivo_spots"
     case mivoSpotSessions = "mivo_spot_sessions"
     case mivoSpotActiveSession = "mivo_spot_active_session"
+    case mivoLockIn = "mivo_lock_in"
+    case mivoLockInHistory = "mivo_lock_in_history"
+    case mivoLockInKeyholder = "mivo_lock_in_keyholder"
+    case mivoLockInLastApps = "mivo_lock_in_last_apps"
     // AI dataset storage - aggregated inputs for the AI engine
     case aiDataset = "mivo_ai_dataset"
 }

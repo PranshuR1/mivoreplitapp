@@ -242,6 +242,14 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
             completionHandler([])
             return
         }
+        if (notification.request.content.userInfo["mivoRoute"] as? String) == LockInKeys.notificationRoute {
+            // A lock ran out, or a lock's shield asked to open Mivo — and Mivo is
+            // already open, so there is nothing to banner; just act on it.
+            center.removeDeliveredNotifications(withIdentifiers: [notification.request.identifier])
+            NotificationCenter.default.post(name: Notification.Name(LockInKeys.routeChangedNotification), object: nil)
+            completionHandler([])
+            return
+        }
         if (notification.request.content.userInfo["mivoRoute"] as? String) == "mivoClear" {
             persistMivoClearRoute(from: notification.request.content.userInfo)
             center.removeDeliveredNotifications(withIdentifiers: [notification.request.identifier])
@@ -272,6 +280,13 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         if (userInfo["mivoRoute"] as? String) == SpotKeys.notificationRoute {
             center.removeDeliveredNotifications(withIdentifiers: [response.notification.request.identifier])
             NotificationCenter.default.post(name: Notification.Name(SpotKeys.routeChangedNotification), object: nil)
+            completionHandler()
+            return
+        }
+
+        if (userInfo["mivoRoute"] as? String) == LockInKeys.notificationRoute {
+            center.removeDeliveredNotifications(withIdentifiers: [response.notification.request.identifier])
+            NotificationCenter.default.post(name: Notification.Name(LockInKeys.routeChangedNotification), object: nil)
             completionHandler()
             return
         }
@@ -493,6 +508,7 @@ struct MivoApp: App {
                         // If the ObjC-runtime openURL trick worked, cancel/clear any
                         // fallback notification the shield action extension requested.
                         SessionEndedNotificationCleaner.clearPendingAndDelivered()
+                        if LockInManager.shared.handle(url: url) { return }
                         appVM.handleDeepLink(url)
                     }
                 }
@@ -563,6 +579,8 @@ struct RootView: View {
                 SpotPreviewHost(screen: spotScreen)
             } else if let companionMode = UserDefaults.standard.string(forKey: "MivoPreviewCompanion") {
                 CompanionPreviewHost(mode: companionMode)
+            } else if let lockInMode = UserDefaults.standard.string(forKey: "MivoPreviewLockIn") {
+                LockInPreviewHost(mode: lockInMode)
             } else {
                 defaultRoot
             }

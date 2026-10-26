@@ -105,6 +105,11 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
             endAlwaysBlockDrift()
             return
         }
+        // Lock-in's check-in time: lift the lock even if Mivo was never reopened.
+        if activity.rawValue == LockInKeys.endActivityName {
+            endLockIn()
+            return
+        }
         // Mivo Spots: the same "schedule starts at the moment it should happen" alarms.
         if activity.rawValue == SpotKeys.endActivityName {
             endSpot()
@@ -159,6 +164,10 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
         }
         if activity.rawValue == SpotKeys.relockActivityName {
             relockSpot()
+            return
+        }
+        if activity.rawValue == LockInKeys.endActivityName {
+            endLockIn()
             return
         }
         // Primary fallback for relock schedule.
@@ -277,6 +286,31 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
         defaults.removeObject(forKey: stillLockEndsAtKey)
         defaults.synchronize()
         logger.info("Still Lock ended from extension")
+    }
+
+    // MARK: - Lock-in
+
+    private var lockInStore: ManagedSettingsStore {
+        ManagedSettingsStore(named: ManagedSettingsStore.Name(LockInKeys.storeName))
+    }
+
+    /// The check-in time has passed: lift the lock's shield and mark it ended. Only
+    /// the shield and the live flag are touched here — the app records the lock as
+    /// "time ran out" the next time it opens.
+    private func endLockIn() {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return }
+        // An alarm left over from a lock that already ended must not touch the next one.
+        let endsAt = defaults.double(forKey: LockInKeys.liveEndsAt)
+        if defaults.bool(forKey: LockInKeys.liveActive), endsAt > Date().timeIntervalSince1970 + 5 {
+            logger.info("Lock-in end alarm ignored: the running lock isn't due yet")
+            return
+        }
+        lockInStore.shield.applications = nil
+        lockInStore.shield.applicationCategories = nil
+        lockInStore.shield.webDomains = nil
+        defaults.set(false, forKey: LockInKeys.liveActive)
+        defaults.synchronize()
+        logger.info("Lock-in ended from extension")
     }
 
     // MARK: - Mivo Spots

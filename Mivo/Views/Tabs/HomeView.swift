@@ -34,6 +34,9 @@ struct HomeView: View {
     @ObservedObject private var companion = CompanionStateManager.shared
     @ObservedObject private var expansion = ProductExpansionStore.shared
     @State private var showRecoveryMode = false
+    @AppStorage(ReplayModeSetting.key) private var replayModeOn = true
+    @ObservedObject private var plus = MivoPlusStore.shared
+    @State private var paywallFeature: PlusFeature?
     @State private var isRequestingScreenTime = false
     private let screenTimePoller = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     #if canImport(FamilyControls)
@@ -65,6 +68,8 @@ struct HomeView: View {
                         scrollingPlanSection
                     }
 
+                    replayModeRow
+
                     practiceSection
                     exploreSection
                     reviewSection
@@ -74,7 +79,14 @@ struct HomeView: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(item: $paywallFeature) { feature in
+            MivoPlusPaywallView(feature: feature)
+                .environmentObject(appVM)
+        }
+        .onChange(of: plus.hasCheckedPurchases) { _, _ in enforceWrapperAccess() }
+        .onChange(of: plus.isPlus) { _, _ in enforceWrapperAccess() }
         .onAppear {
+            MivoPlusStore.shared.start()
             protectionEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
             #if canImport(FamilyControls)
             if #available(iOS 16.0, *) {
@@ -363,6 +375,73 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - Mivo Plus
+
+    private var hasPlus: Bool {
+        MivoPlusAccess.allows(isPlus: plus.isPlus, isAdmin: appVM.isAdminUser)
+    }
+
+    /// Runs `action` for Plus, otherwise opens the paywall for that feature.
+    private func requirePlus(_ feature: PlusFeature, _ action: () -> Void) {
+        if hasPlus {
+            action()
+        } else {
+            HapticsService.selection()
+            paywallFeature = feature
+        }
+    }
+
+    /// Without Plus, tapping Instagram falls back to the normal 5-second pause
+    /// instead of opening a locked wrapper. Waits for the App Store to answer
+    /// first so a slow start never strips Plus from someone who has it.
+    private func enforceWrapperAccess() {
+        guard plus.hasCheckedPurchases, !hasPlus else { return }
+        FamilyControlsManager.shared.setInstagramWrapperEnabled(false)
+    }
+
+    // MARK: - Replay mode
+
+    /// The on/off switch for replay mode in the Instagram view. On by default;
+    /// held off during the 3-day observation so the baseline stays clean.
+    private var replayModeRow: some View {
+        MivoListGroup {
+            HStack(spacing: 12) {
+                MivoIconTile(systemName: "repeat")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Replay mode")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(MivoColors.ink)
+                    Text(replayModeSubtitle)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(MivoColors.inkBody)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                }
+                Spacer(minLength: 8)
+                Toggle("Replay mode", isOn: Binding(
+                    get: { replayModeOn && hasPlus },
+                    set: { newValue in
+                        if hasPlus { replayModeOn = newValue } else { requirePlus(.instagramInMivo) {} }
+                    }
+                ))
+                    .labelsHidden()
+                    .tint(MivoColors.accent)
+                    .onChange(of: replayModeOn) { _, _ in HapticsService.selection() }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+    }
+
+    private var replayModeSubtitle: String {
+        guard hasPlus else { return "Part of Mivo Plus." }
+        guard replayModeOn else { return "Off. Instagram's feed stays as it is." }
+        if displayedPlan?.collecting == true {
+            return "On. Starts after your 3 days of observing, so your baseline stays honest."
+        }
+        return "Once your reels or minutes are used, Instagram in Mivo only plays ones you've already watched."
+    }
+
     /// Days 1–3 replace the timeline with a single line and a 3-segment bar
     /// rather than showing a cap that does not exist yet.
     private func observationLine(_ plan: ScreenTimeReductionPlan) -> some View {
@@ -393,7 +472,7 @@ struct HomeView: View {
 
             Button {
                 HapticsService.selection()
-                showExperimentHub = true
+                requirePlus(.experiments) { showExperimentHub = true }
             } label: {
                 HStack(spacing: 12) {
                     MivoIconTile(systemName: "flask")
@@ -421,6 +500,7 @@ struct HomeView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(MivoPressStyle())
+            .plusLockBadge(!hasPlus)
         }
     }
 
@@ -438,14 +518,16 @@ struct HomeView: View {
             ) {
                 if expansion.isEnabled(.mivoStill) {
                     MivoStillRow {
-                        showMivoStill = true
+                        requirePlus(.mivoStill) { showMivoStill = true }
                     }
+                    .plusLockBadge(!hasPlus)
                 }
 
                 if expansion.isEnabled(.mivoClear) {
                     MivoToolTile(icon: "sparkles", title: "Mivo Clear", subtitle: mivoClearMeta) {
-                        showMivoClear = true
+                        requirePlus(.mivoClear) { showMivoClear = true }
                     }
+                    .plusLockBadge(!hasPlus)
                 }
 
                 SpotsEntryRow {
@@ -456,6 +538,8 @@ struct HomeView: View {
                 if companion.isActive || companion.preferences.isAwaitingIntroduction {
                     CompanionHomeRow()
                 }
+
+                LockInHomeRow()
             }
         }
     }
@@ -465,8 +549,8 @@ struct HomeView: View {
             MivoSectionTitle(text: "Review")
 
             MivoListGroup {
-                reviewRow(icon: "doc.text", title: "Receipt", subtitle: "What today actually cost you") {
-                    showAttentionReceipt = true
+                reviewRow(icon: "doc.text", title: "Receipt", subtitle: "What today actually cost you", locked: !hasPlus) {
+                    requirePlus(.receipt) { showAttentionReceipt = true }
                 }
 
                 MivoListDivider()
@@ -476,20 +560,20 @@ struct HomeView: View {
 
                 if let plan = displayedPlan, !plan.collecting {
                     MivoListDivider()
-                    reviewRow(icon: "chart.line.uptrend.xyaxis", title: "30-day forecast", subtitle: "Where your plan is headed, day by day") {
-                        showMonthlyForecast = true
+                    reviewRow(icon: "chart.line.uptrend.xyaxis", title: "30-day forecast", subtitle: "Where your plan is headed, day by day", locked: !hasPlus) {
+                        requirePlus(.forecast) { showMonthlyForecast = true }
                     }
                 }
             }
         }
     }
 
-    private func reviewRow(icon: String, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+    private func reviewRow(icon: String, title: String, subtitle: String, locked: Bool = false, action: @escaping () -> Void) -> some View {
         Button {
             HapticsService.selection()
             action()
         } label: {
-            MivoListRow(icon: icon, title: title, subtitle: subtitle)
+            MivoListRow(icon: icon, title: title, subtitle: subtitle, value: locked ? "Plus" : nil)
         }
         .buttonStyle(MivoRowPressStyle())
     }
@@ -1560,5 +1644,23 @@ struct MonthlyPlanForecastView: View {
         let h = minutes / 60
         let m = minutes % 60
         return m == 0 ? "\(h)h" : "\(h)h \(m)m"
+    }
+}
+
+private extension View {
+    /// A small lock on a Plus feature while it's locked.
+    func plusLockBadge(_ locked: Bool) -> some View {
+        overlay(alignment: .topTrailing) {
+            if locked {
+                Text("Plus")
+                    .font(.system(size: 10.5, weight: .bold))
+                    .foregroundColor(MivoColors.deep)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(MivoColors.surfaceV2))
+                    .padding(10)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 }

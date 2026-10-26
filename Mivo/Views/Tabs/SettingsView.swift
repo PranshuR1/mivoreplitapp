@@ -47,6 +47,8 @@ struct SettingsView: View {
     @State private var exportPayload: MivoDataExportPayload?
     @State private var impulseProtectionEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
     @State private var instagramWrapperEnabled = FamilyControlsManager.shared.isInstagramWrapperEnabled()
+    @ObservedObject private var plus = MivoPlusStore.shared
+    @State private var plusPaywallFeature: PlusFeature?
     @State private var focusBreakTrialOptedIn = FocusBreakTrial.isOptedIn
     @State private var aiProtectedAppRecommendation: ProtectedAppRecommendation?
     @State private var aiProtectedAppLoading = false
@@ -82,6 +84,10 @@ struct SettingsView: View {
     var body: some View {
         pageContent
         .navigationBarHidden(page == .root)
+        .sheet(item: $plusPaywallFeature) { feature in
+            MivoPlusPaywallView(feature: feature)
+                .environmentObject(appVM)
+        }
         // Only the Settings tab itself presents these; the sub-pages can be
         // on screen alongside it, and two presenters of one flag would fight.
         .fullScreenCover(isPresented: page == .root ? $appVM.onboardingReplayActive : .constant(false)) {
@@ -376,6 +382,16 @@ struct SettingsView: View {
                     }
                     .buttonStyle(MivoPressStyle())
 
+                    settingsSection("Mivo Plus") {
+                        settingsActionRow(
+                            icon: "sparkles",
+                            title: hasMivoPlus ? "Mivo Plus" : "Get Mivo Plus",
+                            subtitle: hasMivoPlus ? "Active. Manage or restore" : "Everything beyond the basic pause"
+                        ) {
+                            plusPaywallFeature = .general
+                        }
+                    }
+
                     settingsSection("Preferences") {
                         appearancePreferenceRow
                         rowSeparator()
@@ -393,6 +409,14 @@ struct SettingsView: View {
                             subtitle: "A small character in your pauses"
                         ) {
                             CompanionEntryView()
+                        }
+                        rowSeparator()
+                        settingsNavigationRow(
+                            icon: "lock",
+                            title: "Lock in",
+                            subtitle: "Lock apps until the work is done"
+                        ) {
+                            LockInEntryView()
                         }
                     }
 
@@ -952,6 +976,12 @@ struct SettingsView: View {
                 .tint(MivoColors.accent)
                 .labelsHidden()
                 .onChange(of: instagramWrapperEnabled) { _, enabled in
+                    if enabled && !hasMivoPlus {
+                        // Instagram in Mivo is a Plus feature: keep it off and explain.
+                        instagramWrapperEnabled = false
+                        plusPaywallFeature = .instagramInMivo
+                        return
+                    }
                     FamilyControlsManager.shared.setInstagramWrapperEnabled(enabled)
                     HapticsService.selection()
                 }
@@ -1300,6 +1330,10 @@ struct SettingsView: View {
     /// A titled group: a section title over one card of rows. Sub-pages build
     /// on this, so a change here restyles every Settings page at once.
     @ViewBuilder
+    private var hasMivoPlus: Bool {
+        MivoPlusAccess.allows(isPlus: plus.isPlus, isAdmin: appVM.isAdminUser)
+    }
+
     private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             MivoSectionTitle(text: title)

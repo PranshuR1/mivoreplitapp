@@ -99,6 +99,15 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
             )
         }
 
+        // ── 0.7. Lock-in ──
+        // The person's own commitment to finish something. It shields only the apps
+        // they chose for it, so this applies only when the tapped app (or its
+        // category/site) belongs to the lock. Never a dead end: "Open Mivo" is where
+        // they show Milo what they did.
+        if let lock = lockInShield(application: applicationToken, category: categoryToken, webDomain: webDomainToken) {
+            return lockInConfiguration(for: lock)
+        }
+
         // ── 1. Mivo Spot ──
         // A running Spot shields only its own apps, so this applies only when the
         // tapped app (or its category/site) belongs to the Spot. Copy is calm and
@@ -224,6 +233,47 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
             title: label("Open Mivo", color: textPrimary),
             subtitle: label(
                 "Set your intention and time in Mivo. This app stays locked until the pause is complete and your session starts.",
+                color: textMuted
+            ),
+            primaryButtonLabel: label("Open Mivo", color: .white),
+            primaryButtonBackgroundColor: btnBrown,
+            secondaryButtonLabel: label("Not now", color: textMuted)
+        )
+    }
+
+    // MARK: - Lock-in
+
+    /// The running lock, if it covers what was tapped.
+    private func lockInShield(
+        application: ApplicationToken?,
+        category: ActivityCategoryToken?,
+        webDomain: WebDomainToken?
+    ) -> LockInLiveState? {
+        let defaults = UserDefaults(suiteName: LockInKeys.appGroup)
+        guard let live = LockInLiveState.read(from: defaults),
+              let data = defaults?.data(forKey: LockInKeys.liveSelection),
+              let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else { return nil }
+        if let application, selection.applicationTokens.contains(application) { return live }
+        if let category, selection.categoryTokens.contains(category) { return live }
+        if let webDomain, selection.webDomainTokens.contains(webDomain) { return live }
+        return nil
+    }
+
+    private func lockInConfiguration(for lock: LockInLiveState) -> ShieldConfiguration {
+        let task = lock.task.count > 60 ? String(lock.task.prefix(57)) + "…" : lock.task
+        let minutes = lock.minutesLeft()
+        let timeLeft = minutes >= 60
+            ? "about \(minutes / 60) hr\(minutes >= 120 ? "s" : "")"
+            : "\(minutes) min"
+        return ShieldConfiguration(
+            backgroundBlurStyle: .systemUltraThinMaterialLight,
+            backgroundColor: cream,
+            icon: timerIcon(state: .locked),
+            title: label("Locked in", color: textPrimary),
+            subtitle: label(
+                task.isEmpty
+                    ? "Show Milo what you did to unlock this. The lock ends in \(timeLeft) at the latest."
+                    : "“\(task)”. Show Milo what you did to unlock this. The lock ends in \(timeLeft) at the latest.",
                 color: textMuted
             ),
             primaryButtonLabel: label("Open Mivo", color: .white),

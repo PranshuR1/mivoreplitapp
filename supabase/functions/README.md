@@ -48,3 +48,17 @@ supabase secrets set MIVO_FEEDBACK_FROM_EMAIL="Mivo Feedback <feedback@usemivo.a
 The function reuses `RESEND_API_KEY`, sends each saved feedback item once to
 `info.mivoapp@gmail.com`, and sets the signed-in user's email as Reply-To. The
 sender address must belong to a domain verified in Resend.
+
+## Lock-in
+
+Apply `20261025120000_lock_in_keyholder.sql`, then deploy both functions with JWT verification off (each checks the caller's token itself, and the keyholder's emailed link carries no account):
+
+```sh
+supabase functions deploy lockin-keyholder --no-verify-jwt
+supabase functions deploy lockin-milo --no-verify-jwt
+supabase secrets set ANTHROPIC_API_KEY=... MIVO_LOCKIN_FROM_EMAIL="Mivo <lockin@usemivo.app>"
+```
+
+`lockin-keyholder` also needs `RESEND_API_KEY` (already set for the other mail functions). It emails a keyholder an invite link and, later, unlock requests; both open `https://usemivo.app/keyholder/?token=…`, which is `app/keyholder` in the website repo — deploy that too.
+
+`lockin-milo` is Milo's judgment of what a person shows. Photos are passed to the model once and are neither stored nor logged; only a per-user call count is kept (60 a day). Never put the Anthropic key in the iOS app.
