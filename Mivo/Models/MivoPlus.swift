@@ -197,7 +197,7 @@ enum PlusFeature: String, Identifiable {
 
     var lockedLine: String {
         switch self {
-        case .instagramInMivo: return "Instagram in Mivo, replay mode and dull mode are part of Mivo Plus."
+        case .instagramInMivo: return "Replay mode is part of Mivo Plus."
         case .mivoClear: return "Mivo Clear is part of Mivo Plus."
         case .mivoStill: return "Mivo Still is part of Mivo Plus."
         case .experiments: return "Weekly experiments are part of Mivo Plus."
@@ -213,7 +213,6 @@ enum MivoPlusCopy {
 
     static let benefits: [(icon: String, text: String)] = [
         ("repeat", "Replay mode: after your reels, only ones you've seen"),
-        ("camera.viewfinder", "Instagram inside Mivo, with dull mode and a daily time limit"),
         ("sparkles", "Mivo Clear and Mivo Still"),
         ("flask", "Weekly experiments and your 30-day forecast"),
         ("doc.text", "Your attention receipt, every day")

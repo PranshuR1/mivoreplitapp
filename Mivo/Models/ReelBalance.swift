@@ -66,11 +66,25 @@ struct ReelBalance: Codable, Equatable {
         return spendable
     }
 
-    /// Hook for earning wrapper time. Nothing calls this yet — study sessions
-    /// will credit minutes here once that is built. Unlike the daily
-    /// allowance, a credit only lasts for the day it is earned on.
-    mutating func creditEarnedFromStudy(seconds: Int) {
-        bonusSeconds += max(0, seconds)
+    /// Study time earns wrapper time at a fixed rate, up to a daily cap.
+    static let studySecondsPerScrollSecond = 3
+    static let dailyEarnCapSeconds = 60 * 60
+
+    /// Wrapper seconds a stretch of study is worth, before the cap.
+    static func scrollSeconds(forStudySeconds seconds: Int) -> Int {
+        max(0, seconds) / studySecondsPerScrollSecond
+    }
+
+    /// Credits `seconds` of study at 3 minutes of study per minute of scroll,
+    /// never taking today's earned time past the cap. Returns the wrapper
+    /// seconds actually added. Unlike the daily allowance, a credit only lasts
+    /// for the day it is earned on.
+    @discardableResult
+    mutating func creditStudy(seconds: Int) -> Int {
+        let room = max(0, Self.dailyEarnCapSeconds - bonusSeconds)
+        let earned = min(Self.scrollSeconds(forStudySeconds: seconds), room)
+        bonusSeconds += earned
+        return earned
     }
 }
 

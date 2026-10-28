@@ -39,6 +39,8 @@ struct InstagramWrapperView: View {
     private let lastReelWarningSeconds = 20
 
     private let softEndPauseSeconds = 20
+    /// The beat between one Reel and the next, so scrolling is never a reflex.
+    private let betweenReelsPauseSeconds = 3
     private let balanceStore = ReelBalanceStore.shared
 
     private enum Phase: Equatable {
@@ -53,13 +55,12 @@ struct InstagramWrapperView: View {
     }
 
     @ObservedObject private var plus = MivoPlusStore.shared
-    @State private var showingPaywall = false
     @State private var phase: Phase = .choosing
     @State private var chosenLimit: WrapperSessionLimit = .reels
-    @State private var dullMode = WrapperDullMode.isEnabled
     @State private var reelLimit = WrapperSessionLimit.reelsPerSession
     @State private var balance = ReelBalanceStore.shared.current()
     @State private var topUpWaitRemaining = 0
+    @State private var betweenReelsRemaining = 0
     @State private var unsavedBalanceSeconds = 0
 
     // Replay mode: swaps new reels for ones already watched. Held off while
@@ -98,8 +99,7 @@ struct InstagramWrapperView: View {
                 WrapperStatsWebView(
                     liveStats: $liveStats,
                     replayCommand: replayCommand,
-                    isInteractive: !showingRecallPrompt && !isSoftEnd,
-                    dullMode: dullMode,
+                    isInteractive: !showingRecallPrompt && !isSoftEnd && betweenReelsRemaining == 0,
                     onReel: handleReel
                 )
                 .ignoresSafeArea()
@@ -110,6 +110,11 @@ struct InstagramWrapperView: View {
                         .overlay(ProgressView().tint(.white.opacity(0.5)))
                         .transition(.opacity)
                         .allowsHitTesting(false)
+                }
+
+                if betweenReelsRemaining > 0 {
+                    betweenReelsOverlay
+                        .transition(.opacity)
                 }
             }
 
@@ -139,18 +144,9 @@ struct InstagramWrapperView: View {
             }
 
             if phase == .choosing {
-                if hasMivoPlus {
-                    choiceOverlay
-                        .transition(.opacity)
-                } else {
-                    lockedOverlay
-                        .transition(.opacity)
-                }
+                choiceOverlay
+                    .transition(.opacity)
             }
-        }
-        .sheet(isPresented: $showingPaywall) {
-            MivoPlusPaywallView(feature: .instagramInMivo)
-                .environmentObject(appVM)
         }
         .statusBarHidden(false)
         .onAppear {
@@ -175,40 +171,6 @@ struct InstagramWrapperView: View {
 
     private var hasMivoPlus: Bool {
         MivoPlusAccess.allows(isPlus: plus.isPlus, isAdmin: appVM.isAdminUser)
-    }
-
-    /// Instagram in Mivo is a Plus feature; without it this is all that shows.
-    private var lockedOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.92).ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                Text("Instagram in Mivo is part of Plus")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-
-                Text("Plus also unlocks replay mode and dull mode. \(MivoPlusCopy.basicPauseLine)")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 280)
-
-                Button { showingPaywall = true } label: {
-                    Text("See Mivo Plus")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: 260)
-                        .padding(.vertical, 13)
-                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white))
-                }
-
-                Button("Not now") { dismiss() }
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white.opacity(0.7))
-            }
-            .padding(.horizontal, 24)
-        }
     }
 
     private var isSoftEnd: Bool {
@@ -313,14 +275,7 @@ struct InstagramWrapperView: View {
                         }
                     }
 
-                    Toggle("Dull mode", isOn: $dullMode)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
-                        .tint(.white.opacity(0.5))
-                        .frame(maxWidth: 260)
-                        .onChange(of: dullMode) { _, newValue in WrapperDullMode.isEnabled = newValue }
-
-                    Text("Dull mode: grayscale, sound off, no looping.")
+                    Text("Instagram here is dulled: grayscale, sound off, no looping, and a short pause between Reels.")
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.5))
                         .frame(maxWidth: 260, alignment: .leading)
@@ -349,6 +304,7 @@ struct InstagramWrapperView: View {
     }
 
     private var replayStatusText: String {
+        guard hasMivoPlus else { return "Replay mode is part of Mivo Plus." }
         guard ReplayModeSetting.isEnabled else { return "Replay mode is off. Turn it on from Home." }
         if observingBaseline { return "Replay mode starts after your first 3 days, once Mivo has seen how you scroll." }
         let used = chosenLimit == .reels ? "your \(WrapperSessionLimit.reelsPerSession) reels" : "your \(WrapperSessionLimit.minutesPerSession) minutes"
@@ -358,11 +314,12 @@ struct InstagramWrapperView: View {
     private func startSession() {
         balance = balanceStore.current()
         guard !balance.isEmpty else { return }
-        replayActive = ReplayModeSetting.isActive(enabled: ReplayModeSetting.isEnabled, observingBaseline: observingBaseline)
+        replayActive = hasMivoPlus && ReplayModeSetting.isActive(enabled: ReplayModeSetting.isEnabled, observingBaseline: observingBaseline)
         replay = ReplaySession(log: SeenReelStore.shared.load())
         replayCommand = nil
         isSwappingReel = false
         showingReplayNotice = false
+        betweenReelsRemaining = 0
         reelLimit = WrapperSessionLimit.reelsPerSession
         let requested = chosenLimit == .minutes ? WrapperSessionLimit.minutesPerSession * 60 : sessionLengthSeconds
         // The hard cap stays an upper bound for either choice. Replay mode has no
@@ -376,11 +333,31 @@ struct InstagramWrapperView: View {
     // MARK: - Reel count and soft end
 
     private func handleReelCountChange(_ count: Int) {
-        guard phase == .running, chosenLimit == .reels, count >= reelLimit else { return }
-        if replayActive {
-            beginReplay()
-        } else {
-            enterSoftEnd(.reelsReached)
+        guard phase == .running else { return }
+        if chosenLimit == .reels, count >= reelLimit {
+            if replayActive {
+                beginReplay()
+            } else {
+                enterSoftEnd(.reelsReached)
+            }
+            return
+        }
+        // Every Reel after the first starts behind a short pause.
+        guard count > 1, !replay.isReplaying else { return }
+        withAnimation(.easeIn(duration: 0.15)) { betweenReelsRemaining = betweenReelsPauseSeconds }
+    }
+
+    private var betweenReelsOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.94).ignoresSafeArea()
+            VStack(spacing: 8) {
+                Text("Next one in \(betweenReelsRemaining)")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("Did you want that one?")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+            }
         }
     }
 
@@ -426,6 +403,7 @@ struct InstagramWrapperView: View {
         showingRecallPrompt = false
         showingLastReelWarning = false
         showingReplayNotice = false
+        betweenReelsRemaining = 0
         topUpWaitRemaining = softEndPauseSeconds
         HapticsService.impact(style: .light)
         withAnimation(.easeOut(duration: 0.25)) { phase = .softEnd(reason) }
@@ -445,6 +423,7 @@ struct InstagramWrapperView: View {
                     Text("\(reelLimit) seen.")
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundColor(.white)
+                    miloLine(MiloBreakVoice.reelsSeen)
                     if canTopUp {
                         Text("Want \(WrapperSessionLimit.extraReelsPerTopUp) more?")
                             .font(.system(size: 17, weight: .medium))
@@ -467,6 +446,7 @@ struct InstagramWrapperView: View {
                     Text("It comes back tomorrow.")
                         .font(.system(size: 15))
                         .foregroundColor(.white.opacity(0.7))
+                    miloLine(MiloBreakVoice.timeUsed)
                 }
 
                 Button("I'm done") { dismiss() }
@@ -478,6 +458,14 @@ struct InstagramWrapperView: View {
             }
             .padding(.horizontal, 24)
         }
+    }
+
+    private func miloLine(_ line: String) -> some View {
+        Text("\(CompanionStateManager.shared.miloName): \(line)")
+            .font(.system(size: 14, weight: .medium))
+            .foregroundColor(.white.opacity(0.7))
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 280)
     }
 
     private func topUp() {
@@ -500,6 +488,9 @@ struct InstagramWrapperView: View {
             return
         }
         guard phase == .running, !didFinish, secondsRemaining > 0 || replayActive else { return }
+        if betweenReelsRemaining > 0 {
+            withAnimation(.easeOut(duration: 0.15)) { betweenReelsRemaining -= 1 }
+        }
         if secondsRemaining > 0 { secondsRemaining -= 1 }
 
         balance = balance.rolled(to: Date())
@@ -674,7 +665,6 @@ private struct WrapperStatsWebView: UIViewRepresentable {
     /// can't keep incrementing stats (or keep advancing reels) while the
     /// person is meant to be answering, not scrolling.
     var isInteractive: Bool
-    var dullMode: Bool
     /// Called with the shortcode of each reel the page starts playing.
     var onReel: (String) -> Void
 
@@ -867,13 +857,11 @@ private struct WrapperStatsWebView: UIViewRepresentable {
             forMainFrameOnly: false
         )
         configuration.userContentController.addUserScript(userScript)
-        if dullMode {
-            configuration.userContentController.addUserScript(WKUserScript(
-                source: Self.dullScript,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: false
-            ))
-        }
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: Self.dullScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        ))
         configuration.userContentController.addUserScript(WKUserScript(
             source: Self.reelScript,
             injectionTime: .atDocumentStart,
@@ -961,12 +949,9 @@ private struct WrapperStatsWebView: UIViewRepresentable {
     }
 }
 
-/// The one stored preference for the wrapper: dull mode, on unless turned off.
-enum WrapperDullMode {
-    private static let key = "mivo.wrapper.dullMode"
-
-    static var isEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: key) }
-    }
+/// Milo's lines on the wrapper's break screens. Fixed on purpose: the limits
+/// are rules, not a conversation, so there is nothing here to talk round.
+enum MiloBreakVoice {
+    static let reelsSeen = "That was a good stretch. Take it or leave it, either is fine."
+    static let timeUsed = "You spent it all. Go do something that gets you more."
 }

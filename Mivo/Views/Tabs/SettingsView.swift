@@ -976,12 +976,6 @@ struct SettingsView: View {
                 .tint(MivoColors.accent)
                 .labelsHidden()
                 .onChange(of: instagramWrapperEnabled) { _, enabled in
-                    if enabled && !hasMivoPlus {
-                        // Instagram in Mivo is a Plus feature: keep it off and explain.
-                        instagramWrapperEnabled = false
-                        plusPaywallFeature = .instagramInMivo
-                        return
-                    }
                     FamilyControlsManager.shared.setInstagramWrapperEnabled(enabled)
                     HapticsService.selection()
                 }

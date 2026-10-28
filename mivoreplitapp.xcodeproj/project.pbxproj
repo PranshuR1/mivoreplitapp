@@ -15,6 +15,7 @@
 		0D6B997CFA99785C5F0AE1EF /* GoogleAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ADF0ACA3D047985442D5E20 /* GoogleAuthService.swift */; };
 		0E1646EDB74B4876ADE74EA3 /* NamePromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA8EC206B90648E6BF4868E3 /* NamePromptView.swift */; };
 		0E1F52C1F0D0AB37AD268A05 /* StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34191824CA5D84892229698E /* StorageService.swift */; };
+		34BCB42A29F44D4E928B889C /* StudyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34FE80C0F2564883B2866027 /* StudyService.swift */; };
 		0E1F52C2F0D0AB37AD268A06 /* AIDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34191825CA5D84892229698F /* AIDataStore.swift */; };
 		0E1F52C3F0D0AB37AD268A07 /* RemoteAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34191826CA5D848922296990 /* RemoteAuthService.swift */; };
 		0E34BA886DFCF1DC21BFDFC5 /* FocusCardsGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8689F6E5768F5075C9BC7177 /* FocusCardsGameView.swift */; };
@@ -96,6 +97,7 @@
 		678C01AD877B7F9E4B0C38A1 /* SpotShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27BDF0D6ED77801B60EB868 /* SpotShared.swift */; };
 		695F2ADA706BBB4795E28A62 /* CompanionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80AC6B01D32AEC64290A236A /* CompanionState.swift */; };
 		6B1CD2E03F4A5B6C7D8E9F01 /* InstagramWrapperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B1CD2E03F4A5B6C7D8E9F02 /* InstagramWrapperView.swift */; };
+		A891545F83564CBF99CB4503 /* StudySessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE893E1C71304CC8A23F4D42 /* StudySessionView.swift */; };
 		6BAD06D2AAE3BCD90CB16471 /* LockInTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F5237B4D24D0EC3AD1694BB /* LockInTests.swift */; };
 		6C0340F1A79DDBDE74E67D9E /* OnboardingWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */; };
 		6E8E27AF5E95DBC3D819044C /* MivoPlusPaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 811830C96EE691E65693D578 /* MivoPlusPaywallView.swift */; };
@@ -110,6 +112,7 @@
 		851BAE810F0769D3CA064884 /* PhysicalSpot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 355FFCA131372140D89EB4FD /* PhysicalSpot.swift */; };
 		855AE97F519D28D9B68F5FE6 /* IntentGameServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78B165420431483ADB1C41CA /* IntentGameServices.swift */; };
 		85C531FD4CDBA12414855B7D /* ReelBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A498934EC3815271FCD551 /* ReelBalanceTests.swift */; };
+		6979B136B8114E63A23C4B7F /* StudyLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35EE732B388547A8B306DC4B /* StudyLogTests.swift */; };
 		877B96462FABC7EE6EAB85FA /* CompanionBehaviorEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F158B42FAD9B0581E939EBA1 /* CompanionBehaviorEngine.swift */; };
 		898C382FB7BBA30CBB52E1C0 /* IntentGameModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC80D1E83507916CB672C84D /* IntentGameModels.swift */; };
 		89B4C80CDA98E1FFEED13276 /* CompanionStateManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F4131BBF5289DB7307C81D /* CompanionStateManagerTests.swift */; };
@@ -121,6 +124,7 @@
 		91F6020A8ABC435042A0C98D /* CompanionDeviceActivityAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D82300FE75EFF0052DA4A3ED /* CompanionDeviceActivityAdapter.swift */; };
 		941712E07E901D20C8FB07FE /* LockInShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A99CC36B29A7399AEA55F1 /* LockInShared.swift */; };
 		9B82C3CB1DDCF7D5A3F301FA /* ReelBalance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B33F9E75D32D313946CCD61 /* ReelBalance.swift */; };
+		E851AC2AB21F411796B47614 /* StudyLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D9C69972DDF4AFBA6B847D5 /* StudyLog.swift */; };
 		9E95268901DF66CCAE00B28A /* PatternsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37FB156D848A2B34CB4543A9 /* PatternsComponents.swift */; };
 		9F0AE1C02B3D4E5F6A7B8C9D /* AttentionReceiptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0AE1C02B3D4E5F6A7B8C9E /* AttentionReceiptView.swift */; };
 		A51906C752905075915C480C /* ActiveSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */; };
@@ -325,6 +329,7 @@
 		2F1000192FA4000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		32CCAE5F2044B23352107A9D /* LockInBackend.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInBackend.swift; sourceTree = "<group>"; };
 		34191824CA5D84892229698E /* StorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageService.swift; sourceTree = "<group>"; };
+		34FE80C0F2564883B2866027 /* StudyService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StudyService.swift; sourceTree = "<group>"; };
 		34191825CA5D84892229698F /* AIDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDataStore.swift; sourceTree = "<group>"; };
 		34191826CA5D848922296990 /* RemoteAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAuthService.swift; sourceTree = "<group>"; };
 		351EC92BD44F1E75D36A5C7E /* SpotNoticeOverlay.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotNoticeOverlay.swift; sourceTree = "<group>"; };
@@ -334,6 +339,7 @@
 		38212224C24AA89E5136EBB4 /* CompanionProgress.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionProgress.swift; sourceTree = "<group>"; };
 		39231207C24C2D3F598CFC7A /* CompanionHomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionHomeView.swift; sourceTree = "<group>"; };
 		3B33F9E75D32D313946CCD61 /* ReelBalance.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelBalance.swift; sourceTree = "<group>"; };
+		6D9C69972DDF4AFBA6B847D5 /* StudyLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StudyLog.swift; sourceTree = "<group>"; };
 		3CFDB08CB5F423B8C5C05928 /* LockInActiveView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInActiveView.swift; sourceTree = "<group>"; };
 		3F2000022FA2000000000001 /* MivoShieldConfigurationExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoShieldConfigurationExtension.swift; sourceTree = "<group>"; };
 		3F2000042FA2000000000001 /* MivoShieldConfigurationExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MivoShieldConfigurationExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -376,6 +382,7 @@
 		6849ACC7BE9284A0104FF2F3 /* SpotRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotRegistry.swift; sourceTree = "<group>"; };
 		686E806F9FA14222A617E60D /* AppViewModel+Comeback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppViewModel+Comeback.swift"; sourceTree = "<group>"; };
 		6B1CD2E03F4A5B6C7D8E9F02 /* InstagramWrapperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramWrapperView.swift; sourceTree = "<group>"; };
+		EE893E1C71304CC8A23F4D42 /* StudySessionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StudySessionView.swift; sourceTree = "<group>"; };
 		6C777D6FC08D48F91F44EA47 /* CompanionRoamingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionRoamingTests.swift; sourceTree = "<group>"; };
 		6E370DDD6B01BFB27797A7B5 /* SpotSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotSession.swift; sourceTree = "<group>"; };
 		703D28B097E6BB5166A73FAF /* SpotConnectView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotConnectView.swift; sourceTree = "<group>"; };
@@ -445,6 +452,7 @@
 		B708E015F4FC9E9BDE9DBB0E /* SpotPreviewHost.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotPreviewHost.swift; sourceTree = "<group>"; };
 		B79395E7940D579FFD807E9B /* CompanionType.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionType.swift; sourceTree = "<group>"; };
 		B8A498934EC3815271FCD551 /* ReelBalanceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelBalanceTests.swift; sourceTree = "<group>"; };
+		35EE732B388547A8B306DC4B /* StudyLogTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StudyLogTests.swift; sourceTree = "<group>"; };
 		B9CC8EB50ED4804AB6D4F55A /* LockInModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInModels.swift; sourceTree = "<group>"; };
 		BB00AD3F6DBBFDA083CC9797 /* OnboardingCalibrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingCalibrationView.swift; sourceTree = "<group>"; };
 		C12026072000000000000011 /* MivoClearModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoClearModels.swift; sourceTree = "<group>"; };
@@ -629,6 +637,7 @@
 				AA11BB22CC33DD44EE55FF08 /* UserSwapModels.swift */,
 				E5A63C4EAD8A83BB91C7DC04 /* Models.swift */,
 				3B33F9E75D32D313946CCD61 /* ReelBalance.swift */,
+				6D9C69972DDF4AFBA6B847D5 /* StudyLog.swift */,
 				807421B33D06BF0125E6EE91 /* ReplayFeed.swift */,
 				4F65D20838739BC2351D25A6 /* MivoPlus.swift */,
 			);
@@ -733,6 +742,7 @@
 				D00DDC7AFBC166A24432A3EF /* MivoSpotsTests.swift */,
 				6C777D6FC08D48F91F44EA47 /* CompanionRoamingTests.swift */,
 				B8A498934EC3815271FCD551 /* ReelBalanceTests.swift */,
+				35EE732B388547A8B306DC4B /* StudyLogTests.swift */,
 				4371D76AD510ADD58B324420 /* ReplayFeedTests.swift */,
 				3F5237B4D24D0EC3AD1694BB /* LockInTests.swift */,
 				B23507F10BDA5A4A656DD920 /* MivoPlusTests.swift */,
@@ -764,6 +774,7 @@
 				AA11BB22CC33DD44EE55FF02 /* MivoRatingPromptService.swift */,
 				CD5DE1F0A1B2C3D4E5F6A7B9 /* CrossDeviceFocusService.swift */,
 				34191824CA5D84892229698E /* StorageService.swift */,
+				34FE80C0F2564883B2866027 /* StudyService.swift */,
 				7A180955A0A07FDEFC1A0BFF /* AIService.swift */,
 				34191825CA5D84892229698F /* AIDataStore.swift */,
 				34191826CA5D848922296990 /* RemoteAuthService.swift */,
@@ -1040,6 +1051,7 @@
 				A927AC28F9838387580E5F7C /* WeeklyReportView.swift */,
 				9F0AE1C02B3D4E5F6A7B8C9E /* AttentionReceiptView.swift */,
 				6B1CD2E03F4A5B6C7D8E9F02 /* InstagramWrapperView.swift */,
+				EE893E1C71304CC8A23F4D42 /* StudySessionView.swift */,
 				D992B028D9B340EAF65846B9 /* AdminSupportViews.swift */,
 				811830C96EE691E65693D578 /* MivoPlusPaywallView.swift */,
 			);
@@ -1327,6 +1339,7 @@
 				26A6759AC421BF3415A4F783 /* MivoSpotsTests.swift in Sources */,
 				62884B7C63533F6C54A081E8 /* CompanionRoamingTests.swift in Sources */,
 				85C531FD4CDBA12414855B7D /* ReelBalanceTests.swift in Sources */,
+				6979B136B8114E63A23C4B7F /* StudyLogTests.swift in Sources */,
 				B3A35A918646FDCE39003303 /* ReplayFeedTests.swift in Sources */,
 				6BAD06D2AAE3BCD90CB16471 /* LockInTests.swift in Sources */,
 				C5E68EAA26572CE6DDF3B036 /* MivoPlusTests.swift in Sources */,
@@ -1401,6 +1414,7 @@
 				4D56534B4559533030303032 /* MivoScreenTimeKeys.swift in Sources */,
 				4D4C69766541743030303032 /* MivoLiveActivityAttributes.swift in Sources */,
 				0E1F52C1F0D0AB37AD268A05 /* StorageService.swift in Sources */,
+				34BCB42A29F44D4E928B889C /* StudyService.swift in Sources */,
 				3BF38CFF771C4B42265F053C /* AIService.swift in Sources */,
 				0E1F52C2F0D0AB37AD268A06 /* AIDataStore.swift in Sources */,
 				0E1F52C3F0D0AB37AD268A07 /* RemoteAuthService.swift in Sources */,
@@ -1433,6 +1447,7 @@
 				31EA0E76E4C1A150D615DC6F /* WeeklyReportView.swift in Sources */,
 				9F0AE1C02B3D4E5F6A7B8C9D /* AttentionReceiptView.swift in Sources */,
 				6B1CD2E03F4A5B6C7D8E9F01 /* InstagramWrapperView.swift in Sources */,
+				A891545F83564CBF99CB4503 /* StudySessionView.swift in Sources */,
 				FC1A2B3C4D5E6F7A8B9C0 /* FamilyControlsManager.swift in Sources */,
 				20F640422FA0065500F3DDD2 /* ScreenTimeUsageView.swift in Sources */,
 				77760667BFE5743D9C62BAD0 /* MivoDesignSystemV2.swift in Sources */,
@@ -1495,6 +1510,7 @@
 				8C9D862B7C64FCCDCBDA232C /* SpotBatchProgrammer.swift in Sources */,
 				1B2CB2B60C9555AC6B55E4D2 /* CompanionRoaming.swift in Sources */,
 				9B82C3CB1DDCF7D5A3F301FA /* ReelBalance.swift in Sources */,
+				E851AC2AB21F411796B47614 /* StudyLog.swift in Sources */,
 				A589EA441A1C87556E5664C8 /* ReplayFeed.swift in Sources */,
 				941712E07E901D20C8FB07FE /* LockInShared.swift in Sources */,
 				3B8B15D01827D1332C40003A /* LockInModels.swift in Sources */,

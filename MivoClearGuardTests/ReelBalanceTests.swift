@@ -49,12 +49,21 @@ final class ReelBalanceTests: XCTestCase {
         XCTAssertEqual(next.remainingSeconds, 600)
     }
 
-    func testStudyCreditHookAddsTimeForTheDay() {
+    func testStudyEarnsOneScrollMinuteForEveryThreeStudyMinutes() {
         var balance = ReelBalance(dayKey: "2026-10-23", spentSeconds: 600)
-        balance.creditEarnedFromStudy(seconds: 120)
-        XCTAssertEqual(balance.remainingSeconds, 120)
-        balance.creditEarnedFromStudy(seconds: -50)
-        XCTAssertEqual(balance.remainingSeconds, 120)
+        XCTAssertEqual(balance.creditStudy(seconds: 30 * 60), 10 * 60)
+        XCTAssertEqual(balance.remainingSeconds, 600)
+        XCTAssertEqual(balance.creditStudy(seconds: -50), 0)
+        XCTAssertEqual(balance.remainingSeconds, 600)
+    }
+
+    func testStudyCreditStopsAtTheDailyCap() {
+        var balance = ReelBalance(dayKey: "2026-10-23")
+        XCTAssertEqual(balance.creditStudy(seconds: 150 * 60), 50 * 60)
+        XCTAssertEqual(balance.creditStudy(seconds: 60 * 60), 10 * 60)
+        XCTAssertEqual(balance.bonusSeconds, ReelBalance.dailyEarnCapSeconds)
+        XCTAssertEqual(balance.creditStudy(seconds: 60 * 60), 0)
+        XCTAssertEqual(balance.remainingSeconds, 70 * 60)
     }
 
     func testStorePersistsAndResetsOnANewDay() {

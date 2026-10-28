@@ -540,6 +540,8 @@ struct HomeView: View {
                 }
 
                 LockInHomeRow()
+
+                StudyHomeRow()
             }
         }
     }

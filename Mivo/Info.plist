@@ -56,7 +56,7 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>Mivo uses Face ID to protect your data.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Mivo Clear uses the camera only when you choose to take a photo or video in Snapchat.</string>
+	<string>Mivo films your hands and desk during a study session, video only, and keeps it on this phone. Mivo Clear also uses the camera when you choose to take a photo or video in Snapchat.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Mivo Clear uses the microphone only when you choose to record or call in Snapchat.</string>
 	<key>NSMotionUsageDescription</key>
