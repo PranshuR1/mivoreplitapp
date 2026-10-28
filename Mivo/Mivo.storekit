@@ -5,7 +5,7 @@
   ],
   "products" : [
     {
-      "displayPrice" : "79.99",
+      "displayPrice" : "99.99",
       "familyShareable" : false,
       "internalID" : "6760000003",
       "localizations" : [
@@ -17,6 +17,21 @@
       ],
       "productID" : "app.mivo.plus.lifetime",
       "referenceName" : "Mivo Plus Lifetime",
+      "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "79.99",
+      "familyShareable" : false,
+      "internalID" : "6760000006",
+      "localizations" : [
+        {
+          "description" : "Every Mivo Plus feature, once, for good.",
+          "displayName" : "Mivo Plus Lifetime (Offer)",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "app.mivo.plus.lifetime.offer",
+      "referenceName" : "Mivo Plus Lifetime Offer",
       "type" : "NonConsumable"
     }
   ],
@@ -43,7 +58,7 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "39.99",
+          "displayPrice" : "49.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "6760000001",
@@ -75,7 +90,7 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "6.99",
+          "displayPrice" : "9.99",
           "familyShareable" : false,
           "groupNumber" : 2,
           "internalID" : "6760000002",
@@ -89,6 +104,65 @@
           "productID" : "app.mivo.plus.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Mivo Plus Monthly",
+          "subscriptionGroupID" : "2B6E4A10",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "39.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6760000004",
+          "introductoryOffer" : {
+            "internalID" : "6760000014",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Every Mivo Plus feature, billed yearly.",
+              "displayName" : "Mivo Plus Yearly (Offer)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "app.mivo.plus.annual.offer",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Mivo Plus Yearly Offer",
+          "subscriptionGroupID" : "2B6E4A10",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6760000005",
+          "localizations" : [
+            {
+              "description" : "Every Mivo Plus feature, billed monthly.",
+              "displayName" : "Mivo Plus Monthly (Offer)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "app.mivo.plus.monthly.offer",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Mivo Plus Monthly Offer",
           "subscriptionGroupID" : "2B6E4A10",
           "type" : "RecurringSubscription",
           "winbackOffers" : [

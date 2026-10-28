@@ -4,13 +4,21 @@ import Foundation
 /// StoreKit, no clock, no storage — so it can be unit tested.
 /// `MivoPlusStore` talks to the App Store and persists the result.
 
-/// The three App Store products. These ids must match App Store Connect and
-/// `Mivo/Mivo.storekit`.
+/// The App Store products. These ids must match App Store Connect and
+/// `Mivo/Mivo.storekit`. Each plan has a regular product and an `.offer` twin
+/// at the limited-time price: the App Store only charges what App Store
+/// Connect says, so the discount has to be its own product.
 enum MivoPlusProductID {
     static let monthly = "app.mivo.plus.monthly"
     static let annual = "app.mivo.plus.annual"
     static let lifetime = "app.mivo.plus.lifetime"
-    static let all = [annual, monthly, lifetime]
+    static let monthlyOffer = "app.mivo.plus.monthly.offer"
+    static let annualOffer = "app.mivo.plus.annual.offer"
+    static let lifetimeOffer = "app.mivo.plus.lifetime.offer"
+    static let regular = [annual, monthly, lifetime]
+    static let offers = [annualOffer, monthlyOffer, lifetimeOffer]
+    static let all = regular + offers
+    static let lifetimeIDs: Set<String> = [lifetime, lifetimeOffer]
 }
 
 enum MivoPlusPlan: String, CaseIterable, Identifiable {
@@ -28,6 +36,16 @@ enum MivoPlusPlan: String, CaseIterable, Identifiable {
         }
     }
 
+    var offerProductID: String {
+        switch self {
+        case .annual: return MivoPlusProductID.annualOffer
+        case .monthly: return MivoPlusProductID.monthlyOffer
+        case .lifetime: return MivoPlusProductID.lifetimeOffer
+        }
+    }
+
+    func productID(offer: Bool) -> String { offer ? offerProductID : productID }
+
     var title: String {
         switch self {
         case .annual: return "Yearly"
@@ -39,6 +57,15 @@ enum MivoPlusPlan: String, CaseIterable, Identifiable {
     /// US dollars, shown only until the App Store returns the real local price.
     var fallbackPrice: Decimal {
         switch self {
+        case .annual: return 49.99
+        case .monthly: return 9.99
+        case .lifetime: return 99.99
+        }
+    }
+
+    /// The limited-time price, in US dollars, with the same fallback rule.
+    var fallbackOfferPrice: Decimal {
+        switch self {
         case .annual: return 39.99
         case .monthly: return 6.99
         case .lifetime: return 79.99
@@ -46,6 +73,8 @@ enum MivoPlusPlan: String, CaseIterable, Identifiable {
     }
 
     var fallbackPriceText: String { "$\(MivoPlusPricing.format(fallbackPrice))" }
+
+    var fallbackOfferPriceText: String { "$\(MivoPlusPricing.format(fallbackOfferPrice))" }
 
     /// What the price covers, e.g. "per year".
     var period: String {
@@ -60,7 +89,7 @@ enum MivoPlusPlan: String, CaseIterable, Identifiable {
 }
 
 enum MivoPlusPricing {
-    /// "52" for $39.99 a year against $6.99 a month.
+    /// "58" for $49.99 a year against $9.99 a month.
     static func yearlySavingsPercent(monthly: Decimal, annual: Decimal) -> Int {
         let yearOfMonths = monthly * 12
         guard yearOfMonths > 0, annual < yearOfMonths else { return 0 }
@@ -68,7 +97,14 @@ enum MivoPlusPricing {
         return Int(saved.rounded())
     }
 
-    /// The yearly price per month, e.g. 3.33 for $39.99.
+    /// "30" for $6.99 against $9.99. Zero when the offer isn't cheaper.
+    static func percentOff(regular: Decimal, offer: Decimal) -> Int {
+        guard regular > 0, offer < regular else { return 0 }
+        let off = NSDecimalNumber(decimal: (regular - offer) / regular * 100).doubleValue
+        return Int(off.rounded())
+    }
+
+    /// The yearly price per month, e.g. 4.17 for $49.99.
     static func monthlyEquivalent(ofAnnual annual: Decimal) -> Decimal {
         var value = annual / 12
         var rounded = Decimal()
@@ -78,6 +114,30 @@ enum MivoPlusPricing {
 
     static func format(_ price: Decimal) -> String {
         String(format: "%.2f", NSDecimalNumber(decimal: price).doubleValue)
+    }
+}
+
+/// The one-time discount that opens the first time someone closes the
+/// paywall. It runs for five minutes from that moment and never restarts.
+enum MivoPlusOfferClock {
+    static let duration: TimeInterval = 5 * 60
+
+    enum Phase: Equatable {
+        case notStarted
+        case running(remaining: TimeInterval)
+        case expired
+    }
+
+    static func phase(deadline: Date?, now: Date) -> Phase {
+        guard let deadline else { return .notStarted }
+        let remaining = deadline.timeIntervalSince(now)
+        return remaining > 0 ? .running(remaining: remaining) : .expired
+    }
+
+    /// "04:59". Rounds up so the display never shows 00:00 while time is left.
+    static func format(_ remaining: TimeInterval) -> String {
+        let seconds = max(0, Int(remaining.rounded(.up)))
+        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 }
 
@@ -105,7 +165,7 @@ enum PlusEntitlement: Codable, Equatable {
     static func from(_ purchases: [Purchase]) -> PlusEntitlement {
         var best = PlusEntitlement.none
         for purchase in purchases where !purchase.isRevoked && MivoPlusProductID.all.contains(purchase.productID) {
-            if purchase.productID == MivoPlusProductID.lifetime { return .lifetime }
+            if MivoPlusProductID.lifetimeIDs.contains(purchase.productID) { return .lifetime }
             guard let expiry = purchase.expiresAt else { continue }
             if case .subscription(let current) = best, current >= expiry { continue }
             best = .subscription(until: expiry)

@@ -53,6 +53,8 @@ class AppViewModel: ObservableObject {
     /// their personalized plan reaches the goal they set in onboarding.
     @Published var pendingScrollGoalPrompt: ScrollGoalPrompt? = nil
     @Published var pendingGoalForecastPrompt: GoalForecastPrompt? = nil
+    /// Set when onboarding finishes so the Mivo Plus prices show straight away.
+    @Published var pendingPostOnboardingPaywall = false
     /// Offer to restart the plan for someone who has been away (or who wants a
     /// clean slate). Logic lives in `AppViewModel+Comeback.swift`.
     @Published var pendingComebackPrompt: ComebackPrompt? = nil
@@ -1692,6 +1694,8 @@ class AppViewModel: ObservableObject {
 
         if isReplay {
             onboardingReplayActive = false
+        } else if !MivoPlusAccess.allows(isPlus: MivoPlusStore.shared.isPlus, isAdmin: isAdminUser) {
+            pendingPostOnboardingPaywall = true
         }
 
         // No longer use deprecated UIApplication interaction APIs; if any global overlays were used,

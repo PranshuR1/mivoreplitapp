@@ -105,6 +105,10 @@ struct MainTabView: View {
             InstagramWrapperView()
                 .environmentObject(appVM)
         }
+        .fullScreenCover(isPresented: $appVM.pendingPostOnboardingPaywall) {
+            MivoPlusPaywallView()
+                .environmentObject(appVM)
+        }
         .sheet(isPresented: $appVM.showRatingPrompt) {
             MivoRatingPromptView()
                 .environmentObject(appVM)

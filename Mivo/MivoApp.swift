@@ -524,6 +524,18 @@ struct MivoApp: App {
     }
 }
 
+#if DEBUG
+/// Opens the paywall already inside its five-minute discount.
+private struct MivoPlusPaywallPreviewHost: View {
+    init() {
+        MivoPlusOffer.shared.resetForPreview()
+        MivoPlusOffer.shared.startIfNeeded()
+    }
+
+    var body: some View { MivoPlusPaywallView() }
+}
+#endif
+
 struct RootView: View {
     @EnvironmentObject var appVM: AppViewModel
     @AppStorage("mivo.firstLaunchStoryComplete") private var firstLaunchStoryComplete = false
@@ -551,6 +563,10 @@ struct RootView: View {
                 NavigationStack { WeeklyReportView(initialPage: 5) }
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewWeeklyReport") {
                 NavigationStack { WeeklyReportView() }
+            } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewPaywall") {
+                MivoPlusPaywallView()
+            } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewPaywallOffer") {
+                MivoPlusPaywallPreviewHost()
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewHome") {
                 NavigationStack { HomeView() }
             } else if let raw = UserDefaults.standard.string(forKey: "MivoPreviewTabs"), let tab = Int(raw) {

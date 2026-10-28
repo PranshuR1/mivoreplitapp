@@ -84,6 +84,7 @@
 		58015847327F8522DF96ADF4 /* LockInScreenTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E6F674EA2AB6B7CD076A7A /* LockInScreenTime.swift */; };
 		5A5057BE8B7475377BAE1F81 /* LockInBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32CCAE5F2044B23352107A9D /* LockInBackend.swift */; };
 		5CA7645304E43E1E7ED6FBC7 /* MivoComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645D07F841D313203C4ECDFC /* MivoComponents.swift */; };
+		399F19C7C45E3A70C7292169 /* MivoConfettiView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2EA07F1EA401990BF30BB /* MivoConfettiView.swift */; };
 		5E7F644086B4AC45BFF59FFB /* SpotAdminView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FB1703A902DDC029DACE16 /* SpotAdminView.swift */; };
 		5EDF876ACF25A46138FF7014 /* CompanionSignals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 214F97BA51D076646279B86A /* CompanionSignals.swift */; };
 		627204F34D11044D49004F0D /* SpotNFCService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 989F3E3D3C56080BB7C83365 /* SpotNFCService.swift */; };
@@ -114,6 +115,7 @@
 		89B4C80CDA98E1FFEED13276 /* CompanionStateManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F4131BBF5289DB7307C81D /* CompanionStateManagerTests.swift */; };
 		8C9D862B7C64FCCDCBDA232C /* SpotBatchProgrammer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A744F4ED1A32DE68D231D542 /* SpotBatchProgrammer.swift */; };
 		8FBE54A2C1FF294E7FBE7425 /* MivoPlusStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888B49650F54CD46FC1F6C2A /* MivoPlusStore.swift */; };
+		C13C3612D9D2FCD3B2AE60E9 /* MivoPlusOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 474621BDB027DCB38B77CAC8 /* MivoPlusOffer.swift */; };
 		9010523442824157F59BBDCE /* SpotShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27BDF0D6ED77801B60EB868 /* SpotShared.swift */; };
 		9174BF527DE8B59224F7C721 /* CompanionFigureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25145B5AC8BA57669B7DB0D1 /* CompanionFigureView.swift */; };
 		91F6020A8ABC435042A0C98D /* CompanionDeviceActivityAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D82300FE75EFF0052DA4A3ED /* CompanionDeviceActivityAdapter.swift */; };
@@ -369,6 +371,7 @@
 		635CBBF06E2D93C93BEFA108 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		643C4A985B67F5A8D604FE4F /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
 		645D07F841D313203C4ECDFC /* MivoComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoComponents.swift; sourceTree = "<group>"; };
+		E1F2EA07F1EA401990BF30BB /* MivoConfettiView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoConfettiView.swift; sourceTree = "<group>"; };
 		6726D07686ADCB2962988440 /* MivoClearGuardTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MivoClearGuardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6849ACC7BE9284A0104FF2F3 /* SpotRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotRegistry.swift; sourceTree = "<group>"; };
 		686E806F9FA14222A617E60D /* AppViewModel+Comeback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppViewModel+Comeback.swift"; sourceTree = "<group>"; };
@@ -397,6 +400,7 @@
 		8689F6E5768F5075C9BC7177 /* FocusCardsGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusCardsGameView.swift; sourceTree = "<group>"; };
 		86E67C5DFB25F7596DFEDFAB /* SpotDetailView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotDetailView.swift; sourceTree = "<group>"; };
 		888B49650F54CD46FC1F6C2A /* MivoPlusStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoPlusStore.swift; sourceTree = "<group>"; };
+		474621BDB027DCB38B77CAC8 /* MivoPlusOffer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoPlusOffer.swift; sourceTree = "<group>"; };
 		8895130E990EB597B08CAECE /* PaperFlightGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperFlightGameView.swift; sourceTree = "<group>"; };
 		8C193C34C28C991E83EE01C1 /* CompanionSideEffects.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionSideEffects.swift; sourceTree = "<group>"; };
 		9093688F1197CAC86458ACF9 /* SpotLink.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotLink.swift; sourceTree = "<group>"; };
@@ -668,6 +672,7 @@
 			isa = PBXGroup;
 			children = (
 				645D07F841D313203C4ECDFC /* MivoComponents.swift */,
+				E1F2EA07F1EA401990BF30BB /* MivoConfettiView.swift */,
 				44F0A0C01AD1E72BD4FA8357 /* MivoDesignSystemV2.swift */,
 			);
 			path = Components;
@@ -768,6 +773,7 @@
 				F1A2B3C4D5E6F7A8B9C0D1E1 /* FamilyControlsManager.swift */,
 				7BA2F4449A3AB8AEEE4FA3CB /* MivoBackendService.swift */,
 				888B49650F54CD46FC1F6C2A /* MivoPlusStore.swift */,
+				474621BDB027DCB38B77CAC8 /* MivoPlusOffer.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -1404,6 +1410,7 @@
 				5306BDEDDBAF577A5C71D040 /* AppViewModel.swift in Sources */,
 				1CF6068386174BD891D19CA4 /* AppViewModel+Comeback.swift in Sources */,
 				5CA7645304E43E1E7ED6FBC7 /* MivoComponents.swift in Sources */,
+				399F19C7C45E3A70C7292169 /* MivoConfettiView.swift in Sources */,
 				DBBAED45E4F10CBB5AA82D31 /* LoginView.swift in Sources */,
 				AD94D9CF1B8E20453FB159CF /* RegisterView.swift in Sources */,
 				11A1B2C3D4E5F60718293A51 /* ForgotPasswordView.swift in Sources */,
@@ -1506,6 +1513,7 @@
 				ED419F6B18E07552D93F8F41 /* MiloProofChatView.swift in Sources */,
 				CB601F5F6B474FF6841F542C /* MivoPlus.swift in Sources */,
 				8FBE54A2C1FF294E7FBE7425 /* MivoPlusStore.swift in Sources */,
+				C13C3612D9D2FCD3B2AE60E9 /* MivoPlusOffer.swift in Sources */,
 				6E8E27AF5E95DBC3D819044C /* MivoPlusPaywallView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

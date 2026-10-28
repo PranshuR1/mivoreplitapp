@@ -1,7 +1,7 @@
 import Foundation
 import StoreKit
 
-/// Mivo Plus on the App Store: loads the three products, buys and restores
+/// Mivo Plus on the App Store: loads the six products, buys and restores
 /// them, and keeps `entitlement` current from the person's real purchases.
 /// The last answer is cached so Plus still works offline.
 @MainActor
@@ -19,7 +19,8 @@ final class MivoPlusStore: ObservableObject {
     @Published private(set) var entitlement: PlusEntitlement
     @Published private(set) var purchaseState: PurchaseState = .idle
     @Published private(set) var productsUnavailable = false
-    @Published private(set) var annualHasFreeTrial = false
+    /// Yearly products this person can still start a free trial on.
+    @Published private(set) var trialEligibleProductIDs: Set<String> = []
     /// False until the App Store has answered once this launch, so the app
     /// never strips Plus on the strength of an empty answer it hasn't got yet.
     @Published private(set) var hasCheckedPurchases = false
@@ -68,8 +69,13 @@ final class MivoPlusStore: ObservableObject {
         }
     }
 
-    func product(for plan: MivoPlusPlan) -> Product? {
-        products[plan.productID]
+    /// The regular product, or its limited-time twin when `offer` is true.
+    func product(for plan: MivoPlusPlan, offer: Bool = false) -> Product? {
+        products[plan.productID(offer: offer)]
+    }
+
+    func hasFreeTrial(offer: Bool) -> Bool {
+        trialEligibleProductIDs.contains(MivoPlusPlan.annual.productID(offer: offer))
     }
 
     func loadProducts() async {
@@ -77,12 +83,15 @@ final class MivoPlusStore: ObservableObject {
             let loaded = try await Product.products(for: MivoPlusProductID.all)
             products = Dictionary(uniqueKeysWithValues: loaded.map { ($0.id, $0) })
             productsUnavailable = loaded.isEmpty
-            if let subscription = products[MivoPlusProductID.annual]?.subscription,
-               subscription.introductoryOffer?.paymentMode == .freeTrial {
-                annualHasFreeTrial = await subscription.isEligibleForIntroOffer
-            } else {
-                annualHasFreeTrial = false
+            var eligible: Set<String> = []
+            for id in [MivoPlusProductID.annual, MivoPlusProductID.annualOffer] {
+                if let subscription = products[id]?.subscription,
+                   subscription.introductoryOffer?.paymentMode == .freeTrial,
+                   await subscription.isEligibleForIntroOffer {
+                    eligible.insert(id)
+                }
             }
+            trialEligibleProductIDs = eligible
         } catch {
             productsUnavailable = true
         }
@@ -107,8 +116,8 @@ final class MivoPlusStore: ObservableObject {
 
     /// Returns true when the person ends up with Plus.
     @discardableResult
-    func purchase(_ plan: MivoPlusPlan) async -> Bool {
-        guard let product = product(for: plan) else {
+    func purchase(_ plan: MivoPlusPlan, offer: Bool = false) async -> Bool {
+        guard let product = product(for: plan, offer: offer) else {
             purchaseState = .failed("Prices aren't available right now. Check your connection and try again.")
             await loadProducts()
             return false
