@@ -195,7 +195,7 @@ struct StudySessionView: View {
                     Text(entry.startedAt.formatted(date: .complete, time: .omitted))
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(MivoColors.inkBody)
-                    Text(entry.wasRecorded ? "\(StudyFormat.minutes(entry.recordedSeconds)) on video" : "Not recorded")
+                    Text(entry.wasRecorded ? "Verified on video: \(StudyFormat.minutes(entry.recordedSeconds))" : "Not recorded, so not verified")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(MivoColors.inkMuted)
                         .padding(.top, 8)
@@ -273,12 +273,16 @@ private struct CameraPreview: UIViewRepresentable {
 // MARK: - Presentation and Home tile
 
 struct StudyPresenter: ViewModifier {
+    @EnvironmentObject private var appVM: AppViewModel
     @ObservedObject private var study = StudyService.shared
 
     func body(content: Content) -> some View {
-        content.fullScreenCover(isPresented: $study.showRequested) {
-            StudySessionView()
-        }
+        content
+            .fullScreenCover(isPresented: $study.showRequested) {
+                StudySessionView()
+            }
+            .onAppear { study.bind() }
+            .onChange(of: appVM.user?.email) { _, _ in study.bind() }
     }
 }
 

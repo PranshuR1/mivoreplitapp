@@ -710,6 +710,8 @@ class AppViewModel: ObservableObject {
                 SpotManager.shared.signOut()
                 // Lifts a running lock's shield so it can't outlive the account that set it.
                 LockInManager.shared.signOut()
+                // Ends a running study session; the account's log and balance stay saved.
+                StudyService.shared.signOut()
                 self.user = nil
                 self.adminToken = nil
                 self.isLoggedIn = false
@@ -748,6 +750,7 @@ class AppViewModel: ObservableObject {
         ParentalConsentTicketStore.clear()
         SpotManager.shared.eraseAllData()
         LockInManager.shared.eraseAllData()
+        StudyService.shared.eraseAllData()
 
         logout()
     }
@@ -1832,6 +1835,7 @@ class AppViewModel: ObservableObject {
         mivoLaunchGateActive = false
         SpotManager.shared.eraseAllData()
         LockInManager.shared.eraseAllData()
+        StudyService.shared.eraseAllData()
 
         SecureAuthService.deleteAllRecords()
         StorageService.removeAllMivoData()

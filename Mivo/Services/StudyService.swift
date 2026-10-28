@@ -98,7 +98,8 @@ final class StudyRecorder: NSObject, ObservableObject, AVCaptureFileOutputRecord
 }
 
 /// The study flow's state: one thing at a time, timed, filmed, and turned into
-/// a receipt, a streak and scroll time. Everything stays on this device.
+/// a receipt, a streak and scroll time. Everything stays on this device, kept
+/// apart per signed-in account.
 @MainActor
 final class StudyService: ObservableObject {
     static let shared = StudyService()
@@ -138,21 +139,61 @@ final class StudyService: ObservableObject {
     let recorder = StudyRecorder()
     private let defaults: UserDefaults
     private let balanceStore: ReelBalanceStore
+    private let account: () -> String?
 
-    init(defaults: UserDefaults = .standard, balanceStore: ReelBalanceStore = .shared) {
+    init(
+        defaults: UserDefaults = .standard,
+        balanceStore: ReelBalanceStore = .shared,
+        account: @escaping () -> String? = { StorageService.activeUserEmail }
+    ) {
         self.defaults = defaults
         self.balanceStore = balanceStore
-        log = defaults.data(forKey: Self.logKey).flatMap { try? JSONDecoder().decode(StudyLog.self, from: $0) } ?? StudyLog()
-        if let data = defaults.data(forKey: Self.activeKey),
-           let active = try? JSONDecoder().decode(Active.self, from: data) {
-            phase = .running(active)
-        }
+        self.account = account
+        bind()
         pruneOldRecordings()
     }
 
     var streak: Int { log.streak(asOf: Date()) }
     var studiedTodaySeconds: Int { log.seconds(on: Date()) }
     var earnedTodaySeconds: Int { balanceStore.current().bonusSeconds }
+
+    private func key(_ base: String) -> String { AccountScopedKey.make(base, account: account()) }
+
+    // MARK: - Account
+
+    /// Loads the signed-in account's log and any session it left running.
+    /// Called whenever the account may have changed.
+    func bind() {
+        log = defaults.data(forKey: key(Self.logKey)).flatMap { try? JSONDecoder().decode(StudyLog.self, from: $0) } ?? StudyLog()
+        if let data = defaults.data(forKey: key(Self.activeKey)),
+           let active = try? JSONDecoder().decode(Active.self, from: data) {
+            phase = .running(active)
+        } else {
+            phase = .idle
+        }
+        cameraUnavailable = false
+    }
+
+    /// Signing out ends a running session without crediting it; the account's
+    /// log and balance stay saved for next time.
+    func signOut() {
+        if case .running = phase { Task { _ = await recorder.stop() } }
+        UIApplication.shared.isIdleTimerDisabled = false
+        showRequested = false
+        phase = .idle
+        log = StudyLog()
+    }
+
+    /// Deleting the account removes its log, its balance and its recordings.
+    func eraseAllData() {
+        signOut()
+        defaults.removeObject(forKey: key(Self.logKey))
+        defaults.removeObject(forKey: key(Self.activeKey))
+        balanceStore.erase()
+        if let directory = Self.recordingsDirectory(account: account()) {
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
 
     // MARK: - Start and finish
 
@@ -163,22 +204,26 @@ final class StudyService: ObservableObject {
         let active = Active(task: task, startedAt: Date(), recordingName: name)
 
         cameraUnavailable = true
-        if await StudyRecorder.authorize(), let url = Self.recordingURL(name) {
+        if await StudyRecorder.authorize(), let url = Self.recordingURL(name, account: account()) {
             cameraUnavailable = !(await recorder.start(to: url))
         }
         UIApplication.shared.isIdleTimerDisabled = true
-        if let data = try? JSONEncoder().encode(active) { defaults.set(data, forKey: Self.activeKey) }
+        if let data = try? JSONEncoder().encode(active) { defaults.set(data, forKey: key(Self.activeKey)) }
         phase = .running(active)
     }
 
     func finish() async {
         guard case .running(let active) = phase else { return }
         let endedAt = Date()
-        let videoSeconds = cameraUnavailable ? 0 : await recorder.stop()
+        let recorderSeconds = cameraUnavailable ? 0 : await recorder.stop()
         UIApplication.shared.isIdleTimerDisabled = false
 
+        // Scroll time rests on the saved video, not on the recorder's say-so:
+        // the file has to exist and play, and its length caps what is credited.
+        let fileSeconds = cameraUnavailable ? 0 : await Self.verifiedVideoSeconds(
+            at: Self.recordingURL(active.recordingName, account: account()))
         let elapsed = max(0, Int(endedAt.timeIntervalSince(active.startedAt)))
-        let recorded = min(elapsed, Int(videoSeconds))
+        let recorded = min(elapsed, Int(recorderSeconds), fileSeconds)
         let creditable = Self.requiresRecording ? recorded : elapsed
 
         var balance = balanceStore.current()
@@ -191,8 +236,8 @@ final class StudyService: ObservableObject {
             recordedSeconds: recorded, scrollSecondsEarned: earned
         )
         log.entries.append(entry)
-        if let data = try? JSONEncoder().encode(log) { defaults.set(data, forKey: Self.logKey) }
-        defaults.removeObject(forKey: Self.activeKey)
+        if let data = try? JSONEncoder().encode(log) { defaults.set(data, forKey: key(Self.logKey)) }
+        defaults.removeObject(forKey: key(Self.activeKey))
 
         let capReached = before + earned >= ReelBalance.dailyEarnCapSeconds
         phase = .finished(Receipt(entry: entry, streak: streak, capReached: capReached))
@@ -204,25 +249,44 @@ final class StudyService: ObservableObject {
 
     // MARK: - Recordings
 
-    private static func recordingsDirectory() -> URL? {
-        guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
-        let directory = documents.appendingPathComponent("Study", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
+    /// Seconds of playable video in the file, or 0 when it is missing, empty
+    /// or has no video track.
+    static func verifiedVideoSeconds(at url: URL?) async -> Int {
+        guard let url,
+              let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 0 else { return 0 }
+        let asset = AVURLAsset(url: url)
+        guard let duration = try? await asset.load(.duration), duration.isNumeric,
+              let tracks = try? await asset.loadTracks(withMediaType: .video), !tracks.isEmpty else { return 0 }
+        return max(0, Int(duration.seconds))
     }
 
-    private static func recordingURL(_ name: String) -> URL? {
-        recordingsDirectory()?.appendingPathComponent(name)
+    private static func recordingsRoot() -> URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Study", isDirectory: true)
+    }
+
+    /// One folder per account, so recordings never mix across accounts.
+    private static func recordingsDirectory(account: String?) -> URL? {
+        let id = AccountScopedKey.make("", account: account)
+            .unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? String($0) : "_" }.joined()
+        return recordingsRoot()?.appendingPathComponent(id.isEmpty ? "device" : id, isDirectory: true)
+    }
+
+    private static func recordingURL(_ name: String, account: String?) -> URL? {
+        guard let directory = recordingsDirectory(account: account) else { return nil }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent(name)
     }
 
     private func pruneOldRecordings() {
-        guard let directory = Self.recordingsDirectory(),
-              let files = try? FileManager.default.contentsOfDirectory(
-                at: directory, includingPropertiesForKeys: [.creationDateKey]) else { return }
+        guard let root = Self.recordingsRoot(),
+              let enumerator = FileManager.default.enumerator(
+                at: root, includingPropertiesForKeys: [.creationDateKey, .isRegularFileKey]) else { return }
         let cutoff = Date().addingTimeInterval(-Double(Self.keepRecordingsDays) * 86_400)
-        for file in files {
-            let created = (try? file.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? Date()
-            if created < cutoff { try? FileManager.default.removeItem(at: file) }
+        for case let file as URL in enumerator {
+            guard let values = try? file.resourceValues(forKeys: [.creationDateKey, .isRegularFileKey]),
+                  values.isRegularFile == true else { continue }
+            if (values.creationDate ?? Date()) < cutoff { try? FileManager.default.removeItem(at: file) }
         }
     }
 }

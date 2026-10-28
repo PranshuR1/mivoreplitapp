@@ -88,7 +88,8 @@ struct ReelBalance: Codable, Equatable {
     }
 }
 
-/// Persists today's `ReelBalance` on this device (UserDefaults).
+/// Persists today's `ReelBalance` on this device (UserDefaults), one balance
+/// per signed-in account so a second account on the same phone starts clean.
 final class ReelBalanceStore {
     static let shared = ReelBalanceStore()
     static let defaultsKey = "mivo.wrapper.reelBalance"
@@ -96,16 +97,28 @@ final class ReelBalanceStore {
     private let defaults: UserDefaults
     private let calendar: Calendar
     private let now: () -> Date
+    private let account: () -> String?
 
-    init(defaults: UserDefaults = .standard, calendar: Calendar = .current, now: @escaping () -> Date = Date.init) {
+    init(
+        defaults: UserDefaults = .standard,
+        calendar: Calendar = .current,
+        now: @escaping () -> Date = Date.init,
+        account: @escaping () -> String? = { StorageService.activeUserEmail }
+    ) {
         self.defaults = defaults
         self.calendar = calendar
         self.now = now
+        self.account = account
     }
+
+    private var key: String { AccountScopedKey.make(Self.defaultsKey, account: account()) }
+
+    /// Forgets the signed-in account's balance (account deletion).
+    func erase() { defaults.removeObject(forKey: key) }
 
     /// Today's balance, reset to the full allowance on a new day.
     func current() -> ReelBalance {
-        let stored = defaults.data(forKey: Self.defaultsKey).flatMap { try? JSONDecoder().decode(ReelBalance.self, from: $0) }
+        let stored = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(ReelBalance.self, from: $0) }
         let today = now()
         let balance = stored?.rolled(to: today, calendar: calendar) ?? .fresh(on: today, calendar: calendar)
         return balance
@@ -113,6 +126,14 @@ final class ReelBalanceStore {
 
     func save(_ balance: ReelBalance) {
         guard let data = try? JSONEncoder().encode(balance) else { return }
-        defaults.set(data, forKey: Self.defaultsKey)
+        defaults.set(data, forKey: key)
+    }
+}
+
+/// Keeps one account's stored values apart from another's on the same phone.
+enum AccountScopedKey {
+    static func make(_ base: String, account: String?) -> String {
+        let id = (account ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+        return id.isEmpty ? base : "\(base).\(id)"
     }
 }

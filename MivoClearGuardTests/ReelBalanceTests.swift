@@ -84,6 +84,28 @@ final class ReelBalanceTests: XCTestCase {
         XCTAssertEqual(store.current().remainingSeconds, 600)
     }
 
+    func testEachAccountHasItsOwnBalance() {
+        let suite = "ReelBalanceTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        var account: String? = "A@example.com"
+        let store = ReelBalanceStore(defaults: defaults, calendar: calendar,
+                                     now: { self.date("2026-10-23T09:00:00Z") }, account: { account })
+        var first = store.current()
+        first.creditStudy(seconds: 30 * 60)
+        store.save(first)
+        XCTAssertEqual(store.current().remainingSeconds, 1200)
+
+        account = "b@example.com"
+        XCTAssertEqual(store.current().remainingSeconds, 600)
+
+        account = "a@EXAMPLE.com"
+        XCTAssertEqual(store.current().remainingSeconds, 1200)
+        store.erase()
+        XCTAssertEqual(store.current().remainingSeconds, 600)
+    }
+
     func testSessionLimitCopy() {
         XCTAssertEqual(WrapperSessionLimit.reels.title, "10 Reels")
         XCTAssertEqual(WrapperSessionLimit.minutes.title, "10 minutes")
