@@ -25,6 +25,9 @@ struct StudyLog: Codable, Equatable {
 
     var entries: [StudyEntry] = []
 
+    /// When the first session began; the free week (`StudyTrial`) counts from here.
+    var firstSessionAt: Date? { entries.map(\.startedAt).min() }
+
     /// Study seconds per local day (`yyyy-MM-dd`). A session that crosses
     /// midnight counts toward both days.
     func secondsByDay(calendar: Calendar = .current) -> [String: Int] {
@@ -68,9 +71,12 @@ struct StudyLog: Codable, Equatable {
 /// Milo's lines on the study receipt. Fixed: the rule for what earns scroll
 /// time is the same every day, so there is nothing to argue with.
 enum MiloStudyVoice {
-    static func receipt(earnedScrollMinutes: Int, recorded: Bool, capReached: Bool, streak: Int) -> String {
+    static func receipt(earnedScrollMinutes: Int, recorded: Bool, capReached: Bool, streak: Int, lockedScrollMinutes: Int = 0) -> String {
         if !recorded {
             return "No video, so no scroll time this round. The minutes still count for your streak."
+        }
+        if lockedScrollMinutes > 0 {
+            return "Your \(StudyTrial.days) free days are over, so the \(lockedScrollMinutes) minutes of scroll this earned weren't added. Mivo Plus adds them. The studying and your streak still count."
         }
         if earnedScrollMinutes == 0 {
             return capReached

@@ -52,6 +52,36 @@ final class StudyLogTests: XCTestCase {
         XCTAssertEqual(log.streak(asOf: date("2026-10-28T12:00:00Z"), calendar: calendar), 2)
     }
 
+    func testFirstSessionIsTheEarliestStart() {
+        XCTAssertNil(StudyLog().firstSessionAt)
+        let log = StudyLog(entries: [entry("2026-10-27T09:00:00Z", minutes: 15), entry("2026-10-25T09:00:00Z", minutes: 15)])
+        XCTAssertEqual(log.firstSessionAt, date("2026-10-25T09:00:00Z"))
+    }
+
+    func testTrialRunsForSevenDaysFromTheFirstSession() {
+        let first = date("2026-10-28T09:00:00Z")
+        XCTAssertEqual(StudyTrial.phase(firstSessionAt: nil, now: first, calendar: calendar), .notStarted)
+        XCTAssertEqual(StudyTrial.phase(firstSessionAt: first, now: first, calendar: calendar), .running(daysLeft: 7))
+        XCTAssertEqual(StudyTrial.phase(firstSessionAt: first, now: date("2026-10-29T08:00:00Z"), calendar: calendar), .running(daysLeft: 7))
+        XCTAssertEqual(StudyTrial.phase(firstSessionAt: first, now: date("2026-11-03T20:00:00Z"), calendar: calendar), .running(daysLeft: 1))
+        XCTAssertEqual(StudyTrial.phase(firstSessionAt: first, now: date("2026-11-04T08:59:59Z"), calendar: calendar), .running(daysLeft: 1))
+        XCTAssertEqual(StudyTrial.phase(firstSessionAt: first, now: date("2026-11-04T09:00:00Z"), calendar: calendar), .ended)
+    }
+
+    func testOnlyPlusEarnsScrollOnceTheTrialEnds() {
+        XCTAssertTrue(StudyTrial.earnsScroll(.notStarted, hasPlus: false))
+        XCTAssertTrue(StudyTrial.earnsScroll(.running(daysLeft: 3), hasPlus: false))
+        XCTAssertFalse(StudyTrial.earnsScroll(.ended, hasPlus: false))
+        XCTAssertTrue(StudyTrial.earnsScroll(.ended, hasPlus: true))
+    }
+
+    func testLockedReceiptLineNamesThePriceOfWaiting() {
+        let line = MiloStudyVoice.receipt(earnedScrollMinutes: 0, recorded: true, capReached: false, streak: 2, lockedScrollMinutes: 12)
+        XCTAssertTrue(line.contains("12 minutes"))
+        XCTAssertTrue(line.contains("Mivo Plus"))
+        XCTAssertTrue(MiloStudyVoice.receipt(earnedScrollMinutes: 0, recorded: false, capReached: false, streak: 1, lockedScrollMinutes: 12).contains("No video"))
+    }
+
     func testReceiptLineIsFixedByWhatWasEarned() {
         XCTAssertTrue(MiloStudyVoice.receipt(earnedScrollMinutes: 0, recorded: false, capReached: false, streak: 1).contains("No video"))
         XCTAssertTrue(MiloStudyVoice.receipt(earnedScrollMinutes: 0, recorded: true, capReached: true, streak: 1).contains("full"))

@@ -13,6 +13,7 @@ struct MainTabView: View {
     @State private var openExpiredAddTimeImmediately = false
     @State private var completedExperimentForReview: WeeklyExperiment?
     @State private var deferredExperimentReviewID: String?
+    @State private var showPostOnboardingPaywall = false
 
     init(initialTab: Int = 0) {
         _selectedTab = State(initialValue: initialTab)
@@ -105,10 +106,11 @@ struct MainTabView: View {
             InstagramWrapperView()
                 .environmentObject(appVM)
         }
-        .fullScreenCover(isPresented: $appVM.pendingPostOnboardingPaywall) {
+        .fullScreenCover(isPresented: $showPostOnboardingPaywall) {
             MivoPlusPaywallView()
                 .environmentObject(appVM)
         }
+        .task { await presentPostOnboardingPaywallIfDue() }
         .sheet(isPresented: $appVM.showRatingPrompt) {
             MivoRatingPromptView()
                 .environmentObject(appVM)
@@ -388,6 +390,23 @@ struct MainTabView: View {
             tutorialMessage = nil
             selectedTab = tutorialSteps[0].tab
         }
+    }
+
+    /// Opens the Mivo Plus paywall once, right after onboarding. A cover that is
+    /// already true when this view first appears is easy for SwiftUI to drop, so
+    /// the flag is stored and the cover is opened here after the screen settles.
+    /// Anyone who already has Plus is not shown it.
+    private func presentPostOnboardingPaywallIfDue() async {
+        let flag = PostOnboardingPaywall()
+        guard flag.isDue(account: appVM.user?.email) else { return }
+        MivoPlusStore.shared.start()
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        guard !Task.isCancelled else { return }
+        let account = appVM.user?.email
+        guard flag.isDue(account: account) else { return }
+        flag.clear(account: account)
+        guard !MivoPlusAccess.allows(isPlus: MivoPlusStore.shared.isPlus, isAdmin: appVM.isAdminUser) else { return }
+        showPostOnboardingPaywall = true
     }
 
     private var shouldShowTutorial: Bool {

@@ -83,8 +83,6 @@ struct HomeView: View {
             MivoPlusPaywallView(feature: feature)
                 .environmentObject(appVM)
         }
-        .onChange(of: plus.hasCheckedPurchases) { _, _ in enforceWrapperAccess() }
-        .onChange(of: plus.isPlus) { _, _ in enforceWrapperAccess() }
         .onAppear {
             MivoPlusStore.shared.start()
             protectionEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
@@ -389,14 +387,6 @@ struct HomeView: View {
             HapticsService.selection()
             paywallFeature = feature
         }
-    }
-
-    /// Without Plus, tapping Instagram falls back to the normal 5-second pause
-    /// instead of opening a locked wrapper. Waits for the App Store to answer
-    /// first so a slow start never strips Plus from someone who has it.
-    private func enforceWrapperAccess() {
-        guard plus.hasCheckedPurchases, !hasPlus else { return }
-        FamilyControlsManager.shared.setInstagramWrapperEnabled(false)
     }
 
     // MARK: - Replay mode

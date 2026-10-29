@@ -135,6 +135,21 @@ final class MivoPlusTests: XCTestCase {
         }
     }
 
+    func testPostOnboardingPaywallIsRememberedPerAccountUntilCleared() {
+        let suite = "PostOnboardingPaywallTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let flag = PostOnboardingPaywall(defaults: defaults)
+
+        XCTAssertFalse(flag.isDue(account: "a@example.com"))
+        flag.markDue(account: "A@example.com")
+        XCTAssertTrue(flag.isDue(account: "a@EXAMPLE.com"))
+        XCTAssertFalse(flag.isDue(account: "b@example.com"))
+
+        flag.clear(account: "a@example.com")
+        XCTAssertFalse(flag.isDue(account: "a@example.com"))
+    }
+
     func testAccessForPlusAndAdmins() {
         XCTAssertTrue(MivoPlusAccess.allows(isPlus: true, isAdmin: false))
         XCTAssertTrue(MivoPlusAccess.allows(isPlus: false, isAdmin: true))
@@ -142,7 +157,7 @@ final class MivoPlusTests: XCTestCase {
     }
 
     func testEveryLockedFeatureHasAReasonAndTheBasicPauseStaysFree() {
-        for feature in [PlusFeature.instagramInMivo, .mivoClear, .mivoStill, .experiments, .receipt, .forecast, .general] {
+        for feature in [PlusFeature.studyScroll, .instagramInMivo, .mivoClear, .mivoStill, .experiments, .receipt, .forecast, .general] {
             XCTAssertFalse(feature.lockedLine.isEmpty)
         }
         XCTAssertTrue(MivoPlusCopy.basicPauseLine.contains("free"))

@@ -7,8 +7,11 @@ import SwiftUI
 struct StudySessionView: View {
     @ObservedObject private var study = StudyService.shared
     @ObservedObject private var companion = CompanionStateManager.shared
+    @ObservedObject private var plus = MivoPlusStore.shared
+    @EnvironmentObject private var appVM: AppViewModel
     @Environment(\.dismiss) private var dismiss
 
+    @State private var paywallFeature: PlusFeature?
     @State private var task = ""
     @State private var now = Date()
     @State private var isCharging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
@@ -28,6 +31,18 @@ struct StudySessionView: View {
             isCharging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
         }
         .onAppear { UIDevice.current.isBatteryMonitoringEnabled = true }
+        .sheet(item: $paywallFeature) { feature in
+            MivoPlusPaywallView(feature: feature)
+                .environmentObject(appVM)
+        }
+    }
+
+    private var hasPlus: Bool {
+        MivoPlusAccess.allows(isPlus: plus.isPlus, isAdmin: appVM.isAdminUser)
+    }
+
+    private var earnsScroll: Bool {
+        StudyTrial.earnsScroll(study.trialPhase, hasPlus: hasPlus)
     }
 
     // MARK: - Before
@@ -52,11 +67,15 @@ struct StudySessionView: View {
                     setupLine("powerplug", "Plug the phone in and prop it up across the room.")
                     setupLine("camera", "Point it at your hands and desk. Your face is optional.")
                     setupLine("lock.slash", "Leave Mivo open on this screen. Video stays on this phone.")
-                    setupLine("hourglass", "Every 3 minutes on video earns 1 minute of scroll, up to \(ReelBalance.dailyEarnCapSeconds / 60) a day.")
+                    if earnsScroll {
+                        setupLine("hourglass", "Every 3 minutes on video earns 1 minute of scroll, up to \(ReelBalance.dailyEarnCapSeconds / 60) a day.")
+                    }
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(MivoColors.surface))
+
+                trialNotice
 
                 MivoPrimaryButton(label: "Start") {
                     Task { await study.start(task: task) }
@@ -67,6 +86,33 @@ struct StudySessionView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
+        }
+    }
+
+    /// Where the person stands in the free week. Plus never sees it.
+    @ViewBuilder
+    private var trialNotice: some View {
+        if !hasPlus {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(trialLine)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .fixedSize(horizontal: false, vertical: true)
+                if study.trialPhase == .ended {
+                    MivoTertiaryButton(label: "See Mivo Plus") { paywallFeature = .studyScroll }
+                }
+            }
+        }
+    }
+
+    private var trialLine: String {
+        switch study.trialPhase {
+        case .notStarted:
+            return "Your first \(StudyTrial.days) days earn scroll time free. After that, earning it needs Mivo Plus."
+        case .running(let daysLeft):
+            return "Free week: \(daysLeft == 1 ? "1 day" : "\(daysLeft) days") left to earn scroll time. After that it needs Mivo Plus."
+        case .ended:
+            return "Your free week is over. Sessions still count for your streak, but earning scroll time needs Mivo Plus."
         }
     }
 
@@ -146,7 +192,7 @@ struct StudySessionView: View {
             Spacer()
 
             MivoPrimaryButton(label: "Finish") {
-                Task { await study.finish() }
+                Task { await study.finish(hasPlus: hasPlus) }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
@@ -175,6 +221,7 @@ struct StudySessionView: View {
     private func finished(_ receipt: StudyService.Receipt) -> some View {
         let entry = receipt.entry
         let earnedMinutes = entry.scrollSecondsEarned / 60
+        let lockedMinutes = receipt.lockedScrollSeconds / 60
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Session done")
@@ -206,13 +253,17 @@ struct StudySessionView: View {
 
                 HStack(spacing: 12) {
                     statTile("Streak", StudyFormat.days(receipt.streak))
-                    statTile("Scroll earned", earnedMinutes > 0 ? "+\(earnedMinutes) min" : "None")
+                    statTile("Scroll earned", earnedMinutes > 0 ? "+\(earnedMinutes) min" : (lockedMinutes > 0 ? "Needs Plus" : "None"))
                 }
 
-                Text("\(companion.miloName): \(MiloStudyVoice.receipt(earnedScrollMinutes: earnedMinutes, recorded: entry.wasRecorded, capReached: receipt.capReached, streak: receipt.streak))")
+                Text("\(companion.miloName): \(MiloStudyVoice.receipt(earnedScrollMinutes: earnedMinutes, recorded: entry.wasRecorded, capReached: receipt.capReached, streak: receipt.streak, lockedScrollMinutes: lockedMinutes))")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(MivoColors.inkBody)
                     .lineSpacing(4)
+
+                if lockedMinutes > 0 {
+                    MivoTertiaryButton(label: "Add \(lockedMinutes) min with Mivo Plus") { paywallFeature = .studyScroll }
+                }
 
                 Text("A day counts once you have a block of \(StudyLog.dayThresholdSeconds / 60) minutes.")
                     .font(.system(size: 12.5, weight: .medium))
@@ -280,6 +331,7 @@ struct StudyPresenter: ViewModifier {
         content
             .fullScreenCover(isPresented: $study.showRequested) {
                 StudySessionView()
+                    .environmentObject(appVM)
             }
             .onAppear { study.bind() }
             .onChange(of: appVM.user?.email) { _, _ in study.bind() }
@@ -295,12 +347,22 @@ extension View {
 
 struct StudyHomeRow: View {
     @ObservedObject private var study = StudyService.shared
+    @ObservedObject private var plus = MivoPlusStore.shared
+    @EnvironmentObject private var appVM: AppViewModel
+
+    private var subtitle: String {
+        let earns = StudyTrial.earnsScroll(study.trialPhase, hasPlus: MivoPlusAccess.allows(isPlus: plus.isPlus, isAdmin: appVM.isAdminUser))
+        if !earns {
+            return study.streak > 0 ? "\(StudyFormat.days(study.streak)) streak. Earning scroll time needs Plus." : "Film it. Keep your streak. Scroll time needs Plus."
+        }
+        return study.streak > 0 ? "\(StudyFormat.days(study.streak)) streak. Film it, earn scroll time." : "Name one thing. Film it. Earn scroll time."
+    }
 
     var body: some View {
         MivoToolTile(
             icon: "books.vertical",
             title: "Study",
-            subtitle: study.streak > 0 ? "\(StudyFormat.days(study.streak)) streak. Film it, earn scroll time." : "Name one thing. Film it. Earn scroll time."
+            subtitle: subtitle
         ) {
             study.showRequested = true
         }

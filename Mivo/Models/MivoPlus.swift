@@ -183,8 +183,56 @@ enum MivoPlusAccess {
     }
 }
 
+/// Remembers that the paywall is due right after onboarding. It is stored, not
+/// held in memory, so quitting before it shows does not lose it. Kept apart per
+/// account, and cleared the moment the paywall is about to open.
+struct PostOnboardingPaywall {
+    static let key = "mivo.plus.postOnboardingPaywallDue"
+
+    var defaults: UserDefaults = .standard
+
+    func markDue(account: String?) {
+        defaults.set(true, forKey: AccountScopedKey.make(Self.key, account: account))
+    }
+
+    func isDue(account: String?) -> Bool {
+        defaults.bool(forKey: AccountScopedKey.make(Self.key, account: account))
+    }
+
+    func clear(account: String?) {
+        defaults.removeObject(forKey: AccountScopedKey.make(Self.key, account: account))
+    }
+}
+
+/// The first week of the study loop earns scroll time free. The clock starts
+/// at the first session someone begins and never restarts. After it, a session
+/// still logs a receipt and a streak, but earning scroll time needs Plus.
+enum StudyTrial {
+    static let days = 7
+
+    enum Phase: Equatable {
+        case notStarted
+        case running(daysLeft: Int)
+        case ended
+    }
+
+    static func phase(firstSessionAt: Date?, now: Date, calendar: Calendar = .current) -> Phase {
+        guard let firstSessionAt else { return .notStarted }
+        guard let end = calendar.date(byAdding: .day, value: days, to: firstSessionAt), now < end else { return .ended }
+        // Rounds up so "1 day left" shows until the week is really over.
+        let left = Int((end.timeIntervalSince(now) / 86_400).rounded(.up))
+        return .running(daysLeft: max(1, left))
+    }
+
+    /// Plus always earns scroll time; everyone else earns until the week is over.
+    static func earnsScroll(_ phase: Phase, hasPlus: Bool) -> Bool {
+        hasPlus || phase != .ended
+    }
+}
+
 /// The features behind Plus, with the line shown when one is tapped.
 enum PlusFeature: String, Identifiable {
+    case studyScroll
     case instagramInMivo
     case mivoClear
     case mivoStill
@@ -197,6 +245,7 @@ enum PlusFeature: String, Identifiable {
 
     var lockedLine: String {
         switch self {
+        case .studyScroll: return "Earning scroll time from studying is part of Mivo Plus once your \(StudyTrial.days) free days are up."
         case .instagramInMivo: return "Replay mode is part of Mivo Plus."
         case .mivoClear: return "Mivo Clear is part of Mivo Plus."
         case .mivoStill: return "Mivo Still is part of Mivo Plus."
@@ -212,6 +261,7 @@ enum MivoPlusCopy {
     static let basicPauseLine = "The 5-second pause on your protected apps stays free."
 
     static let benefits: [(icon: String, text: String)] = [
+        ("timer", "Keep earning scroll time from studying after your \(StudyTrial.days) free days"),
         ("repeat", "Replay mode: after your reels, only ones you've seen"),
         ("sparkles", "Mivo Clear and Mivo Still"),
         ("flask", "Weekly experiments and your 30-day forecast"),

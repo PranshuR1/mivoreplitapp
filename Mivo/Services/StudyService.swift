@@ -123,6 +123,8 @@ final class StudyService: ObservableObject {
         var entry: StudyEntry
         var streak: Int
         var capReached: Bool
+        /// Wrapper seconds the session would have earned but the free week is over.
+        var lockedScrollSeconds = 0
     }
 
     enum Phase: Equatable {
@@ -156,6 +158,7 @@ final class StudyService: ObservableObject {
     var streak: Int { log.streak(asOf: Date()) }
     var studiedTodaySeconds: Int { log.seconds(on: Date()) }
     var earnedTodaySeconds: Int { balanceStore.current().bonusSeconds }
+    var trialPhase: StudyTrial.Phase { StudyTrial.phase(firstSessionAt: log.firstSessionAt, now: Date()) }
 
     private func key(_ base: String) -> String { AccountScopedKey.make(base, account: account()) }
 
@@ -212,7 +215,10 @@ final class StudyService: ObservableObject {
         phase = .running(active)
     }
 
-    func finish() async {
+    /// A session earns scroll time when it began inside the free week or the
+    /// person has Plus. Otherwise it is logged in full and the scroll time it
+    /// would have earned is shown on the receipt, not added.
+    func finish(hasPlus: Bool) async {
         guard case .running(let active) = phase else { return }
         let endedAt = Date()
         let recorderSeconds = cameraUnavailable ? 0 : await recorder.stop()
@@ -226,10 +232,18 @@ final class StudyService: ObservableObject {
         let recorded = min(elapsed, Int(recorderSeconds), fileSeconds)
         let creditable = Self.requiresRecording ? recorded : elapsed
 
+        let trial = StudyTrial.phase(firstSessionAt: log.firstSessionAt ?? active.startedAt, now: active.startedAt)
         var balance = balanceStore.current()
         let before = balance.bonusSeconds
-        let earned = balance.creditStudy(seconds: creditable)
-        balanceStore.save(balance)
+        var earned = 0
+        var locked = 0
+        if StudyTrial.earnsScroll(trial, hasPlus: hasPlus) {
+            earned = balance.creditStudy(seconds: creditable)
+            balanceStore.save(balance)
+        } else {
+            var preview = balance
+            locked = preview.creditStudy(seconds: creditable)
+        }
 
         let entry = StudyEntry(
             task: active.task, startedAt: active.startedAt, endedAt: endedAt,
@@ -240,7 +254,7 @@ final class StudyService: ObservableObject {
         defaults.removeObject(forKey: key(Self.activeKey))
 
         let capReached = before + earned >= ReelBalance.dailyEarnCapSeconds
-        phase = .finished(Receipt(entry: entry, streak: streak, capReached: capReached))
+        phase = .finished(Receipt(entry: entry, streak: streak, capReached: capReached, lockedScrollSeconds: locked))
     }
 
     func reset() {
