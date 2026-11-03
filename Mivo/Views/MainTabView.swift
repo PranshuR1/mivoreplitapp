@@ -102,8 +102,8 @@ struct MainTabView: View {
             MidScrollCheckInView(seconds: FamilyControlsManager.shared.shieldPauseDuration())
                 .environmentObject(appVM)
         }
-        .fullScreenCover(isPresented: $appVM.pendingInstagramWrapper) {
-            InstagramWrapperView()
+        .fullScreenCover(item: $appVM.pendingAppWindow) { request in
+            InterventionFlowView(preselectedApp: request.app) {}
                 .environmentObject(appVM)
         }
         .fullScreenCover(isPresented: $showPostOnboardingPaywall) {
@@ -295,7 +295,7 @@ struct MainTabView: View {
             appVM.validateCurrentRemoteAccount()
             appVM.checkDeepLinkInterventionFlag()   // pick up flag written by shield extension
             appVM.checkMidScrollCheckInFlag()
-            appVM.checkPendingInstagramWrapperFlag()
+            appVM.checkPendingAppWindowFlag()
             appVM.checkPendingMivoClearRoute()
             routeForForegroundOpen()
             appVM.scheduleTimeTruthNotification()
@@ -480,7 +480,9 @@ struct MainTabView: View {
     private func routeForForegroundOpen() {
         appVM.checkDeepLinkInterventionFlag()
         appVM.checkMidScrollCheckInFlag()
-        appVM.checkPendingInstagramWrapperFlag()
+        appVM.checkPendingAppWindowFlag()
+        // A chosen app goes straight into its window flow; don't also open session setup.
+        if appVM.pendingAppWindow != nil { return }
         if routeToLiveActivityActionIfNeeded() {
             return
         }
@@ -529,6 +531,7 @@ struct MainTabView: View {
     private func routeToPendingInterventionIfNeeded() -> Bool {
         guard appVM.consumePendingInterventionSetup() else { return false }
         selectedTab = 2
+        openWindowFlowIfClear()
         HapticsService.selection()
         return true
     }
@@ -538,8 +541,22 @@ struct MainTabView: View {
         guard appVM.deepLinkInterventionRequested else { return false }
         appVM.deepLinkInterventionRequested = false
         selectedTab = 2
+        openWindowFlowIfClear()
         HapticsService.selection()
         return true
+    }
+
+    /// A shield's "Open Mivo" means "start a window", so the flow opens right
+    /// away on its first question (which app), unless something that has to
+    /// come first is already up: a session to review, a check-in, Mivo Clear.
+    private func openWindowFlowIfClear() {
+        guard appVM.pendingAppWindow == nil,
+              appVM.pendingExpiredRunningSession == nil,
+              appVM.pendingSessionFeedback == nil,
+              appVM.pendingResumedActiveSession == nil,
+              appVM.pendingMivoClearRoute == nil,
+              !appVM.pendingMidScrollCheckIn else { return }
+        appVM.pendingAppWindow = AppWindowRequest(app: nil)
     }
 
     private func advanceTutorial() {

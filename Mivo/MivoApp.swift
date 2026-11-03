@@ -586,7 +586,14 @@ struct RootView: View {
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewStill") {
                 MivoStillAppStorePreviewView()
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewInstagramWrapper") {
-                InstagramWrapperView()
+                InterventionFlowView(preselectedApp: .instagram) {}
+            } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewWindowFlow") {
+                InterventionFlowView {}
+            } else if let raw = UserDefaults.standard.string(forKey: "MivoPreviewWrapper"),
+                      let app = SocialApp(rawValue: String(raw.split(separator: ".").first ?? "")),
+                      let purpose = app.purpose(id: String(raw.split(separator: ".").last ?? "")) {
+                // `-MivoPreviewWrapper youtube.longVideos`: straight into an app, no flow.
+                AppWrapperView(config: AppWindowConfig(app: app, purpose: purpose, amount: 10, reason: nil, startsSlowed: false))
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewComeback") {
                 ComebackFlowView(prompt: ComebackPreviewFixtures.prompt)
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewComebackHome") {

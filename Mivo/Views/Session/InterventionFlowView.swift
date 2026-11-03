@@ -2,10 +2,17 @@ import SwiftUI
 
 private let flowDurations: [Int] = [5, 10, 15, 30]
 
-/// §4 Intervention flow: reason → duration → pause → active → reflect, per
-/// `INTERACTIONS.md`. Active and reflect are the existing `ActiveSessionView`
-/// and `ReflectionView`, which this presents unchanged — this file only owns
-/// reason, duration and the pause.
+/// §4 Intervention flow, now starting with which app:
+/// - A `SocialApp` opens inside Mivo: app → what for (`AppPurpose`) → reason →
+///   how many or how long → pause → `AppWrapperView`. Messages skip straight
+///   in: they're unlimited, and nothing but messages is reachable.
+/// - Anything else (another app, or Snapchat chat, which the web can't do):
+///   app → reason → duration → pause → active → reflect, per
+///   `INTERACTIONS.md`. Active and reflect are the existing
+///   `ActiveSessionView` and `ReflectionView`, presented unchanged.
+///
+/// Each app's last purpose and amount are remembered (`AppPickStore`), so a
+/// repeat visit is mostly Continue.
 ///
 /// The pause step also carries mechanics the design spec doesn't describe but
 /// that were kept intentionally: friction escalates on repeated openings
@@ -18,11 +25,26 @@ struct InterventionFlowView: View {
     @ObservedObject private var expansion = ProductExpansionStore.shared
     @ObservedObject private var companion = CompanionStateManager.shared
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var plus = MivoPlusStore.shared
     var onFinished: () -> Void
+    /// Set when a shield on a known app opened the flow: the app step is skipped.
+    private let preselectedApp: SocialApp?
 
-    private enum FlowStep { case reason, duration, pause }
+    private enum FlowStep { case app, purpose, reason, duration, amount, pause }
 
-    @State private var step: FlowStep = .reason
+    /// A social app opens inside Mivo; anything else opens natively for a timed window.
+    private enum AppChoice: Equatable {
+        case social(SocialApp)
+        case other
+    }
+
+    @State private var step: FlowStep
+    @State private var appChoice: AppChoice?
+    @State private var selectedPurpose: AppPurpose?
+    @State private var selectedAmount: Int?
+    @State private var planPick: Int?
+    @State private var balance = ReelBalanceStore.shared.current()
+    @State private var wrapperLaunch: AppWindowConfig?
     @State private var selectedIntention: Intention?
     @State private var selectedDuration: Int?
     @State private var cachedDurationLimit: (maxMinutes: Int, isLimited: Bool, message: String, windowTitle: String) = (
@@ -55,13 +77,35 @@ struct InterventionFlowView: View {
         let urgeReason: UrgeReason?
     }
 
+    init(preselectedApp: SocialApp? = nil, onFinished: @escaping () -> Void) {
+        self.onFinished = onFinished
+        self.preselectedApp = preselectedApp
+        if let preselectedApp {
+            _appChoice = State(initialValue: .social(preselectedApp))
+            _selectedPurpose = State(initialValue: AppPickStore.lastPurpose(for: preselectedApp) ?? preselectedApp.purposes.first)
+            _step = State(initialValue: .purpose)
+        } else {
+            _step = State(initialValue: .app)
+        }
+    }
+
     var body: some View {
         Group {
             switch step {
+            case .app: appStep
+            case .purpose: purposeStep
             case .reason: reasonStep
             case .duration: durationStep
+            case .amount: amountStep
             case .pause: pauseStep
             }
+        }
+        .fullScreenCover(item: $wrapperLaunch, onDismiss: {
+            onFinished()
+            dismiss()
+        }) { config in
+            AppWrapperView(config: config)
+                .environmentObject(appVM)
         }
         .fullScreenCover(item: $activeLaunch) { launch in
             ActiveSessionView(
@@ -112,7 +156,6 @@ struct InterventionFlowView: View {
         }
         .onAppear {
             refreshDurationLimit()
-            offerMivoClearIfOutsideWindow()
         }
         .onChange(of: appVM.sessions.count) { _, _ in refreshDurationLimit() }
         .onChange(of: appVM.dailyScrollSchedules.count) { _, _ in refreshDurationLimit() }
@@ -144,11 +187,408 @@ struct InterventionFlowView: View {
         }
     }
 
+    // MARK: - Which app
+
+    private var appStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            flowTopBar(.app)
+
+            Text("Which app?")
+                .font(.system(size: 27, weight: .bold))
+                .tracking(Font.mivoTracking(-0.025, at: 27))
+                .foregroundColor(MivoColors.ink)
+                .padding(.top, 8)
+
+            Text("These open inside Mivo, which keeps you to what you came for.")
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundColor(MivoColors.inkBody)
+                .padding(.top, 8)
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 9) {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 9), GridItem(.flexible(), spacing: 9)], spacing: 9) {
+                        ForEach(SocialApp.allCases) { app in
+                            appTile(icon: app.icon, title: app.title, isSelected: appChoice == .social(app)) {
+                                choose(.social(app))
+                            }
+                        }
+                    }
+                    MivoOptionRow(
+                        label: "Another app",
+                        note: "Opens the app itself for a timed window",
+                        isSelected: appChoice == .other,
+                        fillsWhenSelected: true
+                    ) {
+                        choose(.other)
+                    }
+                }
+                .padding(.top, 22)
+                .padding(.bottom, 12)
+            }
+
+            MivoPrimaryButton(label: "Continue", disabled: appChoice == nil) {
+                guard let appChoice else { return }
+                withAnimation(MivoMotion.stepEnter) { step = appChoice == .other ? .reason : .purpose }
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 44)
+        }
+        .padding(.horizontal, MivoMetrics.screenPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(MivoColors.background.ignoresSafeArea())
+        .transition(.opacity.combined(with: .move(edge: .trailing)))
+    }
+
+    private func appTile(icon: String, title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 20)
+                Text(title)
+                    .font(.system(size: 14.5, weight: .semibold))
+                Spacer(minLength: 0)
+            }
+            .foregroundColor(isSelected ? MivoColors.background : MivoColors.ink)
+            .padding(.horizontal, 14)
+            .frame(height: 52)
+            .background(isSelected ? MivoColors.ink : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.radius))
+            .overlay(
+                RoundedRectangle(cornerRadius: MivoMetrics.radius)
+                    .strokeBorder(isSelected ? MivoColors.ink : MivoColors.ink.opacity(0.16), lineWidth: 1)
+            )
+        }
+        .buttonStyle(MivoPressStyle())
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func choose(_ choice: AppChoice) {
+        HapticsService.selection()
+        guard choice != appChoice else { return }
+        appChoice = choice
+        selectedAmount = nil
+        if case .social(let app) = choice {
+            selectedPurpose = AppPickStore.lastPurpose(for: app) ?? app.purposes.first
+        } else {
+            selectedPurpose = nil
+        }
+    }
+
+    // MARK: - What for
+
+    private var purposeStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            flowTopBar(.purpose)
+
+            Text("What are you opening \(chosenApp?.title ?? "it") for?")
+                .font(.system(size: 27, weight: .bold))
+                .tracking(Font.mivoTracking(-0.025, at: 27))
+                .foregroundColor(MivoColors.ink)
+                .frame(maxWidth: 300, alignment: .leading)
+                .padding(.top, 8)
+
+            Text("Mivo remembers your answer for next time, and reminds you if you drift.")
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundColor(MivoColors.inkBody)
+                .padding(.top, 8)
+
+            VStack(spacing: 9) {
+                ForEach(chosenApp?.purposes ?? []) { purpose in
+                    MivoOptionRow(
+                        label: purpose.title,
+                        note: purposeNote(purpose),
+                        isSelected: selectedPurpose?.id == purpose.id,
+                        fillsWhenSelected: true
+                    ) {
+                        HapticsService.selection()
+                        if selectedPurpose?.id != purpose.id { selectedAmount = nil }
+                        selectedPurpose = purpose
+                    }
+                }
+            }
+            .padding(.top, 24)
+
+            if let detail = selectedPurpose.map(purposeDetail), !detail.isEmpty {
+                Text(detail)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 14)
+            }
+
+            Spacer(minLength: 20)
+
+            MivoPrimaryButton(label: purposeButtonLabel, disabled: selectedPurpose == nil) {
+                guard let purpose = selectedPurpose, let app = chosenApp else { return }
+                if purpose.kind == .messages {
+                    // Unlimited and free: no reason, amount or pause.
+                    HapticsService.success()
+                    launchInMivo(app: app, purpose: purpose, amount: 0, reason: nil)
+                } else {
+                    withAnimation(MivoMotion.stepEnter) { step = .reason }
+                }
+            }
+            .padding(.bottom, 44)
+        }
+        .padding(.horizontal, MivoMetrics.screenPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(MivoColors.background.ignoresSafeArea())
+        .transition(.opacity.combined(with: .move(edge: .trailing)))
+    }
+
+    private func purposeNote(_ purpose: AppPurpose) -> String? {
+        switch purpose.kind {
+        case .count: return "Counted"
+        case .minutes: return "Timed"
+        case .messages: return "Unlimited"
+        case .nativeApp: return "In the app"
+        }
+    }
+
+    private func purposeDetail(_ purpose: AppPurpose) -> String {
+        guard let app = chosenApp else { return purpose.detail }
+        switch purpose.kind {
+        case .count, .messages, .nativeApp:
+            return purpose.detail
+        case .minutes:
+            return "All of \(app.title), timed. If you spend a while somewhere other than \(purpose.title.lowercased()), Mivo reminds you what you came for."
+        }
+    }
+
+    private var purposeButtonLabel: String {
+        guard let purpose = selectedPurpose, let app = chosenApp else { return "Continue" }
+        return purpose.kind == .messages ? "Open \(app.title) messages" : "Continue"
+    }
+
+    // MARK: - How many, or how long
+
+    private var amountStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            flowTopBar(.amount)
+
+            Text(amountTitle)
+                .font(.system(size: 27, weight: .bold))
+                .tracking(Font.mivoTracking(-0.025, at: 27))
+                .foregroundColor(MivoColors.ink)
+                .padding(.top, 8)
+
+            if let app = chosenApp, let purpose = selectedPurpose {
+                Text("\(app.title) · \(purpose.title)")
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .padding(.top, 8)
+            }
+
+            VStack(spacing: 6) {
+                Text("\(selectedAmount ?? 0)")
+                    .font(.system(size: 72, weight: .bold))
+                    .monospacedDigit()
+                    .tracking(Font.mivoTracking(-0.045, at: 72))
+                    .foregroundColor(MivoColors.ink)
+                Text(amountUnit)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundColor(MivoColors.inkMuted)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 30)
+
+            HStack(spacing: 7) {
+                ForEach(amountOptions, id: \.self) { amount in
+                    amountChip(amount)
+                }
+            }
+            .padding(.top, 30)
+
+            Text(amountAvailabilityText)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(startsSlowed || balance.isEmpty ? MivoColors.deep : MivoColors.inkBody)
+                .padding(.top, 14)
+
+            Text(amountExplainer)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(MivoColors.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+
+            if let replayText = replayStatusText {
+                Text(replayText)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+            }
+
+            Spacer(minLength: 20)
+
+            MivoPrimaryButton(label: "Open \(chosenApp?.title ?? "it")", disabled: selectedAmount == nil) {
+                guard let selectedIntention, let selectedAmount else { return }
+                beginPause(intention: selectedIntention, duration: selectedAmount)
+            }
+            .padding(.bottom, 44)
+        }
+        .padding(.horizontal, MivoMetrics.screenPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(MivoColors.background.ignoresSafeArea())
+        .transition(.opacity.combined(with: .move(edge: .trailing)))
+    }
+
+    private func amountChip(_ amount: Int) -> some View {
+        let isSelected = selectedAmount == amount
+        return Button {
+            HapticsService.selection()
+            selectedAmount = amount
+        } label: {
+            VStack(spacing: 1) {
+                Text("\(amount)")
+                    .font(.system(size: 14.5, weight: .semibold))
+                    .monospacedDigit()
+                if amount == planPick, selectedPurpose?.kind == .count {
+                    Text("plan")
+                        .font(.system(size: 9, weight: .bold))
+                        .textCase(.uppercase)
+                }
+            }
+            .foregroundColor(isSelected ? MivoColors.background : MivoColors.ink)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .background(isSelected ? MivoColors.ink : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: MivoMetrics.radius))
+            .overlay(
+                RoundedRectangle(cornerRadius: MivoMetrics.radius)
+                    .strokeBorder(isSelected ? MivoColors.ink : MivoColors.ink.opacity(0.16), lineWidth: 1)
+            )
+        }
+        .buttonStyle(MivoPressStyle())
+    }
+
+    private var amountTitle: String {
+        guard let app = chosenApp, selectedPurpose?.kind == .count else { return "How long?" }
+        return "How many \(app.shortVideoName.many)?"
+    }
+
+    private var amountUnit: String {
+        guard let app = chosenApp, selectedPurpose?.kind == .count else { return "minutes" }
+        return selectedAmount == 1 ? app.shortVideoName.one : app.shortVideoName.many
+    }
+
+    /// The fixed amounts, Mivo's plan pick for short videos, and whatever was
+    /// picked last time.
+    private var amountOptions: [Int] {
+        let isCount = selectedPurpose?.kind == .count
+        var options = isCount ? WrapperSessionLimit.reelOptions : WrapperSessionLimit.minuteOptions
+        if isCount, let planPick, !options.contains(planPick) { options.append(planPick) }
+        if let selectedAmount, !options.contains(selectedAmount) { options.append(selectedAmount) }
+        return options.sorted()
+    }
+
+    private var startsSlowed: Bool { cachedDurationLimit.maxMinutes == 0 }
+
+    private var amountAvailabilityText: String {
+        if startsSlowed { return "Outside your scroll window: it opens slowed down." }
+        if balance.isEmpty { return "That's today's time: it opens slowed down." }
+        let minutes = balance.remainingMinutes
+        return minutes == 1 ? "1 minute left today" : "\(minutes) minutes left today"
+    }
+
+    private var amountExplainer: String {
+        guard let app = chosenApp, let purpose = selectedPurpose else { return "" }
+        let amount = selectedAmount ?? 0
+        switch purpose.kind {
+        case .count:
+            return "Only \(app.shortVideoName.many) open. After \(app.shortVideoCount(amount)), they go grey and quiet, and each one opens full screen after a short pause."
+        case .minutes:
+            return "After \(WrapperSessionLimit.minutes.title(amount: amount)), \(app.title) goes grey, quiet and slow. Nothing closes."
+        case .messages, .nativeApp:
+            return ""
+        }
+    }
+
+    private var replayStatusText: String? {
+        guard chosenApp == .instagram, selectedPurpose?.kind == .count else { return nil }
+        guard MivoPlusAccess.allows(isPlus: plus.isPlus, isAdmin: appVM.isAdminUser) else { return "Replay mode is part of Mivo Plus." }
+        guard ReplayModeSetting.isEnabled else { return "Replay mode is off. Turn it on from Home." }
+        if appVM.adaptiveScreenTimePlan().collecting { return "Replay mode starts after your first 3 days, once Mivo has seen how you scroll." }
+        return "Replay mode: once your Reels are used, you only see ones you've already watched."
+    }
+
+    /// Fresh balance and plan, and the amount picked last time for this app
+    /// and purpose (or Mivo's plan for short videos).
+    private func prepareAmount() {
+        balance = ReelBalanceStore.shared.current()
+        refreshDurationLimit()
+        guard let app = chosenApp, let purpose = selectedPurpose else { return }
+        planPick = purpose.kind == .count ? appVM.reelPlan()?.suggestedReelPick : nil
+        if selectedAmount == nil {
+            let fallback = purpose.kind == .count
+                ? (planPick ?? WrapperSessionLimit.reelsPerSession)
+                : WrapperSessionLimit.minutesPerSession
+            selectedAmount = AppPickStore.lastAmount(for: app, purpose: purpose) ?? fallback
+        }
+    }
+
+    // MARK: - Opening in Mivo
+
+    private var chosenApp: SocialApp? {
+        if case .social(let app) = appChoice { return app }
+        return nil
+    }
+
+    /// True when the window opens inside Mivo rather than the native app.
+    private var opensInMivo: Bool {
+        chosenApp != nil && selectedPurpose?.runsInMivo == true
+    }
+
+    private var pauseSubtitle: String? {
+        if opensInMivo, let app = chosenApp, let purpose = selectedPurpose {
+            return "\(app.title) · \(purpose.title)"
+        }
+        return selectedIntention?.flowLabel
+    }
+
+    /// Opens the app in Mivo. The native app stays shielded: no session starts.
+    private func launchInMivo(app: SocialApp, purpose: AppPurpose, amount: Int, reason: Intention?) {
+        AppPickStore.save(app: app, purpose: purpose, amount: purpose.kind == .messages ? nil : amount)
+        appVM.dismissMivoLaunchGate()
+        wrapperLaunch = AppWindowConfig(
+            app: app,
+            purpose: purpose,
+            amount: amount,
+            reason: reason,
+            startsSlowed: purpose.kind != .messages && startsSlowed
+        )
+    }
+
+    /// The steps this path goes through, for "Step 2 of 4" and the back button.
+    private var flowSteps: [FlowStep] {
+        var steps: [FlowStep] = preselectedApp == nil ? [.app] : []
+        switch appChoice {
+        case .other:
+            steps += [.reason, .duration]
+        case .social:
+            steps.append(.purpose)
+            switch selectedPurpose?.kind {
+            case .messages: break
+            case .nativeApp: steps += [.reason, .duration]
+            default: steps += [.reason, .amount]
+            }
+        case nil:
+            steps += [.purpose, .reason, .amount]
+        }
+        return steps
+    }
+
+    private func goBack(from current: FlowStep) {
+        let steps = flowSteps
+        guard let index = steps.firstIndex(of: current), index > 0 else { return }
+        HapticsService.selection()
+        withAnimation(MivoMotion.stepEnter) { step = steps[index - 1] }
+    }
+
     // MARK: - 4.1 Reason
 
     private var reasonStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            flowTopBar(step: 1)
+            flowTopBar(.reason)
 
             Text("Why are you opening it?")
                 .font(.system(size: 27, weight: .bold))
@@ -179,7 +619,12 @@ struct InterventionFlowView: View {
             Spacer(minLength: 20)
 
             MivoPrimaryButton(label: "Continue", disabled: selectedIntention == nil) {
-                withAnimation(MivoMotion.stepEnter) { step = .duration }
+                if opensInMivo {
+                    prepareAmount()
+                    withAnimation(MivoMotion.stepEnter) { step = .amount }
+                } else {
+                    withAnimation(MivoMotion.stepEnter) { step = .duration }
+                }
             }
             .padding(.bottom, 44)
         }
@@ -193,7 +638,7 @@ struct InterventionFlowView: View {
 
     private var durationStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            flowTopBar(step: 2)
+            flowTopBar(.duration)
 
             Text("How long do you need?")
                 .font(.system(size: 27, weight: .bold))
@@ -322,15 +767,19 @@ struct InterventionFlowView: View {
     }
 
     private var durationButtonLabel: String {
-        if redirectsToClear { return "Use Mivo Clear instead" }
+        if redirectsToClear { return "Outside your scroll window" }
         guard let selectedDuration, let selectedIntention else { return "Choose a length" }
         return "Open \(appName(for: selectedIntention)) for \(selectedDuration) min"
     }
 
-    /// The design copy interpolates an app name ("Open Instagram for 15 min"),
-    /// but a session isn't tied to one app in this data model — see the same
-    /// note on `InterventionsView.sessionMeta`. "it" keeps the sentence true.
-    private func appName(for intention: Intention) -> String { "it" }
+    /// The design copy interpolates an app name ("Open Snapchat for 15 min").
+    /// A native session isn't tied to one app in this data model — see the
+    /// same note on `InterventionsView.sessionMeta` — so "it" unless the app
+    /// step named one.
+    private func appName(for intention: Intention) -> String {
+        if case .social(let app) = appChoice { return app.title }
+        return "it"
+    }
 
     private var effectiveSelectedMinutes: Int { selectedDuration ?? 0 }
 
@@ -494,8 +943,8 @@ struct InterventionFlowView: View {
                 .frame(maxWidth: 250)
                 .padding(.top, 24)
 
-            if let selectedIntention {
-                Text(selectedIntention.flowLabel)
+            if let pauseSubtitle {
+                Text(pauseSubtitle)
                     .font(.system(size: 13.5, weight: .medium))
                     .foregroundColor(Color(hex: "#FAF3E8").opacity(0.62))
                     .padding(.top, 6)
@@ -665,7 +1114,7 @@ struct InterventionFlowView: View {
                 .buttonStyle(.plain)
             }
 
-            if lastScrollAvailable {
+            if lastScrollAvailable, !opensInMivo {
                 Button {
                     acceptsSleepTradeoff = true
                     lastScrollSelected = true
@@ -718,9 +1167,22 @@ struct InterventionFlowView: View {
 
     // MARK: - Top bar
 
-    private func flowTopBar(step number: Int) -> some View {
-        HStack {
-            MivoEyebrow(text: "Step \(number) of 2")
+    private func flowTopBar(_ current: FlowStep) -> some View {
+        let steps = flowSteps
+        let number = (steps.firstIndex(of: current) ?? 0) + 1
+        return HStack(spacing: 10) {
+            if number > 1 {
+                Button {
+                    goBack(from: current)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MivoColors.deep)
+                        .frame(width: 28, height: 28)
+                }
+                .accessibilityLabel("Back")
+            }
+            MivoEyebrow(text: "Step \(number) of \(steps.count)")
             Spacer()
             Button("Not now") {
                 walkAway()
@@ -758,7 +1220,20 @@ struct InterventionFlowView: View {
     }
 
     private func startIfReady() {
-        guard canStart, let selectedIntention, let selectedDuration else { return }
+        guard canStart, let selectedIntention else { return }
+        if opensInMivo {
+            guard case .social(let app) = appChoice, let purpose = selectedPurpose, let amount = selectedAmount else { return }
+            if let frictionAttemptID {
+                frictionAttemptResolved = true
+                appVM.resolveInterventionAttempt(id: frictionAttemptID, continued: true)
+            }
+            HapticsService.success()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                launchInMivo(app: app, purpose: purpose, amount: amount, reason: selectedIntention)
+            }
+            return
+        }
+        guard let selectedDuration else { return }
         if lastScrollSelected {
             appVM.markLastScrollOfNightStarted()
         }
@@ -795,10 +1270,6 @@ struct InterventionFlowView: View {
         cachedDurationLimit = appVM.adaptiveSessionDurationLimit()
     }
 
-    private func offerMivoClearIfOutsideWindow() {
-        guard cachedDurationLimit.maxMinutes == 0, expansion.isEnabled(.mivoClear) else { return }
-        showOutsideWindowClearPrompt = true
-    }
 
     // MARK: - Outside-window Clear prompt
 
@@ -821,17 +1292,17 @@ struct InterventionFlowView: View {
                 }
             }
 
-            Text("Need to text, search, or watch a longer YouTube video? Use Mivo Clear without opening the endless feed.")
+            Text("Need to reply to someone? Messages open in Mivo any time, as long as you need, with nothing else reachable.")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundColor(MivoColors.inkBody)
                 .lineSpacing(4)
 
-            MivoPrimaryButton(label: "Open Mivo Clear") {
+            MivoPrimaryButton(label: "Open messages in Mivo") {
                 HapticsService.selection()
                 showOutsideWindowClearPrompt = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                    showMivoClear = true
-                }
+                appChoice = nil
+                selectedPurpose = nil
+                withAnimation(MivoMotion.stepEnter) { step = .app }
             }
 
             MivoTertiaryButton(label: "Stay here", color: MivoColors.inkMuted) {

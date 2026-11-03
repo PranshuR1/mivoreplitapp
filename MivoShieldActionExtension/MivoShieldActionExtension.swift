@@ -24,8 +24,9 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     private let pendingMidScrollCheckInKey = "mivo.pendingMidScrollCheckIn"
     private let pendingMidScrollCheckInAppNameKey = "mivo.pendingMidScrollCheckInAppName"
     private let instagramWrapperEnabledKey = "mivo.instagramWrapperEnabled"
-    private let pendingInstagramWrapperKey = "mivo.pendingInstagramWrapper"
-    private let instagramBundleID = "com.burbn.instagram"
+    private let pendingAppWindowKey = "mivo.pendingAppWindow"
+    private let appMappingPrefix = "mivo.app.mapping."
+    private let instagramShieldTokenKey = "mivo.instagramShieldToken"
     private let lastOpenMivoNotificationAtKey = "mivo.lastOpenMivoNotificationAt"
     private let openMivoNotificationPrefix = "mivo.shield.openmivo"
     private let checkInIntervalMinutesKey = "mivo.checkInIntervalMinutes"
@@ -269,15 +270,14 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
                 logger.info("ShieldAction primary: countdown in progress → .defer")
                 completionHandler(.defer)
 
-            } else if let application, isInstagram(application), isInstagramWrapperEnabled() {
-                // Opt-in feature: tapping the real Instagram app goes straight
-                // into Mivo's own wrapper instead of the normal reason/timer
-                // flow — the wrapper *is* how Instagram is used now, not a
-                // gate in front of it. Takes priority over the mid-scroll
-                // check-in and Mivo Clear mapping for this one app, since
-                // both of those assume the native app is what opens next.
-                logger.info("ShieldAction primary: Instagram + wrapper enabled → routing into Mivo")
-                requestInstagramWrapper()
+            } else if let application, let app = wrapperApp(for: application), isWrapperEnabled() {
+                // On by default: tapping a chosen social app goes straight to
+                // that app's window flow in Mivo, which opens it inside Mivo —
+                // that *is* how the app is used now, not a gate in front of
+                // it. Takes priority over the mid-scroll check-in and Mivo
+                // Clear, since both of those assume the native app opens next.
+                logger.info("ShieldAction primary: \(app.rawValue) + wrapper enabled → routing into Mivo")
+                requestAppWindow(app)
                 completionHandler(.defer)
 
             } else if isExpiredSessionAwaitingMivo() || isPendingSetupWithoutSession() {
@@ -317,6 +317,9 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         case .secondaryButtonPressed:
             if isCrossDeviceFocusActive() {
                 logger.info("ShieldAction secondary: cross-device focus active → close")
+                completionHandler(.close)
+            } else if let application, wrapperApp(for: application) != nil, isWrapperEnabled() {
+                // "Not now" on the opens-in-Mivo shield: just leave.
                 completionHandler(.close)
             } else if let application,
                mappedMivoClearPlatform(for: application) != nil,
@@ -385,36 +388,87 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         }
     }
 
+    /// The social app a token belongs to. `Application(token:)` built here
+    /// usually has no bundle identifier (the token is opaque outside the shield
+    /// UI), so this matches the tokens picked in Mivo's Settings: each app's own
+    /// pick, Instagram's older pick, and Mivo Clear picks.
+    private func wrapperApp(for token: ApplicationToken) -> WrapperApp? {
+        let defaults = UserDefaults(suiteName: appGroup)
+        func matches(_ key: String) -> Bool {
+            guard let data = defaults?.data(forKey: key),
+                  let saved = try? JSONDecoder().decode(ApplicationToken.self, from: data) else { return false }
+            return saved == token
+        }
+        for app in WrapperApp.allCases where matches(appMappingPrefix + app.rawValue) { return app }
+        if matches(instagramShieldTokenKey) { return .instagram }
+        if let platform = mappedMivoClearPlatform(for: token), let app = WrapperApp(rawValue: platform.rawValue) { return app }
+        if let bundleID = Application(token: token).bundleIdentifier {
+            return WrapperApp.allCases.first { $0.bundleIdentifier == bundleID }
+        }
+        return nil
+    }
+
+    /// On unless the person turned it off in Settings (a missing key means on).
+    private func isWrapperEnabled() -> Bool {
+        UserDefaults(suiteName: appGroup)?.object(forKey: instagramWrapperEnabledKey) as? Bool ?? true
+    }
+
+    /// Mirrors `requestMivoClear(_:)`'s flag-plus-notification handoff — the
+    /// app picks this up in `checkPendingAppWindowFlag()` on foreground and
+    /// opens that app's window flow.
+    private func requestAppWindow(_ app: WrapperApp) {
+        let defaults = UserDefaults(suiteName: appGroup)
+        defaults?.set(app.rawValue, forKey: pendingAppWindowKey)
+        defaults?.synchronize()
+
+        guard let url = URL(string: "mivo://appWindow") else { return }
+        openWithExtensionContextIfAvailable(url)
+        // Its own route, not "openIntervention": that one would also open the
+        // general session setup underneath.
+        fireOpenMivoNotification(
+            force: true,
+            title: app.title,
+            body: "Tap to open \(app.title) in Mivo.",
+            userInfo: ["mivoRoute": "appWindow", "app": app.rawValue]
+        )
+    }
+
+    /// Mirrors `SocialApp` in the app, which this extension can't import.
+    private enum WrapperApp: String, CaseIterable {
+        case instagram, tiktok, youtube, snapchat, facebook, x, reddit, threads
+
+        var title: String {
+            switch self {
+            case .instagram: return "Instagram"
+            case .tiktok: return "TikTok"
+            case .youtube: return "YouTube"
+            case .snapchat: return "Snapchat"
+            case .facebook: return "Facebook"
+            case .x: return "X"
+            case .reddit: return "Reddit"
+            case .threads: return "Threads"
+            }
+        }
+
+        var bundleIdentifier: String {
+            switch self {
+            case .instagram: return "com.burbn.instagram"
+            case .tiktok: return "com.zhiliaoapp.musically"
+            case .youtube: return "com.google.ios.youtube"
+            case .snapchat: return "com.toyopagroup.picaboo"
+            case .facebook: return "com.facebook.Facebook"
+            case .x: return "com.atebits.Tweetie2"
+            case .reddit: return "com.reddit.Reddit"
+            case .threads: return "com.burbn.barcelona"
+            }
+        }
+    }
+
     /// Keeps the shield fully applied — the app is still blocked — and hands
     /// off to Mivo for the actual pause and decision. Mirrors
     /// `openMivoForIntervention()`'s notification/URL mechanism, with its own
     /// flag so the app shows a short breathing pause + yes/no check-in
     /// instead of the full reason/duration flow.
-    private func isInstagram(_ token: ApplicationToken) -> Bool {
-        Application(token: token).bundleIdentifier == instagramBundleID
-    }
-
-    private func isInstagramWrapperEnabled() -> Bool {
-        UserDefaults(suiteName: appGroup)?.bool(forKey: instagramWrapperEnabledKey) ?? false
-    }
-
-    /// Mirrors `requestMivoClear(_:)`'s flag-plus-notification handoff — the
-    /// app picks this up in `checkPendingInstagramWrapperFlag()` on
-    /// foreground and presents `InstagramWrapperView`.
-    private func requestInstagramWrapper() {
-        let defaults = UserDefaults(suiteName: appGroup)
-        defaults?.set(true, forKey: pendingInstagramWrapperKey)
-        defaults?.synchronize()
-
-        guard let url = URL(string: "mivo://instagramWrapper") else { return }
-        openWithExtensionContextIfAvailable(url)
-        fireOpenMivoNotification(
-            force: true,
-            title: "Instagram",
-            body: "Tap to continue."
-        )
-    }
-
     private func requestMidScrollCheckIn(application: ApplicationToken?) {
         let defaults = UserDefaults(suiteName: appGroup)
         defaults?.set(true, forKey: pendingMidScrollCheckInKey)
@@ -525,7 +579,8 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     private func fireOpenMivoNotification(
         force: Bool,
         title: String = "Open Mivo to set your intention",
-        body: String = "Tap this notification to open Mivo and choose your session."
+        body: String = "Tap this notification to open Mivo and choose your session.",
+        userInfo: [AnyHashable: Any] = ["openIntervention": true]
     ) {
         let center = UNUserNotificationCenter.current()
         let defaults = UserDefaults(suiteName: appGroup)
@@ -543,7 +598,7 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         content.body = body
         content.sound = .default
         content.categoryIdentifier = "MIVO_SESSION_ENDED"
-        content.userInfo = ["openIntervention": true]
+        content.userInfo = userInfo
         if #available(iOS 15.0, *) {
             content.interruptionLevel = .timeSensitive
         }

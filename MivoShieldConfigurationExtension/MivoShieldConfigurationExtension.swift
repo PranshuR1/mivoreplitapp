@@ -27,6 +27,9 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     private let stillLockEndsAtKey = "mivo.still.lock.endsAt"
     private let crossDeviceFocusActiveKey = "mivo.crossDeviceFocus.active"
     private let crossDeviceFocusEndsAtKey = "mivo.crossDeviceFocus.endsAt"
+    private let instagramWrapperEnabledKey = "mivo.instagramWrapperEnabled"
+    private let instagramShieldTokenKey = "mivo.instagramShieldToken"
+    private let appMappingPrefix = "mivo.app.mapping."
 
     // Brand colours (match Mivo's palette)
     private let cream        = UIColor(red: 0.96, green: 0.95, blue: 0.91, alpha: 1.0)
@@ -36,10 +39,10 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     private let btnBrown     = UIColor(red: 0.55, green: 0.31, blue: 0.16, alpha: 1.0) // #8C4F28
 
     override func configuration(shielding application: Application) -> ShieldConfiguration {
-        makeConfiguration(applicationToken: application.token)
+        makeConfiguration(applicationToken: application.token, wrapperApp: wrapperApp(for: application))
     }
     override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
-        makeConfiguration(applicationToken: application.token, categoryToken: category.token)
+        makeConfiguration(applicationToken: application.token, categoryToken: category.token, wrapperApp: wrapperApp(for: application))
     }
     override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
         makeConfiguration(webDomainToken: webDomain.token)
@@ -51,7 +54,8 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
     private func makeConfiguration(
         applicationToken: ApplicationToken? = nil,
         categoryToken: ActivityCategoryToken? = nil,
-        webDomainToken: WebDomainToken? = nil
+        webDomainToken: WebDomainToken? = nil,
+        wrapperApp: WrapperApp? = nil
     ) -> ShieldConfiguration {
         let hasActiveSession  = isSessionActive()
         let needsMivoSetup    = pendingInterventionSetup() && !hasActiveSession
@@ -115,6 +119,25 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         // be ended.
         if let spot = spotShield(application: applicationToken, category: categoryToken, webDomain: webDomainToken) {
             return spotConfiguration(for: spot)
+        }
+
+        // ── 1.5. Social apps open inside Mivo ──
+        // Matches the ShieldAction extension, which sends a chosen app to its
+        // window flow ahead of every session state below, so this shield says that.
+        if let wrapperApp, wrapperEnabled() {
+            return ShieldConfiguration(
+                backgroundBlurStyle: .systemUltraThinMaterialLight,
+                backgroundColor: cream,
+                icon: companionPortrait() ?? timerIcon(state: .locked),
+                title: label("\(wrapperApp.title) opens in Mivo", color: textPrimary),
+                subtitle: label(
+                    "Press Open Mivo, then tap the notification. Say what you're here for, and Mivo keeps you to it.",
+                    color: textMuted
+                ),
+                primaryButtonLabel: label("Open Mivo", color: .white),
+                primaryButtonBackgroundColor: btnBrown,
+                secondaryButtonLabel: label("Not now", color: textMuted)
+            )
         }
 
         // ── 2. Session expired ──
@@ -239,6 +262,63 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
             primaryButtonBackgroundColor: btnBrown,
             secondaryButtonLabel: label("Not now", color: textMuted)
         )
+    }
+
+    // MARK: - Apps that open in Mivo
+
+    /// The social app being shielded: the app picked for it in Mivo's Settings
+    /// (or Instagram's older pick, or a Mivo Clear pick), else whatever its
+    /// bundle identifier says, which this extension can see.
+    private func wrapperApp(for application: Application) -> WrapperApp? {
+        if let token = application.token {
+            let defaults = UserDefaults(suiteName: appGroup)
+            func matches(_ key: String) -> Bool {
+                guard let data = defaults?.data(forKey: key),
+                      let saved = try? JSONDecoder().decode(ApplicationToken.self, from: data) else { return false }
+                return saved == token
+            }
+            for app in WrapperApp.allCases where matches(appMappingPrefix + app.rawValue) { return app }
+            if matches(instagramShieldTokenKey) { return .instagram }
+            if let platform = mappedMivoClearPlatform(for: token), let app = WrapperApp(rawValue: platform.rawValue) { return app }
+        }
+        guard let bundleID = application.bundleIdentifier else { return nil }
+        return WrapperApp.allCases.first { $0.bundleIdentifier == bundleID }
+    }
+
+    /// On unless the person turned it off in Settings (a missing key means on).
+    private func wrapperEnabled() -> Bool {
+        UserDefaults(suiteName: appGroup)?.object(forKey: instagramWrapperEnabledKey) as? Bool ?? true
+    }
+
+    /// Mirrors `SocialApp` in the app, which this extension can't import.
+    private enum WrapperApp: String, CaseIterable {
+        case instagram, tiktok, youtube, snapchat, facebook, x, reddit, threads
+
+        var title: String {
+            switch self {
+            case .instagram: return "Instagram"
+            case .tiktok: return "TikTok"
+            case .youtube: return "YouTube"
+            case .snapchat: return "Snapchat"
+            case .facebook: return "Facebook"
+            case .x: return "X"
+            case .reddit: return "Reddit"
+            case .threads: return "Threads"
+            }
+        }
+
+        var bundleIdentifier: String {
+            switch self {
+            case .instagram: return "com.burbn.instagram"
+            case .tiktok: return "com.zhiliaoapp.musically"
+            case .youtube: return "com.google.ios.youtube"
+            case .snapchat: return "com.toyopagroup.picaboo"
+            case .facebook: return "com.facebook.Facebook"
+            case .x: return "com.atebits.Tweetie2"
+            case .reddit: return "com.reddit.Reddit"
+            case .threads: return "com.burbn.barcelona"
+            }
+        }
     }
 
     // MARK: - Lock-in

@@ -7,7 +7,7 @@ import Foundation
 ///
 /// Everything here is plain value logic — no clock, no web view, no storage —
 /// so it can be unit tested. `SeenReelStore` persists the log and
-/// `InstagramWrapperView` runs a `ReplaySession` against the live page.
+/// `AppWrapperView` runs a `ReplaySession` against the live page.
 
 /// Reel shortcodes are what Instagram puts in `/reel/<code>/`. They are read
 /// out of a web page Mivo does not control, so nothing is trusted until it

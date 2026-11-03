@@ -1212,17 +1212,71 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
         userDefaults?.synchronize()
     }
 
-    /// Whether tapping the real Instagram app should redirect into Mivo's own
-    /// wrapper instead of the normal intervention flow. Read by both the app
+    /// Whether tapping a chosen social app opens it inside Mivo (the window
+    /// flow, then `AppWrapperView`) instead of the normal intervention flow. Read by both the app
     /// (Settings toggle) and the ShieldAction extension (which can't import
     /// this class, so it reads the same app-group key directly).
     func isInstagramWrapperEnabled() -> Bool {
-        userDefaults?.bool(forKey: MivoScreenTimeKeys.instagramWrapperEnabled) ?? false
+        // A missing key means on: the wrapper is the default way Instagram opens.
+        userDefaults?.object(forKey: MivoScreenTimeKeys.instagramWrapperEnabled) as? Bool ?? true
     }
 
     func setInstagramWrapperEnabled(_ enabled: Bool) {
         userDefaults?.set(enabled, forKey: MivoScreenTimeKeys.instagramWrapperEnabled)
         userDefaults?.synchronize()
+    }
+
+    /// The shield extensions only see opaque app tokens, so the person picks
+    /// each app once and its token is saved where both extensions read it. It
+    /// also joins the protected apps, so tapping it shows the shield.
+    /// Instagram's token also goes under its older key, which shield
+    /// extensions from before still read.
+    @available(iOS 16.0, *)
+    func saveAppMapping(_ selection: FamilyActivitySelection, for app: SocialApp) throws {
+        guard selection.applicationTokens.count == 1,
+              selection.categoryTokens.isEmpty,
+              selection.webDomainTokens.isEmpty,
+              let token = selection.applicationTokens.first,
+              let tokenData = try? JSONEncoder().encode(token) else {
+            throw AppMappingError.selectOneApp
+        }
+        for other in SocialApp.allCases where other != app {
+            if appMappingToken(for: other) == token { throw AppMappingError.alreadyChosen(other) }
+        }
+        userDefaults?.set(tokenData, forKey: MivoScreenTimeKeys.appMappingPrefix + app.rawValue)
+        if app == .instagram {
+            userDefaults?.set(tokenData, forKey: MivoScreenTimeKeys.instagramShieldToken)
+        }
+
+        var protectedSelection = loadFamilyActivitySelection()
+        protectedSelection.applicationTokens.insert(token)
+        saveFamilyActivitySelection(protectedSelection)
+        userDefaults?.synchronize()
+    }
+
+    /// The app's picked token: its own pick, Instagram's older pick, or a Mivo
+    /// Clear pick for the same app (which the shields also honour).
+    @available(iOS 16.0, *)
+    func appMappingToken(for app: SocialApp) -> ApplicationToken? {
+        var keys = [MivoScreenTimeKeys.appMappingPrefix + app.rawValue]
+        if app == .instagram { keys.append(MivoScreenTimeKeys.instagramShieldToken) }
+        for key in keys {
+            if let data = userDefaults?.data(forKey: key),
+               let token = try? JSONDecoder().decode(ApplicationToken.self, from: data) {
+                return token
+            }
+        }
+        guard let platform = MivoClearPlatform(rawValue: app.rawValue),
+              userDefaults?.bool(forKey: MivoScreenTimeKeys.mivoClearEnabledPrefix + platform.rawValue) == true else { return nil }
+        return loadMivoClearToken(for: platform)
+    }
+
+    func hasAppMapping(for app: SocialApp) -> Bool {
+        if userDefaults?.data(forKey: MivoScreenTimeKeys.appMappingPrefix + app.rawValue) != nil { return true }
+        if app == .instagram, userDefaults?.data(forKey: MivoScreenTimeKeys.instagramShieldToken) != nil { return true }
+        guard let platform = MivoClearPlatform(rawValue: app.rawValue) else { return false }
+        return userDefaults?.bool(forKey: MivoScreenTimeKeys.mivoClearEnabledPrefix + platform.rawValue) == true
+            && userDefaults?.data(forKey: MivoScreenTimeKeys.mivoClearMappingPrefix + platform.rawValue) != nil
     }
 
     @available(iOS 16.0, *)

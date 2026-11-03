@@ -426,15 +426,17 @@ struct RecallCheckIn: Codable, Identifiable {
     }
 }
 
-/// A real, exact scroll count from one `InstagramWrapperView` session —
+/// A real, exact scroll count from one `AppWrapperView` session —
 /// unlike `RecallCheckIn` (a self-reported guess), this is measured: the
 /// wrapper owns the WKWebView Instagram's mobile site renders into, so it
 /// can listen for real scroll events the way no view over the native app
 /// ever could. Only exists for sessions that went through the wrapper —
 /// using the native Instagram app directly still produces zero data, same
 /// as always.
-/// Everything `InstagramWrapperView` can genuinely measure from owning the
-/// WKWebView — real DOM/media events, nothing inferred or guessed. Fields
+/// Everything `AppWrapperView` can genuinely measure from owning the
+/// WKWebView — real DOM/media events, nothing inferred or guessed. It began
+/// as Instagram-only and now covers every app in `SocialApp`; the name stays
+/// because it is the stored and synced type. Fields
 /// added after the first version use `decodeIfPresent(...) ?? 0` so older
 /// locally-stored sessions (missing the newer keys) still decode instead of
 /// silently vanishing.
@@ -478,6 +480,42 @@ struct InstagramWrapperSession: Codable, Identifiable {
     let repeatReelCount: Int
     /// New reels Mivo swapped for a repeat.
     let replacedReelCount: Int
+    /// What was picked before the session: `WrapperSessionLimit` raw value
+    /// and amount. Nil on sessions recorded before picks were saved.
+    let limitKind: String?
+    let limitAmount: Int?
+    /// Distinct Reels (or feed videos) that started playing, all session.
+    let reelCount: Int
+    /// Of those, how many started after the session slowed down.
+    let reelsAfterSlowdown: Int
+    /// Seconds from opening to slowing down; nil if it never slowed down.
+    let secondsToSlowdown: Int?
+    /// "pick" when the pick ran out, "today" when today's balance did; nil
+    /// if it never slowed down.
+    let slowDownCause: String?
+    /// Seconds each Reel stayed on screen before the next one started, at
+    /// normal speed only (the slowed part is distorted on purpose). The raw
+    /// material for `ReelAttentionReport`; at most 300 per session.
+    let reelSeconds: [Double]
+    /// Which app (`SocialApp` raw value). Nil on sessions from before every
+    /// app opened in Mivo, which were all Instagram — see `app`.
+    let platform: String?
+    /// What they said they came to do (`AppPurpose.id`).
+    let purpose: String?
+    /// The window flow's "why" answer (`Intention` raw value), when asked.
+    let reason: String?
+    /// Seconds spent in each part of the app (`AppSection` raw values).
+    let sectionSeconds: [String: Int]
+    /// Seconds in a part of the app that wasn't what they came for.
+    let offPurposeSeconds: Int
+    /// "You came to …" reminders shown, and how many sent them back.
+    let driftReminders: Int
+    let returnedToPurpose: Int
+    /// Times a locked purpose (messages only, short videos only) turned a
+    /// navigation back.
+    let blockedAttempts: Int
+
+    var app: SocialApp { platform.flatMap(SocialApp.init(rawValue:)) ?? .instagram }
 
     enum CodingKeys: String, CodingKey {
         case id, date, startedAt, endedAt, scrollCount
@@ -485,6 +523,10 @@ struct InstagramWrapperSession: Codable, Identifiable {
         case scrollDistancePoints, sectionChanges
         case longestPauseSeconds, firstScrollDelaySeconds
         case replayActive, freshReelCount, repeatReelCount, replacedReelCount
+        case limitKind, limitAmount, reelCount, reelsAfterSlowdown
+        case secondsToSlowdown, slowDownCause, reelSeconds
+        case platform, purpose, reason, sectionSeconds, offPurposeSeconds
+        case driftReminders, returnedToPurpose, blockedAttempts
     }
 
     init(
@@ -503,13 +545,43 @@ struct InstagramWrapperSession: Codable, Identifiable {
         replayActive: Bool = false,
         freshReelCount: Int = 0,
         repeatReelCount: Int = 0,
-        replacedReelCount: Int = 0
+        replacedReelCount: Int = 0,
+        limitKind: String? = nil,
+        limitAmount: Int? = nil,
+        reelCount: Int? = nil,
+        reelsAfterSlowdown: Int = 0,
+        secondsToSlowdown: Int? = nil,
+        slowDownCause: String? = nil,
+        reelSeconds: [Double] = [],
+        platform: String? = nil,
+        purpose: String? = nil,
+        reason: String? = nil,
+        sectionSeconds: [String: Int] = [:],
+        offPurposeSeconds: Int = 0,
+        driftReminders: Int = 0,
+        returnedToPurpose: Int = 0,
+        blockedAttempts: Int = 0
     ) {
         self.id = id
         self.date = date
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.scrollCount = scrollCount
+        self.limitKind = limitKind
+        self.limitAmount = limitAmount
+        self.reelCount = reelCount ?? freshReelCount + repeatReelCount
+        self.reelsAfterSlowdown = reelsAfterSlowdown
+        self.secondsToSlowdown = secondsToSlowdown
+        self.slowDownCause = slowDownCause
+        self.reelSeconds = reelSeconds
+        self.platform = platform
+        self.purpose = purpose
+        self.reason = reason
+        self.sectionSeconds = sectionSeconds
+        self.offPurposeSeconds = offPurposeSeconds
+        self.driftReminders = driftReminders
+        self.returnedToPurpose = returnedToPurpose
+        self.blockedAttempts = blockedAttempts
         self.videoPlayCount = videoPlayCount
         self.videoWatchSeconds = videoWatchSeconds
         self.tapCount = tapCount
@@ -541,11 +613,27 @@ struct InstagramWrapperSession: Codable, Identifiable {
         freshReelCount = try container.decodeIfPresent(Int.self, forKey: .freshReelCount) ?? 0
         repeatReelCount = try container.decodeIfPresent(Int.self, forKey: .repeatReelCount) ?? 0
         replacedReelCount = try container.decodeIfPresent(Int.self, forKey: .replacedReelCount) ?? 0
+        limitKind = try container.decodeIfPresent(String.self, forKey: .limitKind)
+        limitAmount = try container.decodeIfPresent(Int.self, forKey: .limitAmount)
+        // Older sessions only knew replay's fresh and repeat counts.
+        reelCount = try container.decodeIfPresent(Int.self, forKey: .reelCount) ?? freshReelCount + repeatReelCount
+        reelsAfterSlowdown = try container.decodeIfPresent(Int.self, forKey: .reelsAfterSlowdown) ?? 0
+        secondsToSlowdown = try container.decodeIfPresent(Int.self, forKey: .secondsToSlowdown)
+        slowDownCause = try container.decodeIfPresent(String.self, forKey: .slowDownCause)
+        reelSeconds = try container.decodeIfPresent([Double].self, forKey: .reelSeconds) ?? []
+        platform = try container.decodeIfPresent(String.self, forKey: .platform)
+        purpose = try container.decodeIfPresent(String.self, forKey: .purpose)
+        reason = try container.decodeIfPresent(String.self, forKey: .reason)
+        sectionSeconds = try container.decodeIfPresent([String: Int].self, forKey: .sectionSeconds) ?? [:]
+        offPurposeSeconds = try container.decodeIfPresent(Int.self, forKey: .offPurposeSeconds) ?? 0
+        driftReminders = try container.decodeIfPresent(Int.self, forKey: .driftReminders) ?? 0
+        returnedToPurpose = try container.decodeIfPresent(Int.self, forKey: .returnedToPurpose) ?? 0
+        blockedAttempts = try container.decodeIfPresent(Int.self, forKey: .blockedAttempts) ?? 0
     }
 }
 
 /// One "what was on screen N reels ago?" prompt, fired periodically *during*
-/// an `InstagramWrapperView` session (as opposed to `RecallCheckIn`, which
+/// an `AppWrapperView` session (as opposed to `RecallCheckIn`, which
 /// fires once when a check-in ends a session). `scrollsAgo` is real — it's
 /// how many measured scrolls back the question refers to, not a guess.
 struct InstagramRecallPrompt: Codable, Identifiable {

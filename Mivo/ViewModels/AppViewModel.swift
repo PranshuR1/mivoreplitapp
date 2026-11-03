@@ -79,7 +79,8 @@ class AppViewModel: ObservableObject {
     /// alongside the flag itself in `checkMidScrollCheckInFlag()`. Nil is
     /// expected and handled — the recall prompt just asks generically.
     @Published var pendingMidScrollCheckInAppName: String? = nil
-    @Published var pendingInstagramWrapper: Bool = false
+    /// A shield on a chosen app asked for that app's window flow.
+    @Published var pendingAppWindow: AppWindowRequest? = nil
     @Published var pendingMivoClearRoute: MivoClearRoute? = nil
     @Published var liveActivityDeepLinkAction: LiveActivityDeepLinkAction? = nil
     private var remoteSyncTask: Task<Void, Never>? = nil
@@ -2037,15 +2038,23 @@ class AppViewModel: ObservableObject {
         pendingMidScrollCheckIn = true
     }
 
-    /// Companion to `checkMidScrollCheckInFlag()` — picks up the flag
-    /// `requestInstagramWrapper()` in the ShieldAction extension writes when
-    /// Instagram is tapped with the wrapper toggle on.
-    func checkPendingInstagramWrapperFlag() {
+    /// Companion to `checkMidScrollCheckInFlag()` — picks up the app
+    /// `requestAppWindow(_:)` in the ShieldAction extension writes when a
+    /// chosen app is tapped (or the Instagram flag older builds wrote).
+    func checkPendingAppWindowFlag() {
         let defaults = UserDefaults(suiteName: FamilyControlsManager.shared.appGroup)
-        guard defaults?.bool(forKey: MivoScreenTimeKeys.pendingInstagramWrapper) == true else { return }
-        defaults?.set(false, forKey: MivoScreenTimeKeys.pendingInstagramWrapper)
+        var app: SocialApp?
+        if let raw = defaults?.string(forKey: MivoScreenTimeKeys.pendingAppWindow) {
+            defaults?.removeObject(forKey: MivoScreenTimeKeys.pendingAppWindow)
+            app = SocialApp(rawValue: raw)
+        }
+        if defaults?.bool(forKey: MivoScreenTimeKeys.pendingInstagramWrapper) == true {
+            defaults?.set(false, forKey: MivoScreenTimeKeys.pendingInstagramWrapper)
+            app = app ?? .instagram
+        }
         defaults?.synchronize()
-        pendingInstagramWrapper = true
+        guard let app, pendingAppWindow == nil else { return }
+        pendingAppWindow = AppWindowRequest(app: app)
     }
 
     /// Real, measured data — see `InstagramWrapperSession` for why this is
@@ -2063,7 +2072,22 @@ class AppViewModel: ObservableObject {
         replayActive: Bool = false,
         freshReelCount: Int = 0,
         repeatReelCount: Int = 0,
-        replacedReelCount: Int = 0
+        replacedReelCount: Int = 0,
+        limitKind: String? = nil,
+        limitAmount: Int? = nil,
+        reelCount: Int? = nil,
+        reelsAfterSlowdown: Int = 0,
+        secondsToSlowdown: Int? = nil,
+        slowDownCause: String? = nil,
+        reelSeconds: [Double] = [],
+        platform: String? = nil,
+        purpose: String? = nil,
+        reason: String? = nil,
+        sectionSeconds: [String: Int] = [:],
+        offPurposeSeconds: Int = 0,
+        driftReminders: Int = 0,
+        returnedToPurpose: Int = 0,
+        blockedAttempts: Int = 0
     ) {
         let session = InstagramWrapperSession(
             id: UUID().uuidString,
@@ -2081,7 +2105,22 @@ class AppViewModel: ObservableObject {
             replayActive: replayActive,
             freshReelCount: freshReelCount,
             repeatReelCount: repeatReelCount,
-            replacedReelCount: replacedReelCount
+            replacedReelCount: replacedReelCount,
+            limitKind: limitKind,
+            limitAmount: limitAmount,
+            reelCount: reelCount,
+            reelsAfterSlowdown: reelsAfterSlowdown,
+            secondsToSlowdown: secondsToSlowdown,
+            slowDownCause: slowDownCause,
+            reelSeconds: reelSeconds,
+            platform: platform,
+            purpose: purpose,
+            reason: reason,
+            sectionSeconds: sectionSeconds,
+            offPurposeSeconds: offPurposeSeconds,
+            driftReminders: driftReminders,
+            returnedToPurpose: returnedToPurpose,
+            blockedAttempts: blockedAttempts
         )
         instagramWrapperSessions.append(session)
         saveForCurrentUser(instagramWrapperSessions, forKey: .instagramWrapperSessions)
@@ -2091,7 +2130,7 @@ class AppViewModel: ObservableObject {
         instagramWrapperSessions.filter { $0.date == dateKey }
     }
 
-    /// Logged by `InstagramWrapperView` every few real scrolls — see
+    /// Logged by `AppWrapperView` every few real scrolls — see
     /// `InstagramRecallPrompt` for why `scrollsAgo` is measured, not guessed.
     func recordInstagramRecallPrompt(scrollsAgo: Int, answer: String) {
         let prompt = InstagramRecallPrompt(
@@ -2310,7 +2349,23 @@ class AppViewModel: ObservableObject {
         )
     }
 
+    /// Debug builds ignore the locked schedule and plan windows so every flow can
+    /// be tested at any hour (user request, 2026-11-02). Release builds enforce them.
+    #if DEBUG
+    static let enforcesScrollSchedule = false
+    #else
+    static let enforcesScrollSchedule = true
+    #endif
+
     func adaptiveSessionDurationLimit(now: Date = Date()) -> (maxMinutes: Int, isLimited: Bool, message: String, windowTitle: String) {
+        guard Self.enforcesScrollSchedule else {
+            return (
+                maxMinutes: 30,
+                isLimited: false,
+                message: "Test build: scroll windows and today's schedule are off.",
+                windowTitle: "Schedule off (test build)"
+            )
+        }
         let plan = adaptiveScreenTimePlan()
         if plan.collecting {
             return (
@@ -2423,6 +2478,7 @@ class AppViewModel: ObservableObject {
     /// `adaptiveSessionDurationLimit`'s return shape, since that has many
     /// existing callers.
     func isHardProtectionActive(now: Date = Date()) -> Bool {
+        guard Self.enforcesScrollSchedule else { return false }
         let plan = adaptiveScreenTimePlan()
         guard !plan.collecting else { return false }
 

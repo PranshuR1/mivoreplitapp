@@ -37,6 +37,8 @@ struct PatternsView: View {
 
                     rangeMetricSection(derived)
                     windowsKeptSection(derived)
+                    appUsageSection
+                    reelAttentionSection
                     noticedSection
                     reportsSection(derived.weeklyReportRows)
                 }
@@ -119,6 +121,28 @@ struct PatternsView: View {
                 MivoProgressTrack(fraction: derived.totalWindowCount > 0 ? Double(derived.keptCount) / Double(derived.totalWindowCount) : 0)
                     .padding(.top, 14)
             }
+        }
+    }
+
+    // MARK: - Apps in Mivo
+
+    /// Only once an app has been opened inside Mivo in this range.
+    @ViewBuilder
+    private var appUsageSection: some View {
+        let report = appVM.appPurposeReport(days: range.rawValue)
+        if report.hasData {
+            AppUsageCard(report: report)
+        }
+    }
+
+    // MARK: - Short-video attention
+
+    /// Only once short videos have been watched inside Mivo in this range.
+    @ViewBuilder
+    private var reelAttentionSection: some View {
+        let report = appVM.reelAttentionReport(days: range.rawValue)
+        if report.sessionCount > 0 {
+            ReelAttentionCard(report: report, plan: ReelPlan(report: report))
         }
     }
 

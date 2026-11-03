@@ -86,7 +86,7 @@ private struct ReceiptData {
     let averageGuess: Double?
     let namedCount: Int
     let blankCount: Int
-    /// Everything measured inside `InstagramWrapperView` sessions — see
+    /// Everything measured inside `AppWrapperView` sessions — see
     /// `WrapperMetrics`. Nil `scrollCount` (inside it) means the wrapper was
     /// never used in this range, so the card can tell "no measured data"
     /// apart from "measured zero."
@@ -173,7 +173,7 @@ private struct ReceiptData {
     }
 }
 
-/// Every real, measured number `InstagramWrapperView` produces, aggregated
+/// Every real, measured number `AppWrapperView` produces, aggregated
 /// across whatever sessions fall in a range. Counts sum; `longestPauseSeconds`
 /// takes the max (a sum of "longest pauses" across sessions wouldn't mean
 /// anything); `averageFirstScrollDelaySeconds` averages, since it's about
@@ -286,7 +286,7 @@ private struct ReceiptPaperCard: View {
         .padding(.horizontal, MivoMetrics.screenPadding)
     }
 
-    /// Every real, measured number from `InstagramWrapperView` sessions —
+    /// Every real, measured number from `AppWrapperView` sessions —
     /// shown apart from `recallBlock` (always a self-report) and styled in
     /// ink rather than terracotta so the two never read as the same kind of
     /// number. Leads with reels watched (real `<video>` play events) since

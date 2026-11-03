@@ -76,6 +76,12 @@ struct SettingsView: View {
     #if canImport(FamilyControls)
     @State private var impulseSelection = FamilyActivitySelection()
     @State private var showImpulsePicker = false
+    @State private var appPickerSelection = FamilyActivitySelection()
+    @State private var showAppPicker = false
+    /// Which app the open picker is choosing.
+    @State private var appBeingPicked: SocialApp?
+    @State private var chosenApps: Set<SocialApp> = Set(SocialApp.allCases.filter { FamilyControlsManager.shared.hasAppMapping(for: $0) })
+    @State private var appPickError: String?
     #endif
     // Reuse a selection / impact haptic generator locally to avoid repeated allocations
     private let localSelectionGenerator = UISelectionFeedbackGenerator()
@@ -131,7 +137,31 @@ struct SettingsView: View {
                 refreshSettingsSnapshot()
             }
         }
+        .familyActivityPicker(isPresented: $showAppPicker, selection: $appPickerSelection)
+        .onChange(of: showAppPicker) { _, isPresented in
+            guard !isPresented, #available(iOS 16.0, *), let app = appBeingPicked else { return }
+            appBeingPicked = nil
+            // Closing the picker without choosing anything keeps the old pick.
+            guard !appPickerSelection.applicationTokens.isEmpty else { return }
+            do {
+                try FamilyControlsManager.shared.saveAppMapping(appPickerSelection, for: app)
+                chosenApps.insert(app)
+                refreshSettingsSnapshot()
+            } catch let error as AppMappingError {
+                appPickError = error == .selectOneApp ? "Pick only \(app.title), one app." : error.localizedDescription
+            } catch {
+                appPickError = "Pick only \(app.title), one app."
+            }
+        }
         #endif
+        .alert("Couldn't save that app", isPresented: Binding(
+            get: { appPickError != nil },
+            set: { if !$0 { appPickError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(appPickError ?? "")
+        }
         .alert("Sign out", isPresented: $showLogoutAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Sign out", role: .destructive) { appVM.logout() }
@@ -968,8 +998,8 @@ struct SettingsView: View {
         HStack(alignment: .top, spacing: 12) {
             settingsIcon("camera.viewfinder", color: MivoColors.blue)
             rowText(
-                title: "Open Instagram inside Mivo",
-                subtitle: "Tapping Instagram opens Mivo's own view instead — same feed, but Mivo can measure real scrolling."
+                title: "Open social apps inside Mivo",
+                subtitle: "Tapping a chosen app opens Mivo's view of it. You say what you're there for, and Mivo keeps you to it."
             )
             Spacer()
             Toggle("", isOn: $instagramWrapperEnabled)
@@ -981,6 +1011,36 @@ struct SettingsView: View {
                 }
         }
         .padding(15)
+
+        if instagramWrapperEnabled {
+            ForEach(SocialApp.allCases) { app in
+                rowSeparator()
+
+                Button {
+                    #if canImport(FamilyControls)
+                    if #available(iOS 16.0, *) {
+                        appBeingPicked = app
+                        appPickerSelection = FamilyActivitySelection()
+                        showAppPicker = true
+                    }
+                    #endif
+                } label: {
+                    HStack(spacing: 12) {
+                        settingsIcon(chosenApps.contains(app) ? "checkmark.circle.fill" : app.icon, color: MivoColors.blue)
+                        rowText(
+                            title: chosenApps.contains(app) ? "\(app.title) chosen" : "Choose \(app.title)",
+                            subtitle: chosenApps.contains(app)
+                                ? "Tapping \(app.title) opens it in Mivo. Tap to pick it again."
+                                : "Pick \(app.title) once so tapping it opens it in Mivo."
+                        )
+                        Spacer()
+                        chevron
+                    }
+                    .padding(15)
+                }
+                .buttonStyle(SettingsRowButtonStyle())
+            }
+        }
     }
 
     private var protectedAppRecommendationRow: some View {

@@ -7,12 +7,20 @@ enum WrapperSessionLimit: String, Codable, CaseIterable {
 
     static let reelsPerSession = 10
     static let minutesPerSession = 10
-    static let extraReelsPerTopUp = 5
+    /// The amounts offered before a session; Mivo's plan can add its own pick.
+    static let reelOptions = [5, 10, 15, 20, 30]
+    static let minuteOptions = [5, 10, 15, 20, 30]
 
-    var title: String {
+    var defaultAmount: Int { self == .reels ? Self.reelsPerSession : Self.minutesPerSession }
+    var options: [Int] { self == .reels ? Self.reelOptions : Self.minuteOptions }
+    var unitName: String { self == .reels ? "Reels" : "Minutes" }
+
+    var title: String { title(amount: defaultAmount) }
+
+    func title(amount: Int) -> String {
         switch self {
-        case .reels: return "\(Self.reelsPerSession) Reels"
-        case .minutes: return "\(Self.minutesPerSession) minutes"
+        case .reels: return amount == 1 ? "1 Reel" : "\(amount) Reels"
+        case .minutes: return amount == 1 ? "1 minute" : "\(amount) minutes"
         }
     }
 }

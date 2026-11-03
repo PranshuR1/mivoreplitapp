@@ -79,15 +79,25 @@ enum MivoScreenTimeKeys {
     /// Can be absent — Apple doesn't guarantee this name is populated.
     static let pendingMidScrollCheckInAppName = "mivo.pendingMidScrollCheckInAppName"
 
-    /// Whether tapping the real Instagram app should redirect into
-    /// `InstagramWrapperView` (a Mivo-owned WKWebView showing Instagram's
-    /// mobile site) instead of the normal intervention flow. Off by default —
-    /// this changes what "opening Instagram" means, so it's opt-in rather
-    /// than a silent behavior change. See `FamilyControlsManager.isInstagramWrapperEnabled`.
+    /// Whether tapping a chosen social app opens it inside Mivo
+    /// (`AppWrapperView`, via the window flow) instead of the normal
+    /// intervention flow. On by default since 2026-11-02 (a missing key means
+    /// on). The key name predates every app opening in Mivo; Instagram was first.
+    /// See `FamilyControlsManager.isInstagramWrapperEnabled`.
     static let instagramWrapperEnabled = "mivo.instagramWrapperEnabled"
-    /// Set by the ShieldAction extension's `requestInstagramWrapper()`,
-    /// mirroring `pendingMidScrollCheckIn`/`pendingMivoClearPlatform`.
+    /// Instagram's `ApplicationToken`, saved by the ShieldConfiguration
+    /// extension (where `bundleIdentifier` is filled in) so the ShieldAction
+    /// extension, which only sees the opaque token, can recognise Instagram.
+    static let instagramShieldToken = "mivo.instagramShieldToken"
+    /// Set by older ShieldAction builds for Instagram; still read once.
     static let pendingInstagramWrapper = "mivo.pendingInstagramWrapper"
+    /// Set by the ShieldAction extension's `requestAppWindow(_:)` to the
+    /// tapped app's `SocialApp` raw value; read once on foreground.
+    static let pendingAppWindow = "mivo.pendingAppWindow"
+    /// Each app's `ApplicationToken`, picked once in Settings, so the shield
+    /// extensions (which only see opaque tokens) know which app was tapped.
+    /// Followed by the `SocialApp` raw value.
+    static let appMappingPrefix = "mivo.app.mapping."
     /// Instagram's real iOS bundle identifier — used to identify the shielded
     /// app without requiring the user to map it first (unlike Mivo Clear,
     /// which is deliberately per-app-opt-in).

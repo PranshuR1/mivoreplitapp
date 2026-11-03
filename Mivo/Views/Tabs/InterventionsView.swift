@@ -69,7 +69,7 @@ struct InterventionsView: View {
                 .frame(maxWidth: 260, alignment: .leading)
                 .padding(.top, 8)
 
-            Text("Name the reason, pick a length, take five seconds. Mivo lets you in and closes the door behind you.")
+            Text("Pick the app and what it's for. Social apps open inside Mivo, which keeps you to it; others open for a timed window.")
                 .font(.system(size: 13.5, weight: .medium))
                 .foregroundColor(MivoColors.heroText.opacity(0.88))
                 .lineSpacing(0.5 * 13.5)
