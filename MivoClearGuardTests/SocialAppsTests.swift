@@ -204,6 +204,14 @@ final class SocialAppsTests: XCTestCase {
         XCTAssertNil(AppPickStore.lastAmount(for: .instagram, purpose: SocialApp.instagram.purpose(id: "feed")!, defaults: defaults))
     }
 
+    func testAppPicksAreAskedUntilAnswered() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "SocialAppsTestsPicks"))
+        defaults.removePersistentDomain(forName: "SocialAppsTestsPicks")
+        XCTAssertFalse(AppPicksPrompt.isAnswered(defaults: defaults))
+        AppPicksPrompt.markAnswered(defaults: defaults)
+        XCTAssertTrue(AppPicksPrompt.isAnswered(defaults: defaults))
+    }
+
     // MARK: - Stored sessions
 
     func testOlderSessionsReadAsInstagramWithNothingTracked() throws {
@@ -272,6 +280,139 @@ final class SocialAppsTests: XCTestCase {
         XCTAssertEqual(report.findings.first, "On YouTube you came to watch long videos twice, and 13% of that time went to Shorts.")
         XCTAssertTrue(report.findings.contains("Mivo reminded you what you came for twice. You went back once."))
         XCTAssertTrue(report.findings.contains("In messages-only, you tried to leave messages 3 times."))
+    }
+
+    // MARK: - The feed runs out
+
+    func testShortVideoIDsFromAddresses() {
+        XCTAssertEqual(ShortVideoID.id(in: url(.youtube, "/shorts/dQw4w9WgXcQ"), app: .youtube), "dQw4w9WgXcQ")
+        XCTAssertEqual(ShortVideoID.id(in: url(.facebook, "/reel/1234567890123"), app: .facebook), "1234567890123")
+        XCTAssertEqual(ShortVideoID.id(in: url(.snapchat, "/spotlight/W7_EDlXWTBiXAEEniNoMPw"), app: .snapchat), "W7_EDlXWTBiXAEEniNoMPw")
+        XCTAssertEqual(ShortVideoID.id(in: url(.instagram, "/reel/Cabc123xyz/"), app: .instagram), "Cabc123xyz")
+        XCTAssertNil(ShortVideoID.id(in: url(.youtube, "/shorts/"), app: .youtube))
+        XCTAssertNil(ShortVideoID.id(in: url(.youtube, "/watch?v=dQw4w9WgXcQ"), app: .youtube))
+        XCTAssertNil(ShortVideoID.id(in: url(.facebook, "/reel/abc"), app: .facebook))
+        XCTAssertNil(ShortVideoID.id(in: url(.tiktok, "/@someone/video/7300000000000000000"), app: .tiktok))
+        // Another site's address never yields an ID.
+        XCTAssertNil(ShortVideoID.id(in: URL(string: "https://evil.example/shorts/dQw4w9WgXcQ")!, app: .youtube))
+    }
+
+    func testReplayAddressesStayOnEachApp() {
+        XCTAssertEqual(ShortVideoID.url(for: "dQw4w9WgXcQ", app: .youtube)?.absoluteString, "https://m.youtube.com/shorts/dQw4w9WgXcQ")
+        XCTAssertEqual(ShortVideoID.url(for: "1234567890123", app: .facebook)?.absoluteString, "https://m.facebook.com/reel/1234567890123")
+        XCTAssertNil(ShortVideoID.url(for: "../../etc", app: .youtube))
+        XCTAssertNil(ShortVideoID.url(for: "dQw4w9WgXcQ", app: .tiktok))
+        for app in SocialApp.allCases where ShortVideoID.supportsReplay(app) {
+            let sample = app == .facebook ? "1234567890123" : (app == .snapchat ? "W7_EDlXWTBiXAEEniNoMPw" : "dQw4w9WgXcQ")
+            guard let replay = ShortVideoID.url(for: sample, app: app) else { return XCTFail("\(app)") }
+            XCTAssertTrue(app.owns(host: replay.host), "\(app)")
+            // A replay must be reachable inside the counted purpose's lock.
+            if let purpose = app.purpose(id: "shortVideos"), let lock = WrapperLock(app: app, purpose: purpose) {
+                XCTAssertTrue(lock.allows(replay), "\(app) locks out its own replays")
+            }
+        }
+    }
+
+    func testEachAppKeepsItsOwnSeenLog() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "SocialAppsTestsSeen"))
+        defaults.removePersistentDomain(forName: "SocialAppsTestsSeen")
+        let youtube = SeenReelStore(defaults: defaults, key: "\(SeenReelStore.defaultsKey).youtube")
+        var log = SeenReelLog()
+        log.record("dQw4w9WgXcQ", at: Date())
+        youtube.save(log)
+        XCTAssertEqual(youtube.load().count, 1)
+        XCTAssertEqual(SeenReelStore(defaults: defaults).load().count, 0)
+        XCTAssertTrue(SeenReelStore.forApp(.instagram) === SeenReelStore.shared)
+    }
+
+    // MARK: - Studying, then a social app
+
+    func testOpeningAnAppWhileOrJustAfterStudyingIsAnEscape() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let running = StudyEscape.detect(runningTask: "Chemistry", lastEnded: nil, now: now)
+        XCTAssertEqual(running?.midSession, true)
+        XCTAssertEqual(running?.headline, "You're in the middle of Chemistry.")
+
+        let recent = StudyEscape.detect(runningTask: nil, lastEnded: ("Chemistry", now.addingTimeInterval(-4 * 60 - 10)), now: now)
+        XCTAssertEqual(recent?.minutesAgo, 4)
+        XCTAssertEqual(recent?.headline, "You left Chemistry 4 minutes ago.")
+
+        XCTAssertNil(StudyEscape.detect(runningTask: nil, lastEnded: ("Chemistry", now.addingTimeInterval(-11 * 60)), now: now))
+        XCTAssertNil(StudyEscape.detect(runningTask: nil, lastEnded: ("Chemistry", now.addingTimeInterval(60)), now: now))
+        XCTAssertNil(StudyEscape.detect(runningTask: nil, lastEnded: nil, now: now))
+    }
+
+    // MARK: - Feelings, escapes and kept sessions
+
+    private func felt(_ feeling: SessionFeeling, app: SocialApp = .tiktok, purpose: String = "shortVideos",
+                      at time: String = "2026-11-02T23:30:00Z") -> InstagramWrapperSession {
+        InstagramWrapperSession(
+            id: UUID().uuidString, date: "2026-11-02", startedAt: time, endedAt: time,
+            scrollCount: 0, limitKind: "reels", reelCount: 5,
+            platform: app.rawValue, purpose: purpose, sectionSeconds: ["shortVideo": 120],
+            feeling: feeling.rawValue
+        )
+    }
+
+    func testReportNamesWhatLeavesYouWorseAndBetter() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let night = "2026-11-02T23:30:00Z", day = "2026-11-02T14:00:00Z"
+        XCTAssertTrue(AppPurposeReport.isLateNight(felt(.worse, at: night), calendar: calendar))
+        XCTAssertFalse(AppPurposeReport.isLateNight(felt(.worse, at: day), calendar: calendar))
+
+        let sessions = [felt(.worse), felt(.worse), felt(.worse), felt(.same),
+                        felt(.better, app: .youtube, purpose: "longVideos", at: day),
+                        felt(.better, app: .youtube, purpose: "longVideos", at: day),
+                        felt(.better, app: .youtube, purpose: "longVideos", at: day)]
+        let report = AppPurposeReport(sessions: sessions, days: 7)
+        XCTAssertEqual(report.answeredFeelings, 7)
+        XCTAssertEqual(report.feelingShare(.better) ?? 0, 3.0 / 7.0, accuracy: 0.0001)
+        let lateNight = AppPurposeReport.isLateNight(felt(.worse))
+        XCTAssertTrue(report.findings.contains("For You videos on TikTok\(lateNight ? " after 10 pm" : "") left you feeling worse 3 of 4 times. Try leaving it out this week."))
+        XCTAssertTrue(report.findings.contains { $0.hasPrefix("Long videos on YouTube") && $0.contains("better 3 of 3") })
+    }
+
+    func testReportCountsEscapesFromStudying() {
+        let sessions = [
+            InstagramWrapperSession(id: "a", date: "2026-11-02", startedAt: "x", endedAt: "y", scrollCount: 0,
+                                    platform: "instagram", purpose: "shortVideos", afterStudyMinutes: 3, returnedToStudy: true),
+            InstagramWrapperSession(id: "b", date: "2026-11-02", startedAt: "x", endedAt: "y", scrollCount: 0,
+                                    platform: "youtube", purpose: "shortVideos", afterStudyMinutes: 0),
+            InstagramWrapperSession(id: "c", date: "2026-11-02", startedAt: "x", endedAt: "y", scrollCount: 0,
+                                    platform: "youtube", purpose: "shortVideos")
+        ]
+        let report = AppPurposeReport(sessions: sessions, days: 7)
+        XCTAssertEqual(report.escapes, 2)
+        XCTAssertEqual(report.returnedToStudy, 1)
+        XCTAssertTrue(report.findings.contains("You opened a social app straight from studying twice, and went back to it once."))
+    }
+
+    func testKeptMeansOnPurposeAndStoppedAtThePick() {
+        let kept = session(app: .youtube, purpose: "longVideos", sections: ["longVideo": 600], off: 0)
+        let drifted = session(app: .youtube, purpose: "longVideos", sections: ["longVideo": 300, "shortVideo": 300], off: 300)
+        let wentPast = InstagramWrapperSession(
+            id: "p", date: "2026-11-02", startedAt: "x", endedAt: "y", scrollCount: 0,
+            limitKind: "reels", reelCount: 14, reelsAfterSlowdown: 4, slowDownCause: "pick",
+            platform: "instagram", purpose: "shortVideos", sectionSeconds: ["shortVideo": 400]
+        )
+        let messages = session(app: .instagram, purpose: "messages", sections: ["messages": 600])
+        let report = AppPurposeReport(sessions: [kept, drifted, wentPast, messages], days: 7)
+        XCTAssertEqual(report.keptCandidates, 3)
+        XCTAssertEqual(report.keptSessions, 1)
+    }
+
+    func testFeelingAndStudyFieldsRoundTrip() throws {
+        let original = InstagramWrapperSession(id: "r", date: "2026-11-02", startedAt: "x", endedAt: "y", scrollCount: 0,
+                                               feeling: "worse", afterStudyMinutes: 2, returnedToStudy: true)
+        let decoded = try JSONDecoder().decode(InstagramWrapperSession.self, from: JSONEncoder().encode(original))
+        XCTAssertEqual(decoded.feeling, "worse")
+        XCTAssertEqual(decoded.afterStudyMinutes, 2)
+        XCTAssertTrue(decoded.returnedToStudy)
+        let old = try JSONDecoder().decode(InstagramWrapperSession.self, from: Data(#"{"id":"a","date":"d","startedAt":"x","endedAt":"y","scrollCount":1}"#.utf8))
+        XCTAssertNil(old.feeling)
+        XCTAssertNil(old.afterStudyMinutes)
+        XCTAssertFalse(old.returnedToStudy)
     }
 
     func testReportWithoutEnoughTimeMakesNoShare() {

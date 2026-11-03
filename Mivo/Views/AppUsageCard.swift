@@ -4,6 +4,7 @@ import SwiftUI
 /// opened. See `AppPurposeReport`.
 struct AppUsageCard: View {
     let report: AppPurposeReport
+    @State private var showingReceipt = false
 
     var body: some View {
         MivoCard {
@@ -63,7 +64,22 @@ struct AppUsageCard: View {
                     }
                     .padding(.top, 10)
                 }
+
+                Button {
+                    HapticsService.selection()
+                    showingReceipt = true
+                } label: {
+                    Label("Share my \(report.periodName)", systemImage: "square.and.arrow.up")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(MivoColors.deep)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 10)
             }
+        }
+        .sheet(isPresented: $showingReceipt) {
+            GapReceiptShareView(report: report)
         }
     }
 

@@ -100,8 +100,10 @@
 		6979B136B8114E63A23C4B7F /* StudyLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35EE732B388547A8B306DC4B /* StudyLogTests.swift */; };
 		6BAD06D2AAE3BCD90CB16471 /* LockInTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F5237B4D24D0EC3AD1694BB /* LockInTests.swift */; };
 		6C0340F1A79DDBDE74E67D9E /* OnboardingWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */; };
+		6D0F2C5BF972DFA8E85354E4 /* StudyEscape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C105E0B6F20A794C8723A4A /* StudyEscape.swift */; };
 		6E8E27AF5E95DBC3D819044C /* MivoPlusPaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 811830C96EE691E65693D578 /* MivoPlusPaywallView.swift */; };
 		707A0B4D52152A3939D2D621 /* PaperFlightGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8895130E990EB597B08CAECE /* PaperFlightGameView.swift */; };
+		725C0FC7ACCD02E3E096D983 /* GapReceiptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F7E10DE43CB2410B2AE5725 /* GapReceiptView.swift */; };
 		73981CE8FF513851D573C589 /* AppWrapperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF56C7818F43D7D52C3ACAC /* AppWrapperView.swift */; };
 		77760667BFE5743D9C62BAD0 /* MivoDesignSystemV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F0A0C01AD1E72BD4FA8357 /* MivoDesignSystemV2.swift */; };
 		7CBBF8194ABCF81EC7E3C915 /* CompanionPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD44231BFC8DAE011E86DE0A /* CompanionPersistence.swift */; };
@@ -146,6 +148,7 @@
 		AB6C82239EA2E675869C0A18 /* SpotIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0215AB90CF4D1556EBEA166C /* SpotIntents.swift */; };
 		AD94D9CF1B8E20453FB159CF /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE58C1D450B8A8660731280 /* RegisterView.swift */; };
 		AF6E8BB768F16EC2C70C6104 /* SpotConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 703D28B097E6BB5166A73FAF /* SpotConnectView.swift */; };
+		AFF6F9C45DAD601C8E74B923 /* AppPicksViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF5BDF0E90E3B9EC96634F49 /* AppPicksViews.swift */; };
 		B2034AE97906840D68F05BDE /* MivoComebackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4AF97403C8A047208EDC3C8 /* MivoComebackTests.swift */; };
 		B3A35A918646FDCE39003303 /* ReplayFeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4371D76AD510ADD58B324420 /* ReplayFeedTests.swift */; };
 		B4D25BE8682426D137DE9AE0 /* AdminSupportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D992B028D9B340EAF65846B9 /* AdminSupportViews.swift */; };
@@ -407,6 +410,7 @@
 		78B165420431483ADB1C41CA /* IntentGameServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentGameServices.swift; sourceTree = "<group>"; };
 		7A180955A0A07FDEFC1A0BFF /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
 		7BA2F4449A3AB8AEEE4FA3CB /* MivoBackendService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoBackendService.swift; sourceTree = "<group>"; };
+		7C105E0B6F20A794C8723A4A /* StudyEscape.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StudyEscape.swift; sourceTree = "<group>"; };
 		7D7141BD01F69FA19D68CD23 /* ReflectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectionView.swift; sourceTree = "<group>"; };
 		7E6DBD1A49D62DA22024AADE /* SpotsPresenter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotsPresenter.swift; sourceTree = "<group>"; };
 		7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomeView.swift; sourceTree = "<group>"; };
@@ -430,6 +434,7 @@
 		9A68937D8073A75CA7497EFB /* MivoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoApp.swift; sourceTree = "<group>"; };
 		9ADF0ACA3D047985442D5E20 /* GoogleAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleAuthService.swift; sourceTree = "<group>"; };
 		9F0AE1C02B3D4E5F6A7B8C9E /* AttentionReceiptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionReceiptView.swift; sourceTree = "<group>"; };
+		9F7E10DE43CB2410B2AE5725 /* GapReceiptView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GapReceiptView.swift; sourceTree = "<group>"; };
 		A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionView.swift; sourceTree = "<group>"; };
 		A32F88595EE93F7622346254 /* FocusTimerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerView.swift; sourceTree = "<group>"; };
 		A744F4ED1A32DE68D231D542 /* SpotBatchProgrammer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotBatchProgrammer.swift; sourceTree = "<group>"; };
@@ -452,6 +457,7 @@
 		AB849A6750EFB8EE3B66D7D7 /* MivoStillModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoStillModels.swift; sourceTree = "<group>"; };
 		ACE072F1918BDB6C1CE4FF87 /* SpotShieldPromptViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotShieldPromptViews.swift; sourceTree = "<group>"; };
 		AEE46205DC5883F17C28046E /* MeerkatArt.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MeerkatArt.swift; sourceTree = "<group>"; };
+		AF5BDF0E90E3B9EC96634F49 /* AppPicksViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppPicksViews.swift; sourceTree = "<group>"; };
 		B0E29511BBC37013D48B1683 /* CompanionBehavior.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionBehavior.swift; sourceTree = "<group>"; };
 		B18FCF5A727AF997824A3567 /* TimeLoanConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeLoanConfirmationView.swift; sourceTree = "<group>"; };
 		B1C7B8AED77B857F5C728E43 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
@@ -657,6 +663,7 @@
 				5E6FD31E68257861D4F4A86F /* ReelAttention.swift */,
 				5C9447830329D477E1001513 /* SocialApps.swift */,
 				E5C8F5406406FDA90D49D12D /* AppPurposeReport.swift */,
+				7C105E0B6F20A794C8723A4A /* StudyEscape.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -1075,6 +1082,8 @@
 				3BFC42252D052BE2184B6AA7 /* ReelAttentionCard.swift */,
 				5AF56C7818F43D7D52C3ACAC /* AppWrapperView.swift */,
 				0D3C9B1272A0978C7373C92B /* AppUsageCard.swift */,
+				AF5BDF0E90E3B9EC96634F49 /* AppPicksViews.swift */,
+				9F7E10DE43CB2410B2AE5725 /* GapReceiptView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -1559,6 +1568,9 @@
 				5D6DDD75DBC8F85DDBC72834 /* AppPurposeReport.swift in Sources */,
 				73981CE8FF513851D573C589 /* AppWrapperView.swift in Sources */,
 				B5D794E19E9BA9A607EA496E /* AppUsageCard.swift in Sources */,
+				AFF6F9C45DAD601C8E74B923 /* AppPicksViews.swift in Sources */,
+				6D0F2C5BF972DFA8E85354E4 /* StudyEscape.swift in Sources */,
+				725C0FC7ACCD02E3E096D983 /* GapReceiptView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

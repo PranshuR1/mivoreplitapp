@@ -514,6 +514,14 @@ struct InstagramWrapperSession: Codable, Identifiable {
     /// Times a locked purpose (messages only, short videos only) turned a
     /// navigation back.
     let blockedAttempts: Int
+    /// How the session left them (`SessionFeeling` raw value), if they said.
+    let feeling: String?
+    /// Minutes between leaving a study session and opening this (0 while it
+    /// was still running); nil when it didn't follow studying. What was being
+    /// studied is never stored here.
+    let afterStudyMinutes: Int?
+    /// They took the way back to studying from here.
+    let returnedToStudy: Bool
 
     var app: SocialApp { platform.flatMap(SocialApp.init(rawValue:)) ?? .instagram }
 
@@ -527,6 +535,7 @@ struct InstagramWrapperSession: Codable, Identifiable {
         case secondsToSlowdown, slowDownCause, reelSeconds
         case platform, purpose, reason, sectionSeconds, offPurposeSeconds
         case driftReminders, returnedToPurpose, blockedAttempts
+        case feeling, afterStudyMinutes, returnedToStudy
     }
 
     init(
@@ -560,7 +569,10 @@ struct InstagramWrapperSession: Codable, Identifiable {
         offPurposeSeconds: Int = 0,
         driftReminders: Int = 0,
         returnedToPurpose: Int = 0,
-        blockedAttempts: Int = 0
+        blockedAttempts: Int = 0,
+        feeling: String? = nil,
+        afterStudyMinutes: Int? = nil,
+        returnedToStudy: Bool = false
     ) {
         self.id = id
         self.date = date
@@ -582,6 +594,9 @@ struct InstagramWrapperSession: Codable, Identifiable {
         self.driftReminders = driftReminders
         self.returnedToPurpose = returnedToPurpose
         self.blockedAttempts = blockedAttempts
+        self.feeling = feeling
+        self.afterStudyMinutes = afterStudyMinutes
+        self.returnedToStudy = returnedToStudy
         self.videoPlayCount = videoPlayCount
         self.videoWatchSeconds = videoWatchSeconds
         self.tapCount = tapCount
@@ -629,6 +644,9 @@ struct InstagramWrapperSession: Codable, Identifiable {
         driftReminders = try container.decodeIfPresent(Int.self, forKey: .driftReminders) ?? 0
         returnedToPurpose = try container.decodeIfPresent(Int.self, forKey: .returnedToPurpose) ?? 0
         blockedAttempts = try container.decodeIfPresent(Int.self, forKey: .blockedAttempts) ?? 0
+        feeling = try container.decodeIfPresent(String.self, forKey: .feeling)
+        afterStudyMinutes = try container.decodeIfPresent(Int.self, forKey: .afterStudyMinutes)
+        returnedToStudy = try container.decodeIfPresent(Bool.self, forKey: .returnedToStudy) ?? false
     }
 }
 

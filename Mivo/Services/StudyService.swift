@@ -137,6 +137,9 @@ final class StudyService: ObservableObject {
     @Published private(set) var log = StudyLog()
     @Published private(set) var cameraUnavailable = false
     @Published var showRequested = false
+    /// What to fill in when the study screen next opens; set by the way back
+    /// to studying from a social app (`AppWrapperView`), used once.
+    @Published var suggestedTask: String?
 
     let recorder = StudyRecorder()
     private let defaults: UserDefaults

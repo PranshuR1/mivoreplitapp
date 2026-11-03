@@ -391,7 +391,7 @@ struct HomeView: View {
 
     // MARK: - Replay mode
 
-    /// The on/off switch for replay mode in the Instagram view. On by default;
+    /// The on/off switch for replay mode in Mivo's app view. On by default;
     /// held off during the 3-day observation so the baseline stays clean.
     private var replayModeRow: some View {
         MivoListGroup {
@@ -425,11 +425,11 @@ struct HomeView: View {
 
     private var replayModeSubtitle: String {
         guard hasPlus else { return "Part of Mivo Plus." }
-        guard replayModeOn else { return "Off. Instagram's feed stays as it is." }
+        guard replayModeOn else { return "Off. Feeds stay as they are." }
         if displayedPlan?.collecting == true {
             return "On. Starts after your 3 days of observing, so your baseline stays honest."
         }
-        return "Once your reels or minutes are used, Instagram in Mivo only plays ones you've already watched."
+        return "Once your short videos are used, the feed runs out: Reels, Shorts and Spotlight only play ones you've already watched."
     }
 
     /// Days 1–3 replace the timeline with a single line and a 3-segment bar

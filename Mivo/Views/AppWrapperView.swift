@@ -105,6 +105,14 @@ struct AppWrapperView: View {
     /// The page couldn't load even after one automatic retry.
     @State private var loadFailed = false
 
+    // Studying left for this app: named on opening, the way back on closing.
+    @State private var escape: StudyEscape?
+    @State private var showingEscapeNotice = false
+    @State private var returnedToStudy = false
+    // One tap on the way out: how the session left them.
+    @State private var showingEndCard = false
+    @State private var feeling: SessionFeeling?
+
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     // "What was N videos ago?", every 6–10 real scrolls once slowed down.
@@ -175,6 +183,16 @@ struct AppWrapperView: View {
                 recallPromptOverlay
                     .transition(.opacity)
             }
+
+            if showingEscapeNotice, let escape {
+                escapeNotice(escape)
+                    .transition(.opacity)
+            }
+
+            if showingEndCard {
+                endCard
+                    .transition(.opacity)
+            }
         }
         .statusBarHidden(false)
         .onAppear {
@@ -185,6 +203,12 @@ struct AppWrapperView: View {
             // Lets a debug build exercise replay mode inside the 3-day baseline.
             if ProcessInfo.processInfo.arguments.contains("-MivoReplayForce") { observingBaseline = false }
             #endif
+            // Messages are allowed any time; everything else opened straight
+            // from studying gets named.
+            if !isMessages, let detected = StudyService.shared.currentEscape() {
+                escape = detected
+                showingEscapeNotice = true
+            }
             startSession()
         }
         .onReceive(timer) { _ in tick() }
@@ -202,8 +226,9 @@ struct AppWrapperView: View {
             guard started else { return }
             // The video on screen when they left counts: they watched it until then.
             if slowDownReason == nil { closeCurrentReel(at: Date()) }
-            if app == .instagram { SeenReelStore.shared.save(replay.log) }
+            if ShortVideoID.supportsReplay(app) { SeenReelStore.forApp(app).save(replay.log) }
             recordSession()
+            if returnedToStudy { reopenStudy() }
         }
     }
 
@@ -214,10 +239,11 @@ struct AppWrapperView: View {
             purpose: purpose,
             loadCommand: loadCommand,
             slowdown: slowdown,
-            isInteractive: !showingRecallPrompt && betweenReelsRemaining == 0 && reminderSection == nil,
+            isInteractive: !showingRecallPrompt && betweenReelsRemaining == 0 && reminderSection == nil
+                && !showingEscapeNotice && !showingEndCard,
             reportsReels: app == .instagram && !isMessages,
             onReel: handleReel,
-            onSection: { section = $0 },
+            onLocation: locationChanged,
             onBlocked: { blockedCount += 1 },
             onLoadFailed: { withAnimation(.easeOut(duration: 0.2)) { loadFailed = true } }
         )
@@ -278,7 +304,7 @@ struct AppWrapperView: View {
             }
 
             Button {
-                dismiss()
+                close()
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .bold))
@@ -329,7 +355,7 @@ struct AppWrapperView: View {
         case .todayUsed: used = "That's today's time."
         case .outsideWindow: used = "You're outside your scroll windows."
         }
-        return used + (replay.isReplaying ? " From here it's slower, and only Reels you've seen." : " From here it's slower.")
+        return used + (replay.isReplaying ? " From here it's slower, and only \(app.shortVideoName.many) you've seen." : " From here it's slower.")
     }
 
     private func slowDownMiloLine(_ reason: SlowDownReason) -> String {
@@ -348,9 +374,9 @@ struct AppWrapperView: View {
 
     private func startSession() {
         balance = balanceStore.current()
-        replayActive = app == .instagram && isCount && hasMivoPlus
+        replayActive = ShortVideoID.supportsReplay(app) && isCount && hasMivoPlus
             && ReplayModeSetting.isActive(enabled: ReplayModeSetting.isEnabled, observingBaseline: observingBaseline)
-        replay = ReplaySession(log: app == .instagram ? SeenReelStore.shared.load() : SeenReelLog())
+        replay = ReplaySession(log: ShortVideoID.supportsReplay(app) ? SeenReelStore.forApp(app).load() : SeenReelLog())
         secondsRemaining = config.amount * 60
         sessionStartedAt = Date()
         started = true
@@ -447,7 +473,7 @@ struct AppWrapperView: View {
         let hadPending = replay.pendingReplay != nil
         switch replay.observe(code, replayActive: replayActive, now: Date()) {
         case .replace(let target):
-            guard let url = ReelCode.url(for: target) else { break }
+            guard let url = ShortVideoID.url(for: target, app: app) else { break }
             loadCommand = WrapperLoadCommand(url: url)
             withAnimation(.easeIn(duration: 0.15)) { isSwappingReel = true }
             let swapID = loadCommand?.id
@@ -461,7 +487,7 @@ struct AppWrapperView: View {
                 withAnimation(.easeOut(duration: 0.2)) { isSwappingReel = false }
             }
         }
-        SeenReelStore.shared.save(replay.log)
+        SeenReelStore.forApp(app).save(replay.log)
     }
 
     private func persistBalance() {
@@ -554,6 +580,160 @@ struct AppWrapperView: View {
             }
             .frame(maxWidth: 300)
             .padding(.horizontal, 24)
+        }
+    }
+
+    // MARK: - Where the page is
+
+    /// Every page and in-page move: which part of the app it is, and for the
+    /// apps whose address names the video (Shorts, Facebook Reels, Spotlight),
+    /// which video, for replay mode. Instagram reports its reels from the page.
+    private func locationChanged(_ url: URL) {
+        section = app.section(for: url)
+        guard app != .instagram, !isMessages, let id = ShortVideoID.id(in: url, app: app) else { return }
+        handleReel(id)
+    }
+
+    // MARK: - Studying, and the way out
+
+    private func escapeNotice(_ escape: StudyEscape) -> some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { /* absorb taps: this needs a choice */ }
+
+            VStack(spacing: 12) {
+                Text(escape.headline)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+
+                Text(escape.midSession
+                     ? "Your study session is still running."
+                     : "Opening \(app.title) right after is often a way out of how the work feels.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white.opacity(0.75))
+                    .multilineTextAlignment(.center)
+
+                Button(action: returnToStudy) {
+                    Text("Back to \(escape.task)")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.black)
+                        .lineLimit(1)
+                        .frame(maxWidth: 260)
+                        .padding(.vertical, 13)
+                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white))
+                }
+                .padding(.top, 6)
+
+                Button {
+                    HapticsService.selection()
+                    withAnimation(.easeIn(duration: 0.2)) { showingEscapeNotice = false }
+                } label: {
+                    Text("Open \(app.title) anyway")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white.opacity(0.75))
+                        .frame(maxWidth: 260)
+                        .padding(.vertical, 8)
+                }
+            }
+            .frame(maxWidth: 300)
+            .padding(.horizontal, 24)
+        }
+    }
+
+    /// One tap on how the session left them, and the way back to studying if
+    /// they came from it. Messages skip it: they aren't the problem.
+    private var endCard: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { /* absorb taps */ }
+
+            VStack(spacing: 14) {
+                Text("How do you feel now?")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+
+                HStack(spacing: 8) {
+                    ForEach(SessionFeeling.allCases, id: \.self) { option in
+                        Button {
+                            HapticsService.selection()
+                            feeling = option
+                            if escape == nil { dismiss() }
+                        } label: {
+                            Text(option.title)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(feeling == option ? .black : .white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(feeling == option ? Color.white : Color.white.opacity(0.14)))
+                        }
+                    }
+                }
+                .frame(maxWidth: 280)
+
+                if let escape {
+                    Button(action: returnToStudy) {
+                        Text("Back to \(escape.task)")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.black)
+                            .lineLimit(1)
+                            .frame(maxWidth: 280)
+                            .padding(.vertical, 13)
+                            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white))
+                    }
+                    .padding(.top, 4)
+                    Text("Even two minutes counts.")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+
+                Button {
+                    dismiss()
+                } label: {
+                    Text(feeling == nil ? "Skip" : "Close")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white.opacity(0.75))
+                        .frame(maxWidth: 260)
+                        .padding(.vertical, 8)
+                }
+            }
+            .frame(maxWidth: 300)
+            .padding(.horizontal, 24)
+        }
+    }
+
+    private func close() {
+        guard started, !isMessages else {
+            dismiss()
+            return
+        }
+        HapticsService.selection()
+        withAnimation(.easeOut(duration: 0.2)) {
+            reminderSection = nil
+            showingRecallPrompt = false
+            showingEndCard = true
+        }
+    }
+
+    private func returnToStudy() {
+        HapticsService.success()
+        returnedToStudy = true
+        dismiss()
+    }
+
+    /// Opens the study screen once this one (and the window flow under it)
+    /// has gone, with what they were studying already filled in.
+    private func reopenStudy() {
+        let task = escape?.midSession == true ? nil : escape?.task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            let study = StudyService.shared
+            if let task { study.suggestedTask = task }
+            study.showRequested = true
         }
     }
 
@@ -685,7 +865,10 @@ struct AppWrapperView: View {
             offPurposeSeconds: offPurposeSeconds,
             driftReminders: reminderCount,
             returnedToPurpose: returnedCount,
-            blockedAttempts: blockedCount
+            blockedAttempts: blockedCount,
+            feeling: feeling?.rawValue,
+            afterStudyMinutes: escape?.minutesAgo,
+            returnedToStudy: returnedToStudy
         )
     }
 }
@@ -840,8 +1023,8 @@ private struct WrapperStatsWebView: UIViewRepresentable {
     /// Instagram Reels only: report each reel's public shortcode for replay mode.
     var reportsReels: Bool
     var onReel: (String) -> Void
-    /// The part of the app now on screen, on every page and in-page navigation.
-    var onSection: (AppSection) -> Void
+    /// The page address, on every page load and in-page navigation.
+    var onLocation: (URL) -> Void
     /// The lock turned a navigation back.
     var onBlocked: () -> Void
     /// The page failed to load twice in a row (one automatic retry).
@@ -1105,7 +1288,7 @@ private struct WrapperStatsWebView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator {
         Coordinator(app: app, startURL: app.startURL(for: purpose), lock: WrapperLock(app: app, purpose: purpose),
-                    liveStats: $liveStats, onReel: onReel, onSection: onSection, onBlocked: onBlocked,
+                    liveStats: $liveStats, onReel: onReel, onLocation: onLocation, onBlocked: onBlocked,
                     onLoadFailed: onLoadFailed)
     }
 
@@ -1154,7 +1337,7 @@ private struct WrapperStatsWebView: UIViewRepresentable {
         uiView.isUserInteractionEnabled = isInteractive && !context.coordinator.isStuttering
         context.coordinator.apply(slowdown, to: uiView)
         context.coordinator.onReel = onReel
-        context.coordinator.onSection = onSection
+        context.coordinator.onLocation = onLocation
         context.coordinator.onBlocked = onBlocked
         context.coordinator.onLoadFailed = onLoadFailed
         if let command = loadCommand, command.id != context.coordinator.lastCommandID {
@@ -1186,7 +1369,7 @@ private struct WrapperStatsWebView: UIViewRepresentable {
         private let liveStats: Binding<WrapperLiveStats>
         private let decoder = JSONDecoder()
         var onReel: (String) -> Void
-        var onSection: (AppSection) -> Void
+        var onLocation: (URL) -> Void
         var onBlocked: () -> Void
         var onLoadFailed: () -> Void
         var lastCommandID: UUID?
@@ -1212,7 +1395,7 @@ private struct WrapperStatsWebView: UIViewRepresentable {
             lock: WrapperLock?,
             liveStats: Binding<WrapperLiveStats>,
             onReel: @escaping (String) -> Void,
-            onSection: @escaping (AppSection) -> Void,
+            onLocation: @escaping (URL) -> Void,
             onBlocked: @escaping () -> Void,
             onLoadFailed: @escaping () -> Void
         ) {
@@ -1222,18 +1405,17 @@ private struct WrapperStatsWebView: UIViewRepresentable {
             self.onLoadFailed = onLoadFailed
             self.liveStats = liveStats
             self.onReel = onReel
-            self.onSection = onSection
+            self.onLocation = onLocation
             self.onBlocked = onBlocked
         }
 
         /// The address changes on every page load and on every in-page move
         /// (these sites are single-page apps), so this is where Mivo learns
-        /// which part of the app is on screen.
+        /// which part of the app, and which video, is on screen.
         func observe(_ webView: WKWebView) {
             urlObservation = webView.observe(\.url, options: [.initial, .new]) { [weak self] webView, _ in
                 guard let self, let url = webView.url else { return }
-                let section = self.app.section(for: url)
-                DispatchQueue.main.async { self.onSection(section) }
+                DispatchQueue.main.async { self.onLocation(url) }
             }
         }
 

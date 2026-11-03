@@ -30,7 +30,11 @@ struct StudySessionView: View {
             now = Date()
             isCharging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
         }
-        .onAppear { UIDevice.current.isBatteryMonitoringEnabled = true }
+        .onAppear {
+            UIDevice.current.isBatteryMonitoringEnabled = true
+            if task.isEmpty, let suggested = study.suggestedTask { task = suggested }
+            study.suggestedTask = nil
+        }
         .sheet(item: $paywallFeature) { feature in
             MivoPlusPaywallView(feature: feature)
                 .environmentObject(appVM)

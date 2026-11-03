@@ -65,6 +65,9 @@ class AppViewModel: ObservableObject {
     /// app — see `evaluateSwapPrompt()` for how existing users are asked once.
     @Published var userSwap: UserSwap? = nil
     @Published var showSwapPrompt = false
+    /// "Which apps do you use?" once, for people who finished onboarding
+    /// before it asked — see `evaluateAppPicksPrompt()`.
+    @Published var showAppPicksPrompt = false
     /// Google/Apple sign-in falls back to the email prefix as the display
     /// name when the provider doesn't return one — see `evaluateNamePrompt()`
     /// for the ask-once gating that catches it.
@@ -1520,7 +1523,7 @@ class AppViewModel: ObservableObject {
               pendingComebackPrompt == nil,
               pendingTimeTruthPrompt == nil,
               pendingDailyScrollSchedulePrompt == nil,
-              !showNamePrompt else { return }
+              !showNamePrompt, !showAppPicksPrompt else { return }
         guard MivoRatingPromptStore.shouldShow() else { return }
         MivoRatingPromptStore.markShown()
         showRatingPrompt = true
@@ -1545,7 +1548,7 @@ class AppViewModel: ObservableObject {
               pendingComebackPrompt == nil,
               pendingTimeTruthPrompt == nil,
               pendingDailyScrollSchedulePrompt == nil,
-              !showRatingPrompt, !showNamePrompt else { return }
+              !showRatingPrompt, !showNamePrompt, !showAppPicksPrompt else { return }
         if let email = user?.email,
            StorageService.load(Bool.self, forKey: .userSwapPromptShown, email: email) == true { return }
         showSwapPrompt = true
@@ -1554,6 +1557,34 @@ class AppViewModel: ObservableObject {
     func skipSwapPromptForNow() {
         showSwapPrompt = false
         saveForCurrentUser(true, forKey: .userSwapPromptShown)
+    }
+
+    /// Asks "Which apps do you use?" the next time someone who finished
+    /// onboarding before that step existed opens Mivo. It comes ahead of the
+    /// other one-time prompts (`MainTabView` evaluates it first): without app
+    /// picks, tapping TikTok can't open TikTok in Mivo. Never on top of a
+    /// shield's request, a session to review or another prompt.
+    func evaluateAppPicksPrompt() {
+        guard isLoggedIn, settings.onboardingComplete else { return }
+        guard !showAppPicksPrompt, !AppPicksPrompt.isAnswered() else { return }
+        guard pendingAppWindow == nil,
+              pendingExpiredRunningSession == nil,
+              pendingResumedActiveSession == nil,
+              pendingSessionFeedback == nil,
+              pendingMivoClearRoute == nil,
+              !pendingMidScrollCheckIn,
+              pendingScrollGoalPrompt == nil,
+              pendingGoalForecastPrompt == nil,
+              pendingComebackPrompt == nil,
+              pendingTimeTruthPrompt == nil,
+              pendingDailyScrollSchedulePrompt == nil,
+              !showRatingPrompt, !showNamePrompt, !showSwapPrompt else { return }
+        showAppPicksPrompt = true
+    }
+
+    func answerAppPicksPrompt() {
+        AppPicksPrompt.markAnswered()
+        showAppPicksPrompt = false
     }
 
     /// True when the current name is exactly the email's local part — the
@@ -1577,7 +1608,7 @@ class AppViewModel: ObservableObject {
               pendingComebackPrompt == nil,
               pendingTimeTruthPrompt == nil,
               pendingDailyScrollSchedulePrompt == nil,
-              !showRatingPrompt, !showSwapPrompt else { return }
+              !showRatingPrompt, !showSwapPrompt, !showAppPicksPrompt else { return }
         if StorageService.load(Bool.self, forKey: .namePromptDismissed, email: user.email) == true { return }
         showNamePrompt = true
     }
@@ -2087,7 +2118,10 @@ class AppViewModel: ObservableObject {
         offPurposeSeconds: Int = 0,
         driftReminders: Int = 0,
         returnedToPurpose: Int = 0,
-        blockedAttempts: Int = 0
+        blockedAttempts: Int = 0,
+        feeling: String? = nil,
+        afterStudyMinutes: Int? = nil,
+        returnedToStudy: Bool = false
     ) {
         let session = InstagramWrapperSession(
             id: UUID().uuidString,
@@ -2120,7 +2154,10 @@ class AppViewModel: ObservableObject {
             offPurposeSeconds: offPurposeSeconds,
             driftReminders: driftReminders,
             returnedToPurpose: returnedToPurpose,
-            blockedAttempts: blockedAttempts
+            blockedAttempts: blockedAttempts,
+            feeling: feeling,
+            afterStudyMinutes: afterStudyMinutes,
+            returnedToStudy: returnedToStudy
         )
         instagramWrapperSessions.append(session)
         saveForCurrentUser(instagramWrapperSessions, forKey: .instagramWrapperSessions)

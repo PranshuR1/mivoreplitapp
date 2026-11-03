@@ -36,6 +36,16 @@ struct AppPurposeReport: Equatable {
     let reminders: Int
     let returned: Int
     let blocked: Int
+    /// Sessions that could be judged (not messages, some placed time), and of
+    /// those, the ones that stayed on purpose and stopped at the pick.
+    let keptCandidates: Int
+    let keptSessions: Int
+    /// Answers to "How do you feel now?".
+    let feelingCounts: [SessionFeeling: Int]
+    /// Sessions opened while studying or just after, and how many of those
+    /// ended back at studying.
+    let escapes: Int
+    let returnedToStudy: Int
     /// Plain findings, most telling first.
     let findings: [String]
 
@@ -57,10 +67,50 @@ struct AppPurposeReport: Equatable {
         let off = sessions.reduce(0) { $0 + $1.offPurposeSeconds }
         onPurposeShare = placed >= Self.minimumTrackedSeconds ? max(0, 1 - Double(off) / Double(placed)) : nil
 
+        let judged = sessions.filter { $0.purpose != "messages" && Self.placedSeconds($0) >= 30 }
+        keptCandidates = judged.count
+        keptSessions = judged.filter(Self.wasKept).count
+
+        var feelings: [SessionFeeling: Int] = [:]
+        for feeling in sessions.compactMap({ $0.feeling.flatMap(SessionFeeling.init(rawValue:)) }) {
+            feelings[feeling, default: 0] += 1
+        }
+        feelingCounts = feelings
+        escapes = sessions.filter { $0.afterStudyMinutes != nil }.count
+        returnedToStudy = sessions.filter(\.returnedToStudy).count
+
         findings = Self.findings(sessions: sessions, rows: rows, reminders: reminders, returned: returned, onPurposeShare: onPurposeShare)
     }
 
     var hasData: Bool { sessionCount > 0 }
+
+    var answeredFeelings: Int { feelingCounts.values.reduce(0, +) }
+
+    func feelingShare(_ feeling: SessionFeeling) -> Double? {
+        answeredFeelings == 0 ? nil : Double(feelingCounts[feeling, default: 0]) / Double(answeredFeelings)
+    }
+
+    /// Stayed on purpose (under a tenth of the time elsewhere) and didn't
+    /// keep going once the pick was used.
+    static func wasKept(_ session: InstagramWrapperSession) -> Bool {
+        let placed = placedSeconds(session)
+        guard placed > 0, Double(session.offPurposeSeconds) / Double(placed) < 0.1 else { return false }
+        return !wentPastPick(session)
+    }
+
+    static func wentPastPick(_ session: InstagramWrapperSession) -> Bool {
+        guard session.slowDownCause == "pick" else { return false }
+        if session.limitKind == WrapperSessionLimit.reels.rawValue { return session.reelsAfterSlowdown > 0 }
+        guard let slowed = session.secondsToSlowdown else { return false }
+        return durationSeconds(session) - slowed > 30
+    }
+
+    /// From 10 pm to 5 am, when the same app tends to feel different.
+    static func isLateNight(_ session: InstagramWrapperSession, calendar: Calendar = .current) -> Bool {
+        guard let start = ISO8601DateFormatter().date(from: session.startedAt) else { return false }
+        let hour = calendar.component(.hour, from: start)
+        return hour >= 22 || hour < 5
+    }
 
     // MARK: - Per app
 
@@ -144,6 +194,16 @@ struct AppPurposeReport: Equatable {
             lines.append("On \(worst.key.app.title) you came to \(purpose.goal) \(times(same.count)), and \(share)% of that time went to \(worst.key.app.name(of: worst.key.section)).")
         }
 
+        lines.append(contentsOf: feelingFindings(sessions: sessions))
+
+        let afterStudy = sessions.filter { $0.afterStudyMinutes != nil }
+        if !afterStudy.isEmpty {
+            let back = afterStudy.filter(\.returnedToStudy).count
+            lines.append(back == 0
+                ? "You opened a social app straight from studying \(times(afterStudy.count)), and didn't go back."
+                : "You opened a social app straight from studying \(times(afterStudy.count)), and went back to it \(times(back)).")
+        }
+
         if reminders > 0 {
             lines.append(returned == reminders
                 ? "Mivo reminded you what you came for \(times(reminders)), and you went back every time."
@@ -165,6 +225,42 @@ struct AppPurposeReport: Equatable {
 
         if let onPurposeShare, onPurposeShare >= 0.9, lines.isEmpty {
             lines.append("You stayed on what you came for \(Int((onPurposeShare * 100).rounded()))% of the time.")
+        }
+        return lines
+    }
+
+    /// Which app and purpose (late at night or not) leaves them worse, and
+    /// which leaves them better, once there are three answers to go on.
+    private static func feelingFindings(sessions: [InstagramWrapperSession]) -> [String] {
+        struct Key: Hashable { let app: SocialApp; let purpose: String; let night: Bool }
+        var groups: [Key: [SessionFeeling]] = [:]
+        for session in sessions {
+            guard let feeling = session.feeling.flatMap(SessionFeeling.init(rawValue:)),
+                  let purpose = session.purpose else { continue }
+            groups[Key(app: session.app, purpose: purpose, night: isLateNight(session)), default: []].append(feeling)
+        }
+        func describe(_ key: Key) -> String? {
+            guard let purpose = key.app.purpose(id: key.purpose) else { return nil }
+            return "\(purpose.title) on \(key.app.title)\(key.night ? " after 10 pm" : "")"
+        }
+        func strongest(_ feeling: SessionFeeling) -> (key: Key, count: Int, total: Int)? {
+            groups.compactMap { key, answers -> (key: Key, count: Int, total: Int)? in
+                let count = answers.filter { $0 == feeling }.count
+                guard answers.count >= 3, Double(count) / Double(answers.count) >= 0.5 else { return nil }
+                return (key, count, answers.count)
+            }
+            .max { lhs, rhs in
+                let l = Double(lhs.count) / Double(lhs.total), r = Double(rhs.count) / Double(rhs.total)
+                return l != r ? l < r : lhs.total < rhs.total
+            }
+        }
+
+        var lines: [String] = []
+        if let worst = strongest(.worse), let name = describe(worst.key) {
+            lines.append("\(name) left you feeling worse \(worst.count) of \(worst.total) times. Try leaving it out this week.")
+        }
+        if let best = strongest(.better), let name = describe(best.key) {
+            lines.append("\(name) left you feeling better \(best.count) of \(best.total) times.")
         }
         return lines
     }

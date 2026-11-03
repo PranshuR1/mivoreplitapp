@@ -127,6 +127,10 @@ struct MainTabView: View {
             SwapPromptView()
                 .environmentObject(appVM)
         }
+        .fullScreenCover(isPresented: $appVM.showAppPicksPrompt) {
+            AppPicksPromptView()
+                .environmentObject(appVM)
+        }
         .fullScreenCover(item: $appVM.pendingResumedActiveSession) { session in
             NavigationStack {
                 ActiveSessionView(
@@ -257,6 +261,7 @@ struct MainTabView: View {
             appVM.evaluateTimeTruthPrompt()
             appVM.evaluateScrollGoalPrompt()
             appVM.evaluateGoalForecastPrompt()
+            appVM.evaluateAppPicksPrompt()
             appVM.evaluateSwapPrompt()
             appVM.evaluateNamePrompt()
             appVM.refreshWeeklyExperimentLifecycle()
@@ -305,6 +310,7 @@ struct MainTabView: View {
             appVM.evaluateTimeTruthPrompt()
             appVM.evaluateScrollGoalPrompt()
             appVM.evaluateGoalForecastPrompt()
+            appVM.evaluateAppPicksPrompt()
             appVM.evaluateSwapPrompt()
             appVM.evaluateNamePrompt()
             appVM.refreshWeeklyExperimentLifecycle()
@@ -335,6 +341,7 @@ struct MainTabView: View {
             appVM.evaluateTimeTruthPrompt()
             appVM.evaluateScrollGoalPrompt()
             appVM.evaluateGoalForecastPrompt()
+            appVM.evaluateAppPicksPrompt()
             appVM.evaluateRatingPrompt()
             appVM.evaluateSwapPrompt()
             appVM.evaluateNamePrompt()

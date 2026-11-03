@@ -504,3 +504,19 @@ enum AppMappingError: LocalizedError, Equatable {
         }
     }
 }
+
+/// Whether this device has answered "Which apps do you use?" — in onboarding,
+/// or in the one-time prompt people who joined before it get on their next
+/// open. App picks are Screen Time tokens, which belong to the device, so the
+/// answer does too.
+enum AppPicksPrompt {
+    static let answeredKey = "mivo.appPicks.answered"
+
+    static func isAnswered(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: answeredKey)
+    }
+
+    static func markAnswered(defaults: UserDefaults = .standard) {
+        defaults.set(true, forKey: answeredKey)
+    }
+}
