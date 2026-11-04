@@ -342,11 +342,8 @@ class AIService {
         profile: OnboardingProfile?
     ) async -> EmergencyUnlockReview {
         let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let aiReview = await OpenRouterService.verifyEmergencyUnlock(
-            reason: trimmed,
-            profile: profile,
-            recentSessions: sessions
-        ) {
+        // Mivo's own AI server. When it can't be reached, the plain rules below decide.
+        if let aiReview = await MivoAI.shared.reviewUnlock(reason: trimmed, appName: "your protected app") {
             return aiReview
         }
 

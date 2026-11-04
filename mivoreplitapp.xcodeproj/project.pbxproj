@@ -7,10 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		012A9B77700FD63D58AEAB5D /* AppViewModel+AttentionJourney.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA6E12A887E940945457258 /* AppViewModel+AttentionJourney.swift */; };
 		0160B9DFCB9E43B6AB5D7715 /* ComebackViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24DBB4CDE10143B182E75F61 /* ComebackViews.swift */; };
+		016C399A395008A794C208B9 /* MivoLockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52C698E1E3FB221191DE8FD2 /* MivoLockView.swift */; };
 		029F6253E0F5CDC5B291ED79 /* ReflectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7141BD01F69FA19D68CD23 /* ReflectionView.swift */; };
 		045039C4F9C4D8568FDD0F85 /* CompanionStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B26CF7A1E3CE8B59CD64843 /* CompanionStateManager.swift */; };
-		0AE5BC1D7E5E2B3297766830 /* SpotSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E370DDD6B01BFB27797A7B5 /* SpotSession.swift */; };
 		0C5FB31E8A6BBBDBA3641F3B /* HomeComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB2FE8E77778C74C8936BD7 /* HomeComponents.swift */; };
 		0D6B997CFA99785C5F0AE1EF /* GoogleAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ADF0ACA3D047985442D5E20 /* GoogleAuthService.swift */; };
 		0E1646EDB74B4876ADE74EA3 /* NamePromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA8EC206B90648E6BF4868E3 /* NamePromptView.swift */; };
@@ -19,12 +20,12 @@
 		0E1F52C3F0D0AB37AD268A07 /* RemoteAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34191826CA5D848922296990 /* RemoteAuthService.swift */; };
 		0E34BA886DFCF1DC21BFDFC5 /* FocusCardsGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8689F6E5768F5075C9BC7177 /* FocusCardsGameView.swift */; };
 		0EFE687984FC3B229D44CBCF /* LockInSetupFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D06004E82F119C15DB90B9DA /* LockInSetupFlowView.swift */; };
+		0F6C1419F58861584A1FB2A0 /* ReelAttention.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E38C2583400DD9C2931232D /* ReelAttention.swift */; };
 		0FD490A8835BBB3033CB89CD /* CompanionOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09AD9852B9517D6F653CFD17 /* CompanionOnboardingView.swift */; };
 		11A1B2C3D4E5F60718293A4B /* SecureAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A4A /* SecureAuthService.swift */; };
 		11A1B2C3D4E5F60718293A51 /* ForgotPasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A50 /* ForgotPasswordView.swift */; };
 		11A1B2C3D4E5F60718293A53 /* HapticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A52 /* HapticsService.swift */; };
 		11A1B2C3D4E5F60718293A55 /* OnboardingPolish.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A1B2C3D4E5F60718293A54 /* OnboardingPolish.swift */; };
-		14767C07F56755AAD17FADF1 /* SpotActiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4423A50D4E49C71DBA1B67D6 /* SpotActiveView.swift */; };
 		1A93977C4D76D404B9D31DC3 /* LockInImagePrep.swift in Sources */ = {isa = PBXBuildFile; fileRef = B333213AB91C0EDF6644B7C3 /* LockInImagePrep.swift */; };
 		1B2CB2B60C9555AC6B55E4D2 /* CompanionRoaming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7AE910623AA6A67CE4BCCF /* CompanionRoaming.swift */; };
 		1CF6068386174BD891D19CA4 /* AppViewModel+Comeback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 686E806F9FA14222A617E60D /* AppViewModel+Comeback.swift */; };
@@ -32,21 +33,17 @@
 		20A82EE6F8B6B67DA6720D84 /* CompanionDebugPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = E26817C81C75C43CE8E5536E /* CompanionDebugPreview.swift */; };
 		20F6403C2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F6403B2FA005D400F3DDD2 /* ScreenTimeDataCollector.swift */; };
 		20F640422FA0065500F3DDD2 /* ScreenTimeUsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F640412FA0065500F3DDD2 /* ScreenTimeUsageView.swift */; };
-		212BB577E74405134D33F7ED /* SpotSetupFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C1FDB7A9244FD71981D2FF /* SpotSetupFlowView.swift */; };
-		23F11394D7BE629EDE141AC4 /* SpotInsights.swift in Sources */ = {isa = PBXBuildFile; fileRef = F676E12238F819C8249814A0 /* SpotInsights.swift */; };
-		26A6759AC421BF3415A4F783 /* MivoSpotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00DDC7AFBC166A24432A3EF /* MivoSpotsTests.swift */; };
-		26F1AFA134C01CF5F3949E93 /* SpotDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E67C5DFB25F7596DFEDFAB /* SpotDetailView.swift */; };
+		21C5888922C0F6CE41CFAE72 /* AppUsageCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 455B27608640930CFBDA6EC0 /* AppUsageCard.swift */; };
 		28973412AE95B3F1BB5B031D /* CompanionPersonality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144566CDAB4531E410210001 /* CompanionPersonality.swift */; };
 		2ABB1EAABB2C457C759A4ED9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 825473780CCF565309E59996 /* HomeView.swift */; };
 		2D8B46B19D1B3C171B010A23 /* LockInShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A99CC36B29A7399AEA55F1 /* LockInShared.swift */; };
 		2F1000012FA1000000000001 /* MivoScreenTimeReportExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F1000022FA1000000000001 /* MivoScreenTimeReportExtension.swift */; };
 		2F1000032FA1000000000001 /* MivoScreenTimeReportExtension.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 2F1000042FA1000000000001 /* MivoScreenTimeReportExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2F1000182FA4000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2F1000192FA4000000000001 /* PrivacyInfo.xcprivacy */; };
-		305869F8647D05609226FD0B /* SpotPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E58E469B602AB466CDF1333 /* SpotPersistence.swift */; };
-		31E854EDB55FF8A59E00706C /* SpotRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6849ACC7BE9284A0104FF2F3 /* SpotRegistry.swift */; };
 		31EA0E76E4C1A150D615DC6F /* WeeklyReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A927AC28F9838387580E5F7C /* WeeklyReportView.swift */; };
 		34BCB42A29F44D4E928B889C /* StudyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34FE80C0F2564883B2866027 /* StudyService.swift */; };
-		35784121219223A4B29544E7 /* SpotShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27BDF0D6ED77801B60EB868 /* SpotShared.swift */; };
+		3528AF259186509BCA6BAAA0 /* SocialApps.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7127F76D094D5E88F148E0 /* SocialApps.swift */; };
+		3655C4DB93DD193283207B96 /* MivoAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61F3F63E923091AB7D28EAE9 /* MivoAI.swift */; };
 		36E209E3016E99C04CA79F09 /* OnboardingCalibrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00AD3F6DBBFDA083CC9797 /* OnboardingCalibrationView.swift */; };
 		375ADF948AD0ACD027626B45 /* CompanionSideEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C193C34C28C991E83EE01C1 /* CompanionSideEffects.swift */; };
 		37979367E2BB0EC2FFA066E6 /* CompanionProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38212224C24AA89E5136EBB4 /* CompanionProgress.swift */; };
@@ -54,6 +51,7 @@
 		39C94E41ED077D8C3BD32F0E /* CompanionHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39231207C24C2D3F598CFC7A /* CompanionHomeView.swift */; };
 		3A0008733F86C281C8D46ABA /* PatternsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924B7B2827ECD025106C3BC8 /* PatternsView.swift */; };
 		3B8B15D01827D1332C40003A /* LockInModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9CC8EB50ED4804AB6D4F55A /* LockInModels.swift */; };
+		3BF2E3287C2C652F5550CF71 /* MivoLockManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEAE17A649C77A0BF2F2886C /* MivoLockManager.swift */; };
 		3BF38CFF771C4B42265F053C /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A180955A0A07FDEFC1A0BFF /* AIService.swift */; };
 		3CF7D19C5614399444342EA8 /* CompanionWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A82228E0BCFCD9DE2A442FB0 /* CompanionWidget.swift */; };
 		3E02A7708F6BD08E765E5128 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A63C4EAD8A83BB91C7DC04 /* Models.swift */; };
@@ -72,6 +70,7 @@
 		47A6CC981824B0B6028EA07A /* CompanionRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12BA70FD3A43F3AF8F3DF1E0 /* CompanionRuntime.swift */; };
 		484E1553E2D16A1334C5B534 /* OnboardingWhyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A5B5AD5658BBDC54B49C03 /* OnboardingWhyView.swift */; };
 		4A421458D8AA83AF4A95DAD8 /* CompanionBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6D7A071ECF2164B2613BE9 /* CompanionBehaviorTests.swift */; };
+		4BD8BB23F4BC0B05768A97CE /* MivoLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B1C3AFE2EE7B8492E338E02 /* MivoLock.swift */; };
 		4D4C69766541743030303032 /* MivoLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4C69766541743030303031 /* MivoLiveActivityAttributes.swift */; };
 		4D56534B4559533030303032 /* MivoScreenTimeKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D56534B4559533030303031 /* MivoScreenTimeKeys.swift */; };
 		4EDD5B16E4289F9FD2C223C2 /* CompanionMessageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5110DBA288EB7E52E307A661 /* CompanionMessageProvider.swift */; };
@@ -79,7 +78,6 @@
 		4F3000032FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 4F3000042FA3000000000001 /* MivoDeviceActivityMonitorExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4F3000182FA4000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4F3000192FA4000000000001 /* PrivacyInfo.xcprivacy */; };
 		4F63DEBC1B9AC51E69197D9E /* CompanionPauseAccessory.swift in Sources */ = {isa = PBXBuildFile; fileRef = D788F8A4514332CEE98047C1 /* CompanionPauseAccessory.swift */; };
-		527D723D70297566FB7C5D77 /* MivoSpot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB94DD1EF8D24E9D7E8E59A /* MivoSpot.swift */; };
 		5306BDEDDBAF577A5C71D040 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 643C4A985B67F5A8D604FE4F /* AppViewModel.swift */; };
 		554D8136BA74DB092321DECE /* TimeLoanConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B18FCF5A727AF997824A3567 /* TimeLoanConfirmationView.swift */; };
 		5581A93AD45FC8F3616D372F /* MeerkatArt.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEE46205DC5883F17C28046E /* MeerkatArt.swift */; };
@@ -87,50 +85,38 @@
 		58015847327F8522DF96ADF4 /* LockInScreenTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E6F674EA2AB6B7CD076A7A /* LockInScreenTime.swift */; };
 		5A5057BE8B7475377BAE1F81 /* LockInBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32CCAE5F2044B23352107A9D /* LockInBackend.swift */; };
 		5CA7645304E43E1E7ED6FBC7 /* MivoComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645D07F841D313203C4ECDFC /* MivoComponents.swift */; };
-		5D6DDD75DBC8F85DDBC72834 /* AppPurposeReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C8F5406406FDA90D49D12D /* AppPurposeReport.swift */; };
-		5E7F644086B4AC45BFF59FFB /* SpotAdminView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FB1703A902DDC029DACE16 /* SpotAdminView.swift */; };
 		5EDF876ACF25A46138FF7014 /* CompanionSignals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 214F97BA51D076646279B86A /* CompanionSignals.swift */; };
-		627204F34D11044D49004F0D /* SpotNFCService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 989F3E3D3C56080BB7C83365 /* SpotNFCService.swift */; };
 		62884B7C63533F6C54A081E8 /* CompanionRoamingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C777D6FC08D48F91F44EA47 /* CompanionRoamingTests.swift */; };
-		63A27CAF4DE0412D44CAF62F /* SpotShieldPromptViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE072F1918BDB6C1CE4FF87 /* SpotShieldPromptViews.swift */; };
-		640C7E011844F4B081AC0B94 /* SpotSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05406F03E245541CAF428255 /* SpotSummaryView.swift */; };
-		6668F4B03B79553896BE99A0 /* SpotsHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 746D3211887AF65AF1352E1E /* SpotsHomeView.swift */; };
 		66ED152EB1BA8F28E93E68B0 /* MivoStillModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB849A6750EFB8EE3B66D7D7 /* MivoStillModels.swift */; };
-		678C01AD877B7F9E4B0C38A1 /* SpotShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27BDF0D6ED77801B60EB868 /* SpotShared.swift */; };
 		695F2ADA706BBB4795E28A62 /* CompanionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80AC6B01D32AEC64290A236A /* CompanionState.swift */; };
 		6979B136B8114E63A23C4B7F /* StudyLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35EE732B388547A8B306DC4B /* StudyLogTests.swift */; };
 		6BAD06D2AAE3BCD90CB16471 /* LockInTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F5237B4D24D0EC3AD1694BB /* LockInTests.swift */; };
 		6C0340F1A79DDBDE74E67D9E /* OnboardingWelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */; };
-		6D0F2C5BF972DFA8E85354E4 /* StudyEscape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C105E0B6F20A794C8723A4A /* StudyEscape.swift */; };
 		6E8E27AF5E95DBC3D819044C /* MivoPlusPaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 811830C96EE691E65693D578 /* MivoPlusPaywallView.swift */; };
+		6EA1200BA7212F8384A3155D /* SocialAppsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA77BF487A9BC0ED30090721 /* SocialAppsTests.swift */; };
 		707A0B4D52152A3939D2D621 /* PaperFlightGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8895130E990EB597B08CAECE /* PaperFlightGameView.swift */; };
-		725C0FC7ACCD02E3E096D983 /* GapReceiptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F7E10DE43CB2410B2AE5725 /* GapReceiptView.swift */; };
-		73981CE8FF513851D573C589 /* AppWrapperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF56C7818F43D7D52C3ACAC /* AppWrapperView.swift */; };
+		733D8FFB68109695572A9C0A /* AppPicksViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F45E2A6C6031978108D0EC16 /* AppPicksViews.swift */; };
+		768685F10DFD45D8EF3A149C /* AppWrapperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D224157724E3AE346FAACEC9 /* AppWrapperView.swift */; };
 		77760667BFE5743D9C62BAD0 /* MivoDesignSystemV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F0A0C01AD1E72BD4FA8357 /* MivoDesignSystemV2.swift */; };
 		7CBBF8194ABCF81EC7E3C915 /* CompanionPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD44231BFC8DAE011E86DE0A /* CompanionPersistence.swift */; };
-		7D3094E31B523CD61DEDCC9F /* SocialApps.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C9447830329D477E1001513 /* SocialApps.swift */; };
 		81727F2A1F5179C59A97200C /* GuardHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA71A60C30F6E7A4FF0EB2DF /* GuardHarness.swift */; };
 		8218B40D50CF6E0DD325B24A /* MivoBackendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA2F4449A3AB8AEEE4FA3CB /* MivoBackendService.swift */; };
-		824FF79139D5723E22F3E4C8 /* SpotsPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6DBD1A49D62DA22024AADE /* SpotsPresenter.swift */; };
-		845FCBDD58FFF0956AF8D1EF /* SpotScreenTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9522D192BDFB69E56E3255D /* SpotScreenTime.swift */; };
 		8490515CD6AF2AED0400D0CA /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C7B8AED77B857F5C728E43 /* MainTabView.swift */; };
-		851BAE810F0769D3CA064884 /* PhysicalSpot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 355FFCA131372140D89EB4FD /* PhysicalSpot.swift */; };
+		84C3C709635F57A54DAF786B /* MivoPhotoText.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB65B16652AD236B3319A0AE /* MivoPhotoText.swift */; };
 		855AE97F519D28D9B68F5FE6 /* IntentGameServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78B165420431483ADB1C41CA /* IntentGameServices.swift */; };
 		85C531FD4CDBA12414855B7D /* ReelBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A498934EC3815271FCD551 /* ReelBalanceTests.swift */; };
 		877B96462FABC7EE6EAB85FA /* CompanionBehaviorEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F158B42FAD9B0581E939EBA1 /* CompanionBehaviorEngine.swift */; };
-		885BE5D0DAF419A0E5E068C4 /* SocialAppsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 661838F48ECBF31451F650E4 /* SocialAppsTests.swift */; };
+		8825313E8EA628DD4D9DFE2D /* MivoKnowledge.json in Resources */ = {isa = PBXBuildFile; fileRef = 3B290E90C3735DD17B8C7F7D /* MivoKnowledge.json */; };
 		898C382FB7BBA30CBB52E1C0 /* IntentGameModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC80D1E83507916CB672C84D /* IntentGameModels.swift */; };
 		89B4C80CDA98E1FFEED13276 /* CompanionStateManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F4131BBF5289DB7307C81D /* CompanionStateManagerTests.swift */; };
-		8C9D862B7C64FCCDCBDA232C /* SpotBatchProgrammer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A744F4ED1A32DE68D231D542 /* SpotBatchProgrammer.swift */; };
 		8FBE54A2C1FF294E7FBE7425 /* MivoPlusStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888B49650F54CD46FC1F6C2A /* MivoPlusStore.swift */; };
-		9010523442824157F59BBDCE /* SpotShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27BDF0D6ED77801B60EB868 /* SpotShared.swift */; };
 		9174BF527DE8B59224F7C721 /* CompanionFigureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25145B5AC8BA57669B7DB0D1 /* CompanionFigureView.swift */; };
 		91F6020A8ABC435042A0C98D /* CompanionDeviceActivityAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D82300FE75EFF0052DA4A3ED /* CompanionDeviceActivityAdapter.swift */; };
 		941712E07E901D20C8FB07FE /* LockInShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A99CC36B29A7399AEA55F1 /* LockInShared.swift */; };
-		95DBD14C07AAB1D0DA7EBB03 /* ReelAttentionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BFC42252D052BE2184B6AA7 /* ReelAttentionCard.swift */; };
 		9B82C3CB1DDCF7D5A3F301FA /* ReelBalance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B33F9E75D32D313946CCD61 /* ReelBalance.swift */; };
 		9E95268901DF66CCAE00B28A /* PatternsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37FB156D848A2B34CB4543A9 /* PatternsComponents.swift */; };
 		9F0AE1C02B3D4E5F6A7B8C9D /* AttentionReceiptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0AE1C02B3D4E5F6A7B8C9E /* AttentionReceiptView.swift */; };
+		A2D5D9EB1E0233D987303343 /* StudyEscape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BB9B3F40C41091F2E9F7BA8 /* StudyEscape.swift */; };
 		A51906C752905075915C480C /* ActiveSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */; };
 		A589EA441A1C87556E5664C8 /* ReplayFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 807421B33D06BF0125E6EE91 /* ReplayFeed.swift */; };
 		A79AFA1D32903E9CBBF9E905 /* InterventionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FFED9B21B799AA832E6CD87 /* InterventionView.swift */; };
@@ -146,19 +132,14 @@
 		AA7700022FB7000000000001 /* MivoLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4C69766541743030303031 /* MivoLiveActivityAttributes.swift */; };
 		AA7700032FB7000000000001 /* MivoWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = AA7700142FB7000000000001 /* MivoWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA7700042FB7000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA7700152FB7000000000001 /* PrivacyInfo.xcprivacy */; };
-		AB6C82239EA2E675869C0A18 /* SpotIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0215AB90CF4D1556EBEA166C /* SpotIntents.swift */; };
+		AB4C39A088EA3EC2FC20E5EF /* AttentionJourneyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99C392B606A189574B66A398 /* AttentionJourneyTests.swift */; };
 		AD94D9CF1B8E20453FB159CF /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE58C1D450B8A8660731280 /* RegisterView.swift */; };
-		AF6E8BB768F16EC2C70C6104 /* SpotConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 703D28B097E6BB5166A73FAF /* SpotConnectView.swift */; };
-		AFF6F9C45DAD601C8E74B923 /* AppPicksViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF5BDF0E90E3B9EC96634F49 /* AppPicksViews.swift */; };
 		B2034AE97906840D68F05BDE /* MivoComebackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4AF97403C8A047208EDC3C8 /* MivoComebackTests.swift */; };
 		B3A35A918646FDCE39003303 /* ReplayFeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4371D76AD510ADD58B324420 /* ReplayFeedTests.swift */; };
 		B4D25BE8682426D137DE9AE0 /* AdminSupportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D992B028D9B340EAF65846B9 /* AdminSupportViews.swift */; };
-		B5D794E19E9BA9A607EA496E /* AppUsageCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D3C9B1272A0978C7373C92B /* AppUsageCard.swift */; };
 		B8673D14DBE49CB53B13CFE6 /* CompanionSpeechPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7406C7E9D1869AB1C9D508 /* CompanionSpeechPolicy.swift */; };
 		B8AA70A1F1012D31136AD5D8 /* CompanionBehavior.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E29511BBC37013D48B1683 /* CompanionBehavior.swift */; };
-		B9964977EE64A3E16137CB41 /* SpotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FBC4A0FB27669C235005E3 /* SpotManager.swift */; };
 		B9CA5C2E4E223127ABE9B8EF /* CompanionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80AC6B01D32AEC64290A236A /* CompanionState.swift */; };
-		BBCA42A5AE3204648C9A6749 /* SpotViewParts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27516D27C300C06C6B641774 /* SpotViewParts.swift */; };
 		BC30E9BA296D4CA5389E9E93 /* LockInShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A99CC36B29A7399AEA55F1 /* LockInShared.swift */; };
 		BF59CC167E442BC2B43497F6 /* CompanionSharedSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9592F706D757929CFFFDBC55 /* CompanionSharedSnapshot.swift */; };
 		C12026072000000000000001 /* MivoClearModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C12026072000000000000011 /* MivoClearModels.swift */; };
@@ -168,8 +149,8 @@
 		C13C3612D9D2FCD3B2AE60E9 /* MivoPlusOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 474621BDB027DCB38B77CAC8 /* MivoPlusOffer.swift */; };
 		C278F8A67FD2284E4305B72C /* LockInKeyholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D63191565227A47EA1B61E30 /* LockInKeyholderView.swift */; };
 		C3CA8F094407263800263B0B /* LockInActiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CFDB08CB5F423B8C5C05928 /* LockInActiveView.swift */; };
+		C5176AC7F98C6A353DB94ED1 /* AppPurposeReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EEF3149B2262F8674FFF502 /* AppPurposeReport.swift */; };
 		C5E68EAA26572CE6DDF3B036 /* MivoPlusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B23507F10BDA5A4A656DD920 /* MivoPlusTests.swift */; };
-		C64CA9A4F9CDF4B51FBE1586 /* ReelAttentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F81CD1E0DBEB61A4B3FBDBB7 /* ReelAttentionTests.swift */; };
 		C6C3DD0E863A2F8D790AA962 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1980145C72773894696A7D /* Colors.swift */; };
 		C7C1FF6158939A78E91794FD /* CompanionSharedSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9592F706D757929CFFFDBC55 /* CompanionSharedSnapshot.swift */; };
 		C9ECCDEB890987F6D3586392 /* DropPathGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FA8C6DBD48E13C4A832A96C /* DropPathGameView.swift */; };
@@ -178,16 +159,17 @@
 		CD70CD0FD24EBBFA8706C2F5 /* IntentGamePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4720951B3CC3209DA95981 /* IntentGamePickerView.swift */; };
 		CE1E102675454710D9EB4B52 /* GuardFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA8A2C7E1730650DE9ED21CB /* GuardFixtures.swift */; };
 		CE93E572B6304DDDA24F552E /* LockInShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A99CC36B29A7399AEA55F1 /* LockInShared.swift */; };
-		D33309A7C2FDF8180C697C9A /* SpotShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27BDF0D6ED77801B60EB868 /* SpotShared.swift */; };
 		D373D503347472B5B695C1EA /* MivoStillViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 828DA2A2BB0342F6D08E57FE /* MivoStillViews.swift */; };
+		D5E802FD61E9A04EAB7B6B12 /* MivoKnowledge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A892F043E9C205F7B6231DAD /* MivoKnowledge.swift */; };
+		D6FE78722A3353FDF4595448 /* MivoAskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D5B2353F28EB2A96BC1D4D7 /* MivoAskView.swift */; };
 		D7312060C644D124B483BC72 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 635CBBF06E2D93C93BEFA108 /* Assets.xcassets */; };
 		D73120612FA4000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D73120622FA4000000000001 /* PrivacyInfo.xcprivacy */; };
+		D94602335E4E92143B6CA949 /* ReelAttentionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B0B6E6644AC98FBFEF21C9 /* ReelAttentionCard.swift */; };
+		DB7E413E2481225DE43106BD /* AttentionJourneyViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C5AC24284781B5A97B15BC1 /* AttentionJourneyViews.swift */; };
 		DBBAED45E4F10CBB5AA82D31 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58E201ADEE8016C4085FCEE3 /* LoginView.swift */; };
-		DBCD03F439E89CE1EE2CC018 /* SpotLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9093688F1197CAC86458ACF9 /* SpotLink.swift */; };
 		DD009DF3CBFCB61836C04E7A /* CompanionType.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79395E7940D579FFD807E9B /* CompanionType.swift */; };
 		DF6CE6027BAC2BCE331CE969 /* CompanionType.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79395E7940D579FFD807E9B /* CompanionType.swift */; };
 		E314D16A5CF6230DBD8E3839 /* LockInPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF3534E8185B9472446DE4A8 /* LockInPresenter.swift */; };
-		E3633FC176CF077122674193 /* SpotPreviewHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = B708E015F4FC9E9BDE9DBB0E /* SpotPreviewHost.swift */; };
 		E4AAC9CA9267FAA6F2EC7D59 /* MivoStillService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43962BBE056A66439ECF9B60 /* MivoStillService.swift */; };
 		E6B04AD0F8A477ABD9FF7138 /* InterventionFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0757B6ACB459F5BAF9FBDD0 /* InterventionFlowView.swift */; };
 		E7E5B3193067F3265D187992 /* CompanionSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E9F965C83EDF783F83294F7 /* CompanionSchedule.swift */; };
@@ -196,6 +178,7 @@
 		E8CE5CE448C77CB1FCA80F35 /* OnboardingAppsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBCED7FB0532BE876C8C5A7D /* OnboardingAppsView.swift */; };
 		E8D2538B41FAE8FD031C2BB2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F01D06356BA2A931BF8D65 /* SettingsView.swift */; };
 		EA4603531AB4A7B4D934B2E1 /* LockInPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C6AF0BDD79BD05D3F2DBEA0 /* LockInPersistence.swift */; };
+		EB2476C2D78132017856E9B5 /* AttentionJourney.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADC6DFCD2F38049806780920 /* AttentionJourney.swift */; };
 		ED419F6B18E07552D93F8F41 /* MiloProofChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96EEB58803CB34CE868D1BA5 /* MiloProofChatView.swift */; };
 		EE2026071300000000000001 /* ProductExpansionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2026071300000000000011 /* ProductExpansionModels.swift */; };
 		EE2026071300000000000002 /* ProductExpansionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2026071300000000000012 /* ProductExpansionService.swift */; };
@@ -203,15 +186,17 @@
 		EE2026071300000000000004 /* ProductExpansionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2026071300000000000014 /* ProductExpansionViews.swift */; };
 		EE2026071300000000000005 /* AdminCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2026071300000000000015 /* AdminCenterView.swift */; };
 		EE2026071300000000000006 /* MivoDiagnosticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2026071300000000000016 /* MivoDiagnosticsService.swift */; };
+		EEDF0B3145EEB7D9CB64F0D1 /* MivoAITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B61EFB32F0A8F70BAA1976F /* MivoAITests.swift */; };
 		F00DBEEF00A1B2C3D4E5F601 /* MacPairingSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00DBEEF00A1B2C3D4E5F602 /* MacPairingSettingsView.swift */; };
 		F20554EA95609C4F4D4BC140 /* FocusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FEF55053D9F94D84531716 /* FocusView.swift */; };
 		F23380DB21E827003B323A60 /* LockInHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0601B7765CFE89EC2F8FD22A /* LockInHomeView.swift */; };
+		F366783C7CCD730BD806F4AE /* MivoLockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217EF2BB506791FE20757649 /* MivoLockTests.swift */; };
 		F36E8F0BEF32F3B1A9711946 /* MivoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A68937D8073A75CA7497EFB /* MivoApp.swift */; };
 		F374D5F9B29FAF45819F9771 /* CompanionArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ADAD790E394F9330FC39D3 /* CompanionArtwork.swift */; };
-		F415024FE78E02B98DB6E782 /* SpotNoticeOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351EC92BD44F1E75D36A5C7E /* SpotNoticeOverlay.swift */; };
+		F58F8DE69D4CC6AB40C81E4C /* GapReceiptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7930BA5DC85CD9B6FA1B78AF /* GapReceiptView.swift */; };
+		F623BADF42A82D98E533B72C /* ReelAttentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3CB8FCDDFDD8EED57681E27 /* ReelAttentionTests.swift */; };
 		F6D6D2D67CC25FA4E9F4041D /* CompanionPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 411DDDBCF2B9D372B5EFC5FA /* CompanionPreferences.swift */; };
 		F8711D20FF2EDDFEDEB27BB1 /* CompanionInterventionAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E95C86508338955F8D1513A5 /* CompanionInterventionAdapter.swift */; };
-		F8F4618B945C71DA4C44081D /* ReelAttention.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6FD31E68257861D4F4A86F /* ReelAttention.swift */; };
 		FADCE98282038F1EA0E4CF0E /* LockInViewParts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57EB4D6C5B372F977FDF5062 /* LockInViewParts.swift */; };
 		FAE26FAD7DB83F45610FE0CF /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C9D55C86C1272E866693878E /* Foundation.framework */; };
 		FC1A2B3C4D5E6F7A8B9C0 /* FamilyControlsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D1E1 /* FamilyControlsManager.swift */; };
@@ -292,17 +277,14 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		0215AB90CF4D1556EBEA166C /* SpotIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotIntents.swift; sourceTree = "<group>"; };
-		05406F03E245541CAF428255 /* SpotSummaryView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotSummaryView.swift; sourceTree = "<group>"; };
 		0601B7765CFE89EC2F8FD22A /* LockInHomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInHomeView.swift; sourceTree = "<group>"; };
 		06A99CC36B29A7399AEA55F1 /* LockInShared.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInShared.swift; sourceTree = "<group>"; };
 		08ADAD790E394F9330FC39D3 /* CompanionArtwork.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionArtwork.swift; sourceTree = "<group>"; };
 		09AD9852B9517D6F653CFD17 /* CompanionOnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionOnboardingView.swift; sourceTree = "<group>"; };
+		0B1C3AFE2EE7B8492E338E02 /* MivoLock.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoLock.swift; sourceTree = "<group>"; };
 		0B26CF7A1E3CE8B59CD64843 /* CompanionStateManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionStateManager.swift; sourceTree = "<group>"; };
 		0B7AE910623AA6A67CE4BCCF /* CompanionRoaming.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionRoaming.swift; sourceTree = "<group>"; };
-		0D3C9B1272A0978C7373C92B /* AppUsageCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppUsageCard.swift; sourceTree = "<group>"; };
 		0E2DE554D7F546FD8555BB04 /* ComebackModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComebackModels.swift; sourceTree = "<group>"; };
-		0E58E469B602AB466CDF1333 /* SpotPersistence.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotPersistence.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A4A /* SecureAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureAuthService.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A50 /* ForgotPasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgotPasswordView.swift; sourceTree = "<group>"; };
 		11A1B2C3D4E5F60718293A52 /* HapticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsService.swift; sourceTree = "<group>"; };
@@ -310,11 +292,9 @@
 		12BA70FD3A43F3AF8F3DF1E0 /* CompanionRuntime.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionRuntime.swift; sourceTree = "<group>"; };
 		13E4501CD3B1197981AC3649 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		144566CDAB4531E410210001 /* CompanionPersonality.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionPersonality.swift; sourceTree = "<group>"; };
-		14C1FDB7A9244FD71981D2FF /* SpotSetupFlowView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotSetupFlowView.swift; sourceTree = "<group>"; };
 		14E64F7119F635901C901B63 /* MivoClearRuntimeGuardTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoClearRuntimeGuardTests.swift; sourceTree = "<group>"; };
 		1C6AF0BDD79BD05D3F2DBEA0 /* LockInPersistence.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInPersistence.swift; sourceTree = "<group>"; };
 		1EB2FE8E77778C74C8936BD7 /* HomeComponents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HomeComponents.swift; sourceTree = "<group>"; };
-		1EB94DD1EF8D24E9D7E8E59A /* MivoSpot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoSpot.swift; sourceTree = "<group>"; };
 		203EE6C12F8672FF00CF2F60 /* Mivo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mivo.entitlements; sourceTree = "<group>"; };
 		2095BB2D2FBCE77000CFFA1A /* BLOCKER_FIX_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BLOCKER_FIX_SUMMARY.md; sourceTree = "<group>"; };
 		2095BB2E2FBCE78600CFFA1A /* BLOCKER_TEST_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BLOCKER_TEST_GUIDE.md; sourceTree = "<group>"; };
@@ -330,10 +310,11 @@
 		20F640492FA006DF00F3DDD2 /* ARCHITECTURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ARCHITECTURE.md; sourceTree = "<group>"; };
 		20F6404B2FA0071600F3DDD2 /* README_SCREENTIME.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README_SCREENTIME.md; sourceTree = "<group>"; };
 		214F97BA51D076646279B86A /* CompanionSignals.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionSignals.swift; sourceTree = "<group>"; };
+		217EF2BB506791FE20757649 /* MivoLockTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoLockTests.swift; sourceTree = "<group>"; };
 		24DBB4CDE10143B182E75F61 /* ComebackViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComebackViews.swift; sourceTree = "<group>"; };
 		24E6F674EA2AB6B7CD076A7A /* LockInScreenTime.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInScreenTime.swift; sourceTree = "<group>"; };
 		25145B5AC8BA57669B7DB0D1 /* CompanionFigureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionFigureView.swift; sourceTree = "<group>"; };
-		27516D27C300C06C6B641774 /* SpotViewParts.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotViewParts.swift; sourceTree = "<group>"; };
+		2B61EFB32F0A8F70BAA1976F /* MivoAITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoAITests.swift; sourceTree = "<group>"; };
 		2F1000022FA1000000000001 /* MivoScreenTimeReportExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoScreenTimeReportExtension.swift; sourceTree = "<group>"; };
 		2F1000042FA1000000000001 /* MivoScreenTimeReportExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = MivoScreenTimeReportExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		2F1000082FA1000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -344,16 +325,16 @@
 		34191825CA5D84892229698F /* AIDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDataStore.swift; sourceTree = "<group>"; };
 		34191826CA5D848922296990 /* RemoteAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAuthService.swift; sourceTree = "<group>"; };
 		34FE80C0F2564883B2866027 /* StudyService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StudyService.swift; sourceTree = "<group>"; };
-		351EC92BD44F1E75D36A5C7E /* SpotNoticeOverlay.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotNoticeOverlay.swift; sourceTree = "<group>"; };
-		355FFCA131372140D89EB4FD /* PhysicalSpot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PhysicalSpot.swift; sourceTree = "<group>"; };
 		35EE732B388547A8B306DC4B /* StudyLogTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StudyLogTests.swift; sourceTree = "<group>"; };
 		37143BCF1E6FA4015CC8CB5B /* Mivo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mivo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		37FB156D848A2B34CB4543A9 /* PatternsComponents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PatternsComponents.swift; sourceTree = "<group>"; };
 		38212224C24AA89E5136EBB4 /* CompanionProgress.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionProgress.swift; sourceTree = "<group>"; };
 		39231207C24C2D3F598CFC7A /* CompanionHomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionHomeView.swift; sourceTree = "<group>"; };
+		3A7127F76D094D5E88F148E0 /* SocialApps.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SocialApps.swift; sourceTree = "<group>"; };
+		3B290E90C3735DD17B8C7F7D /* MivoKnowledge.json */ = {isa = PBXFileReference; includeInIndex = 1; path = MivoKnowledge.json; sourceTree = "<group>"; };
 		3B33F9E75D32D313946CCD61 /* ReelBalance.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelBalance.swift; sourceTree = "<group>"; };
-		3BFC42252D052BE2184B6AA7 /* ReelAttentionCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelAttentionCard.swift; sourceTree = "<group>"; };
 		3CFDB08CB5F423B8C5C05928 /* LockInActiveView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInActiveView.swift; sourceTree = "<group>"; };
+		3DA6E12A887E940945457258 /* AppViewModel+AttentionJourney.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "AppViewModel+AttentionJourney.swift"; sourceTree = "<group>"; };
 		3F2000022FA2000000000001 /* MivoShieldConfigurationExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoShieldConfigurationExtension.swift; sourceTree = "<group>"; };
 		3F2000042FA2000000000001 /* MivoShieldConfigurationExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MivoShieldConfigurationExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3F2000082FA2000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -369,9 +350,10 @@
 		411DDDBCF2B9D372B5EFC5FA /* CompanionPreferences.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionPreferences.swift; sourceTree = "<group>"; };
 		4371D76AD510ADD58B324420 /* ReplayFeedTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReplayFeedTests.swift; sourceTree = "<group>"; };
 		43962BBE056A66439ECF9B60 /* MivoStillService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoStillService.swift; sourceTree = "<group>"; };
-		4423A50D4E49C71DBA1B67D6 /* SpotActiveView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotActiveView.swift; sourceTree = "<group>"; };
 		44F0A0C01AD1E72BD4FA8357 /* MivoDesignSystemV2.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoDesignSystemV2.swift; sourceTree = "<group>"; };
+		455B27608640930CFBDA6EC0 /* AppUsageCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppUsageCard.swift; sourceTree = "<group>"; };
 		474621BDB027DCB38B77CAC8 /* MivoPlusOffer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoPlusOffer.swift; sourceTree = "<group>"; };
+		4BB9B3F40C41091F2E9F7BA8 /* StudyEscape.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StudyEscape.swift; sourceTree = "<group>"; };
 		4D4720951B3CC3209DA95981 /* IntentGamePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentGamePickerView.swift; sourceTree = "<group>"; };
 		4D4C69766541743030303031 /* MivoLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoLiveActivityAttributes.swift; sourceTree = "<group>"; };
 		4D56534B4559533030303031 /* MivoScreenTimeKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoScreenTimeKeys.swift; sourceTree = "<group>"; };
@@ -383,37 +365,31 @@
 		4F3000192FA4000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		4F65D20838739BC2351D25A6 /* MivoPlus.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoPlus.swift; sourceTree = "<group>"; };
 		5110DBA288EB7E52E307A661 /* CompanionMessageProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionMessageProvider.swift; sourceTree = "<group>"; };
+		52C698E1E3FB221191DE8FD2 /* MivoLockView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoLockView.swift; sourceTree = "<group>"; };
 		55FEF55053D9F94D84531716 /* FocusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusView.swift; sourceTree = "<group>"; };
 		57EB4D6C5B372F977FDF5062 /* LockInViewParts.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInViewParts.swift; sourceTree = "<group>"; };
 		58E201ADEE8016C4085FCEE3 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		5AF56C7818F43D7D52C3ACAC /* AppWrapperView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppWrapperView.swift; sourceTree = "<group>"; };
-		5C9447830329D477E1001513 /* SocialApps.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SocialApps.swift; sourceTree = "<group>"; };
-		5E6FD31E68257861D4F4A86F /* ReelAttention.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelAttention.swift; sourceTree = "<group>"; };
+		5C5AC24284781B5A97B15BC1 /* AttentionJourneyViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AttentionJourneyViews.swift; sourceTree = "<group>"; };
 		5E9F965C83EDF783F83294F7 /* CompanionSchedule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionSchedule.swift; sourceTree = "<group>"; };
 		5FFED9B21B799AA832E6CD87 /* InterventionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterventionView.swift; sourceTree = "<group>"; };
+		61F3F63E923091AB7D28EAE9 /* MivoAI.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoAI.swift; sourceTree = "<group>"; };
 		635CBBF06E2D93C93BEFA108 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		643C4A985B67F5A8D604FE4F /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
 		645D07F841D313203C4ECDFC /* MivoComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoComponents.swift; sourceTree = "<group>"; };
-		661838F48ECBF31451F650E4 /* SocialAppsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SocialAppsTests.swift; sourceTree = "<group>"; };
 		6726D07686ADCB2962988440 /* MivoClearGuardTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MivoClearGuardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		6849ACC7BE9284A0104FF2F3 /* SpotRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotRegistry.swift; sourceTree = "<group>"; };
 		686E806F9FA14222A617E60D /* AppViewModel+Comeback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppViewModel+Comeback.swift"; sourceTree = "<group>"; };
 		6C777D6FC08D48F91F44EA47 /* CompanionRoamingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionRoamingTests.swift; sourceTree = "<group>"; };
 		6D9C69972DDF4AFBA6B847D5 /* StudyLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StudyLog.swift; sourceTree = "<group>"; };
-		6E370DDD6B01BFB27797A7B5 /* SpotSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotSession.swift; sourceTree = "<group>"; };
-		703D28B097E6BB5166A73FAF /* SpotConnectView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotConnectView.swift; sourceTree = "<group>"; };
 		71F197DDA51BD623DBFED9B1 /* LockInPreviewHost.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInPreviewHost.swift; sourceTree = "<group>"; };
 		71F4131BBF5289DB7307C81D /* CompanionStateManagerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionStateManagerTests.swift; sourceTree = "<group>"; };
 		7227F4AB3D4438B50D9AD672 /* InterventionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterventionsView.swift; sourceTree = "<group>"; };
-		746D3211887AF65AF1352E1E /* SpotsHomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotsHomeView.swift; sourceTree = "<group>"; };
 		746D9E526584247F84DE1F90 /* CompanionSettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionSettingsView.swift; sourceTree = "<group>"; };
 		7631600D8774C3577DF7A52F /* LockInManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInManager.swift; sourceTree = "<group>"; };
 		78B165420431483ADB1C41CA /* IntentGameServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentGameServices.swift; sourceTree = "<group>"; };
+		7930BA5DC85CD9B6FA1B78AF /* GapReceiptView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GapReceiptView.swift; sourceTree = "<group>"; };
 		7A180955A0A07FDEFC1A0BFF /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
 		7BA2F4449A3AB8AEEE4FA3CB /* MivoBackendService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoBackendService.swift; sourceTree = "<group>"; };
-		7C105E0B6F20A794C8723A4A /* StudyEscape.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StudyEscape.swift; sourceTree = "<group>"; };
 		7D7141BD01F69FA19D68CD23 /* ReflectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectionView.swift; sourceTree = "<group>"; };
-		7E6DBD1A49D62DA22024AADE /* SpotsPresenter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotsPresenter.swift; sourceTree = "<group>"; };
 		7F0174C75C336BD623DB83E7 /* OnboardingWelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomeView.swift; sourceTree = "<group>"; };
 		7F7406C7E9D1869AB1C9D508 /* CompanionSpeechPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionSpeechPolicy.swift; sourceTree = "<group>"; };
 		807421B33D06BF0125E6EE91 /* ReplayFeed.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReplayFeed.swift; sourceTree = "<group>"; };
@@ -422,24 +398,23 @@
 		825473780CCF565309E59996 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		828DA2A2BB0342F6D08E57FE /* MivoStillViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoStillViews.swift; sourceTree = "<group>"; };
 		8689F6E5768F5075C9BC7177 /* FocusCardsGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusCardsGameView.swift; sourceTree = "<group>"; };
-		86E67C5DFB25F7596DFEDFAB /* SpotDetailView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotDetailView.swift; sourceTree = "<group>"; };
 		888B49650F54CD46FC1F6C2A /* MivoPlusStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoPlusStore.swift; sourceTree = "<group>"; };
 		8895130E990EB597B08CAECE /* PaperFlightGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperFlightGameView.swift; sourceTree = "<group>"; };
 		8C193C34C28C991E83EE01C1 /* CompanionSideEffects.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionSideEffects.swift; sourceTree = "<group>"; };
-		9093688F1197CAC86458ACF9 /* SpotLink.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotLink.swift; sourceTree = "<group>"; };
+		8D5B2353F28EB2A96BC1D4D7 /* MivoAskView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoAskView.swift; sourceTree = "<group>"; };
+		8EEF3149B2262F8674FFF502 /* AppPurposeReport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppPurposeReport.swift; sourceTree = "<group>"; };
 		924B7B2827ECD025106C3BC8 /* PatternsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatternsView.swift; sourceTree = "<group>"; };
 		9592F706D757929CFFFDBC55 /* CompanionSharedSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionSharedSnapshot.swift; sourceTree = "<group>"; };
 		96EEB58803CB34CE868D1BA5 /* MiloProofChatView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MiloProofChatView.swift; sourceTree = "<group>"; };
-		96FB1703A902DDC029DACE16 /* SpotAdminView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotAdminView.swift; sourceTree = "<group>"; };
-		989F3E3D3C56080BB7C83365 /* SpotNFCService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotNFCService.swift; sourceTree = "<group>"; };
+		99C392B606A189574B66A398 /* AttentionJourneyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AttentionJourneyTests.swift; sourceTree = "<group>"; };
 		9A68937D8073A75CA7497EFB /* MivoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoApp.swift; sourceTree = "<group>"; };
 		9ADF0ACA3D047985442D5E20 /* GoogleAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleAuthService.swift; sourceTree = "<group>"; };
+		9E38C2583400DD9C2931232D /* ReelAttention.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelAttention.swift; sourceTree = "<group>"; };
 		9F0AE1C02B3D4E5F6A7B8C9E /* AttentionReceiptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionReceiptView.swift; sourceTree = "<group>"; };
-		9F7E10DE43CB2410B2AE5725 /* GapReceiptView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GapReceiptView.swift; sourceTree = "<group>"; };
 		A1CB714E29A55740EA836C39 /* ActiveSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionView.swift; sourceTree = "<group>"; };
 		A32F88595EE93F7622346254 /* FocusTimerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerView.swift; sourceTree = "<group>"; };
-		A744F4ED1A32DE68D231D542 /* SpotBatchProgrammer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotBatchProgrammer.swift; sourceTree = "<group>"; };
 		A82228E0BCFCD9DE2A442FB0 /* CompanionWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionWidget.swift; sourceTree = "<group>"; };
+		A892F043E9C205F7B6231DAD /* MivoKnowledge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoKnowledge.swift; sourceTree = "<group>"; };
 		A927AC28F9838387580E5F7C /* WeeklyReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyReportView.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF02 /* MivoRatingPromptService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoRatingPromptService.swift; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF04 /* MivoRatingPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoRatingPromptView.swift; sourceTree = "<group>"; };
@@ -456,18 +431,17 @@
 		AA7700152FB7000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		AA8EC206B90648E6BF4868E3 /* NamePromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamePromptView.swift; sourceTree = "<group>"; };
 		AB849A6750EFB8EE3B66D7D7 /* MivoStillModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoStillModels.swift; sourceTree = "<group>"; };
-		ACE072F1918BDB6C1CE4FF87 /* SpotShieldPromptViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotShieldPromptViews.swift; sourceTree = "<group>"; };
+		ADC6DFCD2F38049806780920 /* AttentionJourney.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AttentionJourney.swift; sourceTree = "<group>"; };
 		AEE46205DC5883F17C28046E /* MeerkatArt.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MeerkatArt.swift; sourceTree = "<group>"; };
-		AF5BDF0E90E3B9EC96634F49 /* AppPicksViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppPicksViews.swift; sourceTree = "<group>"; };
 		B0E29511BBC37013D48B1683 /* CompanionBehavior.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionBehavior.swift; sourceTree = "<group>"; };
 		B18FCF5A727AF997824A3567 /* TimeLoanConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeLoanConfirmationView.swift; sourceTree = "<group>"; };
 		B1C7B8AED77B857F5C728E43 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		B23507F10BDA5A4A656DD920 /* MivoPlusTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoPlusTests.swift; sourceTree = "<group>"; };
 		B333213AB91C0EDF6644B7C3 /* LockInImagePrep.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInImagePrep.swift; sourceTree = "<group>"; };
+		B3CB8FCDDFDD8EED57681E27 /* ReelAttentionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelAttentionTests.swift; sourceTree = "<group>"; };
 		B4AF97403C8A047208EDC3C8 /* MivoComebackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoComebackTests.swift; sourceTree = "<group>"; };
 		B6A5B5AD5658BBDC54B49C03 /* OnboardingWhyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWhyView.swift; sourceTree = "<group>"; };
 		B6F01D06356BA2A931BF8D65 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		B708E015F4FC9E9BDE9DBB0E /* SpotPreviewHost.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotPreviewHost.swift; sourceTree = "<group>"; };
 		B79395E7940D579FFD807E9B /* CompanionType.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionType.swift; sourceTree = "<group>"; };
 		B8A498934EC3815271FCD551 /* ReelBalanceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelBalanceTests.swift; sourceTree = "<group>"; };
 		B9CC8EB50ED4804AB6D4F55A /* LockInModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInModels.swift; sourceTree = "<group>"; };
@@ -475,24 +449,24 @@
 		C12026072000000000000011 /* MivoClearModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoClearModels.swift; sourceTree = "<group>"; };
 		C12026072000000000000012 /* MivoClearService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoClearService.swift; sourceTree = "<group>"; };
 		C12026072000000000000013 /* MivoClearViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoClearViews.swift; sourceTree = "<group>"; };
+		C5B0B6E6644AC98FBFEF21C9 /* ReelAttentionCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelAttentionCard.swift; sourceTree = "<group>"; };
 		C9D55C86C1272E866693878E /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		CA71A60C30F6E7A4FF0EB2DF /* GuardHarness.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GuardHarness.swift; sourceTree = "<group>"; };
+		CA77BF487A9BC0ED30090721 /* SocialAppsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SocialAppsTests.swift; sourceTree = "<group>"; };
 		CA8A2C7E1730650DE9ED21CB /* GuardFixtures.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GuardFixtures.swift; sourceTree = "<group>"; };
 		CD5DE1F0A1B2C3D4E5F6A7B9 /* CrossDeviceFocusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossDeviceFocusService.swift; sourceTree = "<group>"; };
 		CF3534E8185B9472446DE4A8 /* LockInPresenter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInPresenter.swift; sourceTree = "<group>"; };
-		D00DDC7AFBC166A24432A3EF /* MivoSpotsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoSpotsTests.swift; sourceTree = "<group>"; };
 		D06004E82F119C15DB90B9DA /* LockInSetupFlowView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInSetupFlowView.swift; sourceTree = "<group>"; };
+		D224157724E3AE346FAACEC9 /* AppWrapperView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppWrapperView.swift; sourceTree = "<group>"; };
 		D63191565227A47EA1B61E30 /* LockInKeyholderView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockInKeyholderView.swift; sourceTree = "<group>"; };
 		D73120622FA4000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D788F8A4514332CEE98047C1 /* CompanionPauseAccessory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionPauseAccessory.swift; sourceTree = "<group>"; };
 		D82300FE75EFF0052DA4A3ED /* CompanionDeviceActivityAdapter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionDeviceActivityAdapter.swift; sourceTree = "<group>"; };
 		D992B028D9B340EAF65846B9 /* AdminSupportViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AdminSupportViews.swift; sourceTree = "<group>"; };
+		DEAE17A649C77A0BF2F2886C /* MivoLockManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoLockManager.swift; sourceTree = "<group>"; };
 		E1F2EA07F1EA401990BF30BB /* MivoConfettiView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MivoConfettiView.swift; sourceTree = "<group>"; };
 		E26817C81C75C43CE8E5536E /* CompanionDebugPreview.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionDebugPreview.swift; sourceTree = "<group>"; };
 		E5A63C4EAD8A83BB91C7DC04 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		E5C8F5406406FDA90D49D12D /* AppPurposeReport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppPurposeReport.swift; sourceTree = "<group>"; };
-		E8FBC4A0FB27669C235005E3 /* SpotManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotManager.swift; sourceTree = "<group>"; };
-		E9522D192BDFB69E56E3255D /* SpotScreenTime.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotScreenTime.swift; sourceTree = "<group>"; };
 		E95C86508338955F8D1513A5 /* CompanionInterventionAdapter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionInterventionAdapter.swift; sourceTree = "<group>"; };
 		EBCED7FB0532BE876C8C5A7D /* OnboardingAppsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingAppsView.swift; sourceTree = "<group>"; };
 		EE2026071300000000000011 /* ProductExpansionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductExpansionModels.swift; sourceTree = "<group>"; };
@@ -508,9 +482,8 @@
 		F158B42FAD9B0581E939EBA1 /* CompanionBehaviorEngine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionBehaviorEngine.swift; sourceTree = "<group>"; };
 		F1A2B3C4D5E6F7A8B9C0D1E1 /* FamilyControlsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyControlsManager.swift; sourceTree = "<group>"; };
 		F38D4EF6837980CDF13EBFB0 /* LinkedStudy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LinkedStudy.swift; sourceTree = "<group>"; };
-		F27BDF0D6ED77801B60EB868 /* SpotShared.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotShared.swift; sourceTree = "<group>"; };
-		F676E12238F819C8249814A0 /* SpotInsights.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotInsights.swift; sourceTree = "<group>"; };
-		F81CD1E0DBEB61A4B3FBDBB7 /* ReelAttentionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelAttentionTests.swift; sourceTree = "<group>"; };
+		F45E2A6C6031978108D0EC16 /* AppPicksViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppPicksViews.swift; sourceTree = "<group>"; };
+		FB65B16652AD236B3319A0AE /* MivoPhotoText.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MivoPhotoText.swift; sourceTree = "<group>"; };
 		FC80D1E83507916CB672C84D /* IntentGameModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentGameModels.swift; sourceTree = "<group>"; };
 		FD44231BFC8DAE011E86DE0A /* CompanionPersistence.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionPersistence.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -570,25 +543,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		0450D1E54DB3C2AE639E219A /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				4423A50D4E49C71DBA1B67D6 /* SpotActiveView.swift */,
-				703D28B097E6BB5166A73FAF /* SpotConnectView.swift */,
-				86E67C5DFB25F7596DFEDFAB /* SpotDetailView.swift */,
-				351EC92BD44F1E75D36A5C7E /* SpotNoticeOverlay.swift */,
-				14C1FDB7A9244FD71981D2FF /* SpotSetupFlowView.swift */,
-				ACE072F1918BDB6C1CE4FF87 /* SpotShieldPromptViews.swift */,
-				05406F03E245541CAF428255 /* SpotSummaryView.swift */,
-				27516D27C300C06C6B641774 /* SpotViewParts.swift */,
-				746D3211887AF65AF1352E1E /* SpotsHomeView.swift */,
-				B708E015F4FC9E9BDE9DBB0E /* SpotPreviewHost.swift */,
-				96FB1703A902DDC029DACE16 /* SpotAdminView.swift */,
-			);
-			name = Views;
-			path = Views;
-			sourceTree = "<group>";
-		};
 		048F4804EED2B58C3E9D6D8C /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -660,13 +614,15 @@
 				E5A63C4EAD8A83BB91C7DC04 /* Models.swift */,
 				3B33F9E75D32D313946CCD61 /* ReelBalance.swift */,
 				6D9C69972DDF4AFBA6B847D5 /* StudyLog.swift */,
+				0B1C3AFE2EE7B8492E338E02 /* MivoLock.swift */,
 				807421B33D06BF0125E6EE91 /* ReplayFeed.swift */,
 				4F65D20838739BC2351D25A6 /* MivoPlus.swift */,
+				ADC6DFCD2F38049806780920 /* AttentionJourney.swift */,
 				F38D4EF6837980CDF13EBFB0 /* LinkedStudy.swift */,
-				5E6FD31E68257861D4F4A86F /* ReelAttention.swift */,
-				5C9447830329D477E1001513 /* SocialApps.swift */,
-				E5C8F5406406FDA90D49D12D /* AppPurposeReport.swift */,
-				7C105E0B6F20A794C8723A4A /* StudyEscape.swift */,
+				9E38C2583400DD9C2931232D /* ReelAttention.swift */,
+				3A7127F76D094D5E88F148E0 /* SocialApps.swift */,
+				8EEF3149B2262F8674FFF502 /* AppPurposeReport.swift */,
+				4BB9B3F40C41091F2E9F7BA8 /* StudyEscape.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -683,14 +639,17 @@
 			path = Companion;
 			sourceTree = "<group>";
 		};
-		2F0B496661CDBB6C82DD8649 /* Integration */ = {
+		2D2BD1E489E754675C12765A /* AI */ = {
 			isa = PBXGroup;
 			children = (
-				0215AB90CF4D1556EBEA166C /* SpotIntents.swift */,
-				7E6DBD1A49D62DA22024AADE /* SpotsPresenter.swift */,
+				61F3F63E923091AB7D28EAE9 /* MivoAI.swift */,
+				8D5B2353F28EB2A96BC1D4D7 /* MivoAskView.swift */,
+				A892F043E9C205F7B6231DAD /* MivoKnowledge.swift */,
+				FB65B16652AD236B3319A0AE /* MivoPhotoText.swift */,
+				3B290E90C3735DD17B8C7F7D /* MivoKnowledge.json */,
 			);
-			name = Integration;
-			path = Integration;
+			name = AI;
+			path = AI;
 			sourceTree = "<group>";
 		};
 		2F10000B2FA1000000000001 /* MivoScreenTimeReportExtension */ = {
@@ -766,15 +725,17 @@
 				14E64F7119F635901C901B63 /* MivoClearRuntimeGuardTests.swift */,
 				EE6D7A071ECF2164B2613BE9 /* CompanionBehaviorTests.swift */,
 				71F4131BBF5289DB7307C81D /* CompanionStateManagerTests.swift */,
-				D00DDC7AFBC166A24432A3EF /* MivoSpotsTests.swift */,
 				6C777D6FC08D48F91F44EA47 /* CompanionRoamingTests.swift */,
 				B8A498934EC3815271FCD551 /* ReelBalanceTests.swift */,
 				35EE732B388547A8B306DC4B /* StudyLogTests.swift */,
+				217EF2BB506791FE20757649 /* MivoLockTests.swift */,
 				4371D76AD510ADD58B324420 /* ReplayFeedTests.swift */,
 				3F5237B4D24D0EC3AD1694BB /* LockInTests.swift */,
 				B23507F10BDA5A4A656DD920 /* MivoPlusTests.swift */,
-				F81CD1E0DBEB61A4B3FBDBB7 /* ReelAttentionTests.swift */,
-				661838F48ECBF31451F650E4 /* SocialAppsTests.swift */,
+				99C392B606A189574B66A398 /* AttentionJourneyTests.swift */,
+				B3CB8FCDDFDD8EED57681E27 /* ReelAttentionTests.swift */,
+				CA77BF487A9BC0ED30090721 /* SocialAppsTests.swift */,
+				2B61EFB32F0A8F70BAA1976F /* MivoAITests.swift */,
 			);
 			name = MivoClearGuardTests;
 			path = MivoClearGuardTests;
@@ -804,6 +765,7 @@
 				CD5DE1F0A1B2C3D4E5F6A7B9 /* CrossDeviceFocusService.swift */,
 				34191824CA5D84892229698E /* StorageService.swift */,
 				34FE80C0F2564883B2866027 /* StudyService.swift */,
+				DEAE17A649C77A0BF2F2886C /* MivoLockManager.swift */,
 				7A180955A0A07FDEFC1A0BFF /* AIService.swift */,
 				34191825CA5D84892229698F /* AIDataStore.swift */,
 				34191826CA5D848922296990 /* RemoteAuthService.swift */,
@@ -922,24 +884,10 @@
 				13E4501CD3B1197981AC3649 /* Info.plist */,
 				D73120622FA4000000000001 /* PrivacyInfo.xcprivacy */,
 				29F914FF1B701E3429DC592C /* Companion */,
-				C2010C9D77A97E3544C01333 /* Spots */,
 				E84533A51B22CD9D473A345A /* LockIn */,
+				2D2BD1E489E754675C12765A /* AI */,
 			);
 			path = Mivo;
-			sourceTree = "<group>";
-		};
-		99314995FEF8B10D87AB0096 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				1EB94DD1EF8D24E9D7E8E59A /* MivoSpot.swift */,
-				F676E12238F819C8249814A0 /* SpotInsights.swift */,
-				9093688F1197CAC86458ACF9 /* SpotLink.swift */,
-				6E370DDD6B01BFB27797A7B5 /* SpotSession.swift */,
-				F27BDF0D6ED77801B60EB868 /* SpotShared.swift */,
-				355FFCA131372140D89EB4FD /* PhysicalSpot.swift */,
-			);
-			name = Models;
-			path = Models;
 			sourceTree = "<group>";
 		};
 		AA7700402FB7000000000001 /* MivoWidgets */ = {
@@ -963,18 +911,6 @@
 			path = Focus;
 			sourceTree = "<group>";
 		};
-		C2010C9D77A97E3544C01333 /* Spots */ = {
-			isa = PBXGroup;
-			children = (
-				2F0B496661CDBB6C82DD8649 /* Integration */,
-				99314995FEF8B10D87AB0096 /* Models */,
-				D9D173932E3A943F0739AFEA /* Services */,
-				0450D1E54DB3C2AE639E219A /* Views */,
-			);
-			name = Spots;
-			path = Spots;
-			sourceTree = "<group>";
-		};
 		CA2D135868D1CE29E1BD70DA /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -983,20 +919,6 @@
 				7631600D8774C3577DF7A52F /* LockInManager.swift */,
 				1C6AF0BDD79BD05D3F2DBEA0 /* LockInPersistence.swift */,
 				24E6F674EA2AB6B7CD076A7A /* LockInScreenTime.swift */,
-			);
-			name = Services;
-			path = Services;
-			sourceTree = "<group>";
-		};
-		D9D173932E3A943F0739AFEA /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				E8FBC4A0FB27669C235005E3 /* SpotManager.swift */,
-				989F3E3D3C56080BB7C83365 /* SpotNFCService.swift */,
-				0E58E469B602AB466CDF1333 /* SpotPersistence.swift */,
-				E9522D192BDFB69E56E3255D /* SpotScreenTime.swift */,
-				6849ACC7BE9284A0104FF2F3 /* SpotRegistry.swift */,
-				A744F4ED1A32DE68D231D542 /* SpotBatchProgrammer.swift */,
 			);
 			name = Services;
 			path = Services;
@@ -1080,13 +1002,15 @@
 				A927AC28F9838387580E5F7C /* WeeklyReportView.swift */,
 				9F0AE1C02B3D4E5F6A7B8C9E /* AttentionReceiptView.swift */,
 				EE893E1C71304CC8A23F4D42 /* StudySessionView.swift */,
+				52C698E1E3FB221191DE8FD2 /* MivoLockView.swift */,
 				D992B028D9B340EAF65846B9 /* AdminSupportViews.swift */,
 				811830C96EE691E65693D578 /* MivoPlusPaywallView.swift */,
-				3BFC42252D052BE2184B6AA7 /* ReelAttentionCard.swift */,
-				5AF56C7818F43D7D52C3ACAC /* AppWrapperView.swift */,
-				0D3C9B1272A0978C7373C92B /* AppUsageCard.swift */,
-				AF5BDF0E90E3B9EC96634F49 /* AppPicksViews.swift */,
-				9F7E10DE43CB2410B2AE5725 /* GapReceiptView.swift */,
+				5C5AC24284781B5A97B15BC1 /* AttentionJourneyViews.swift */,
+				C5B0B6E6644AC98FBFEF21C9 /* ReelAttentionCard.swift */,
+				D224157724E3AE346FAACEC9 /* AppWrapperView.swift */,
+				455B27608640930CFBDA6EC0 /* AppUsageCard.swift */,
+				F45E2A6C6031978108D0EC16 /* AppPicksViews.swift */,
+				7930BA5DC85CD9B6FA1B78AF /* GapReceiptView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -1096,6 +1020,7 @@
 			children = (
 				643C4A985B67F5A8D604FE4F /* AppViewModel.swift */,
 				686E806F9FA14222A617E60D /* AppViewModel+Comeback.swift */,
+				3DA6E12A887E940945457258 /* AppViewModel+AttentionJourney.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -1353,6 +1278,7 @@
 			files = (
 				D7312060C644D124B483BC72 /* Assets.xcassets in Resources */,
 				D73120612FA4000000000001 /* PrivacyInfo.xcprivacy in Resources */,
+				8825313E8EA628DD4D9DFE2D /* MivoKnowledge.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1369,15 +1295,17 @@
 				46B0EA55E9E95CEDE5F7CF7C /* MivoClearRuntimeGuardTests.swift in Sources */,
 				4A421458D8AA83AF4A95DAD8 /* CompanionBehaviorTests.swift in Sources */,
 				89B4C80CDA98E1FFEED13276 /* CompanionStateManagerTests.swift in Sources */,
-				26A6759AC421BF3415A4F783 /* MivoSpotsTests.swift in Sources */,
 				62884B7C63533F6C54A081E8 /* CompanionRoamingTests.swift in Sources */,
 				85C531FD4CDBA12414855B7D /* ReelBalanceTests.swift in Sources */,
 				6979B136B8114E63A23C4B7F /* StudyLogTests.swift in Sources */,
+				F366783C7CCD730BD806F4AE /* MivoLockTests.swift in Sources */,
 				B3A35A918646FDCE39003303 /* ReplayFeedTests.swift in Sources */,
 				6BAD06D2AAE3BCD90CB16471 /* LockInTests.swift in Sources */,
 				C5E68EAA26572CE6DDF3B036 /* MivoPlusTests.swift in Sources */,
-				C64CA9A4F9CDF4B51FBE1586 /* ReelAttentionTests.swift in Sources */,
-				885BE5D0DAF419A0E5E068C4 /* SocialAppsTests.swift in Sources */,
+				AB4C39A088EA3EC2FC20E5EF /* AttentionJourneyTests.swift in Sources */,
+				F623BADF42A82D98E533B72C /* ReelAttentionTests.swift in Sources */,
+				6EA1200BA7212F8384A3155D /* SocialAppsTests.swift in Sources */,
+				EEDF0B3145EEB7D9CB64F0D1 /* MivoAITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1394,7 +1322,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				3F2000012FA2000000000001 /* MivoShieldConfigurationExtension.swift in Sources */,
-				9010523442824157F59BBDCE /* SpotShared.swift in Sources */,
 				2D8B46B19D1B3C171B010A23 /* LockInShared.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1404,7 +1331,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				3F2001012FA2000000000001 /* MivoShieldActionExtension.swift in Sources */,
-				35784121219223A4B29544E7 /* SpotShared.swift in Sources */,
 				CE93E572B6304DDDA24F552E /* LockInShared.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1450,6 +1376,7 @@
 				4D4C69766541743030303032 /* MivoLiveActivityAttributes.swift in Sources */,
 				0E1F52C1F0D0AB37AD268A05 /* StorageService.swift in Sources */,
 				34BCB42A29F44D4E928B889C /* StudyService.swift in Sources */,
+				3BF2E3287C2C652F5550CF71 /* MivoLockManager.swift in Sources */,
 				3BF38CFF771C4B42265F053C /* AIService.swift in Sources */,
 				0E1F52C2F0D0AB37AD268A06 /* AIDataStore.swift in Sources */,
 				0E1F52C3F0D0AB37AD268A07 /* RemoteAuthService.swift in Sources */,
@@ -1482,6 +1409,7 @@
 				31EA0E76E4C1A150D615DC6F /* WeeklyReportView.swift in Sources */,
 				9F0AE1C02B3D4E5F6A7B8C9D /* AttentionReceiptView.swift in Sources */,
 				A891545F83564CBF99CB4503 /* StudySessionView.swift in Sources */,
+				016C399A395008A794C208B9 /* MivoLockView.swift in Sources */,
 				FC1A2B3C4D5E6F7A8B9C0 /* FamilyControlsManager.swift in Sources */,
 				20F640422FA0065500F3DDD2 /* ScreenTimeUsageView.swift in Sources */,
 				77760667BFE5743D9C62BAD0 /* MivoDesignSystemV2.swift in Sources */,
@@ -1517,34 +1445,10 @@
 				20A82EE6F8B6B67DA6720D84 /* CompanionDebugPreview.swift in Sources */,
 				8218B40D50CF6E0DD325B24A /* MivoBackendService.swift in Sources */,
 				B4D25BE8682426D137DE9AE0 /* AdminSupportViews.swift in Sources */,
-				AB6C82239EA2E675869C0A18 /* SpotIntents.swift in Sources */,
-				824FF79139D5723E22F3E4C8 /* SpotsPresenter.swift in Sources */,
-				527D723D70297566FB7C5D77 /* MivoSpot.swift in Sources */,
-				23F11394D7BE629EDE141AC4 /* SpotInsights.swift in Sources */,
-				DBCD03F439E89CE1EE2CC018 /* SpotLink.swift in Sources */,
-				0AE5BC1D7E5E2B3297766830 /* SpotSession.swift in Sources */,
-				D33309A7C2FDF8180C697C9A /* SpotShared.swift in Sources */,
-				B9964977EE64A3E16137CB41 /* SpotManager.swift in Sources */,
-				627204F34D11044D49004F0D /* SpotNFCService.swift in Sources */,
-				305869F8647D05609226FD0B /* SpotPersistence.swift in Sources */,
-				845FCBDD58FFF0956AF8D1EF /* SpotScreenTime.swift in Sources */,
-				14767C07F56755AAD17FADF1 /* SpotActiveView.swift in Sources */,
-				AF6E8BB768F16EC2C70C6104 /* SpotConnectView.swift in Sources */,
-				26F1AFA134C01CF5F3949E93 /* SpotDetailView.swift in Sources */,
-				F415024FE78E02B98DB6E782 /* SpotNoticeOverlay.swift in Sources */,
-				212BB577E74405134D33F7ED /* SpotSetupFlowView.swift in Sources */,
-				63A27CAF4DE0412D44CAF62F /* SpotShieldPromptViews.swift in Sources */,
-				640C7E011844F4B081AC0B94 /* SpotSummaryView.swift in Sources */,
-				BBCA42A5AE3204648C9A6749 /* SpotViewParts.swift in Sources */,
-				6668F4B03B79553896BE99A0 /* SpotsHomeView.swift in Sources */,
-				E3633FC176CF077122674193 /* SpotPreviewHost.swift in Sources */,
-				851BAE810F0769D3CA064884 /* PhysicalSpot.swift in Sources */,
-				31E854EDB55FF8A59E00706C /* SpotRegistry.swift in Sources */,
-				5E7F644086B4AC45BFF59FFB /* SpotAdminView.swift in Sources */,
-				8C9D862B7C64FCCDCBDA232C /* SpotBatchProgrammer.swift in Sources */,
 				1B2CB2B60C9555AC6B55E4D2 /* CompanionRoaming.swift in Sources */,
 				9B82C3CB1DDCF7D5A3F301FA /* ReelBalance.swift in Sources */,
 				E851AC2AB21F411796B47614 /* StudyLog.swift in Sources */,
+				4BD8BB23F4BC0B05768A97CE /* MivoLock.swift in Sources */,
 				A589EA441A1C87556E5664C8 /* ReplayFeed.swift in Sources */,
 				941712E07E901D20C8FB07FE /* LockInShared.swift in Sources */,
 				3B8B15D01827D1332C40003A /* LockInModels.swift in Sources */,
@@ -1565,16 +1469,23 @@
 				8FBE54A2C1FF294E7FBE7425 /* MivoPlusStore.swift in Sources */,
 				C13C3612D9D2FCD3B2AE60E9 /* MivoPlusOffer.swift in Sources */,
 				6E8E27AF5E95DBC3D819044C /* MivoPlusPaywallView.swift in Sources */,
+				3655C4DB93DD193283207B96 /* MivoAI.swift in Sources */,
+				D6FE78722A3353FDF4595448 /* MivoAskView.swift in Sources */,
+				D5E802FD61E9A04EAB7B6B12 /* MivoKnowledge.swift in Sources */,
+				84C3C709635F57A54DAF786B /* MivoPhotoText.swift in Sources */,
+				EB2476C2D78132017856E9B5 /* AttentionJourney.swift in Sources */,
+				012A9B77700FD63D58AEAB5D /* AppViewModel+AttentionJourney.swift in Sources */,
+				DB7E413E2481225DE43106BD /* AttentionJourneyViews.swift in Sources */,
 				434704D146F37AE0C4F00307 /* LinkedStudy.swift in Sources */,
-				F8F4618B945C71DA4C44081D /* ReelAttention.swift in Sources */,
-				95DBD14C07AAB1D0DA7EBB03 /* ReelAttentionCard.swift in Sources */,
-				7D3094E31B523CD61DEDCC9F /* SocialApps.swift in Sources */,
-				5D6DDD75DBC8F85DDBC72834 /* AppPurposeReport.swift in Sources */,
-				73981CE8FF513851D573C589 /* AppWrapperView.swift in Sources */,
-				B5D794E19E9BA9A607EA496E /* AppUsageCard.swift in Sources */,
-				AFF6F9C45DAD601C8E74B923 /* AppPicksViews.swift in Sources */,
-				6D0F2C5BF972DFA8E85354E4 /* StudyEscape.swift in Sources */,
-				725C0FC7ACCD02E3E096D983 /* GapReceiptView.swift in Sources */,
+				0F6C1419F58861584A1FB2A0 /* ReelAttention.swift in Sources */,
+				D94602335E4E92143B6CA949 /* ReelAttentionCard.swift in Sources */,
+				3528AF259186509BCA6BAAA0 /* SocialApps.swift in Sources */,
+				C5176AC7F98C6A353DB94ED1 /* AppPurposeReport.swift in Sources */,
+				768685F10DFD45D8EF3A149C /* AppWrapperView.swift in Sources */,
+				21C5888922C0F6CE41CFAE72 /* AppUsageCard.swift in Sources */,
+				733D8FFB68109695572A9C0A /* AppPicksViews.swift in Sources */,
+				A2D5D9EB1E0233D987303343 /* StudyEscape.swift in Sources */,
+				F58F8DE69D4CC6AB40C81E4C /* GapReceiptView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1583,7 +1494,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				4F3000012FA3000000000001 /* MivoDeviceActivityMonitorExtension.swift in Sources */,
-				678C01AD877B7F9E4B0C38A1 /* SpotShared.swift in Sources */,
 				BC30E9BA296D4CA5389E9E93 /* LockInShared.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1656,7 +1566,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				MIVO_GOOGLE_CLIENT_ID = "78890007014-eu7ko6ltjbuqlvs5afcsfd0u31795flp.apps.googleusercontent.com";
 				MIVO_GOOGLE_REVERSED_CLIENT_ID = "com.googleusercontent.apps.78890007014-eu7ko6ltjbuqlvs5afcsfd0u31795flp";
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com;
@@ -1685,7 +1595,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoScreenTimeReportExtension;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1714,7 +1624,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoScreenTimeReportExtension;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1762,7 +1672,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoShieldConfigurationExtension;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1791,7 +1701,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoShieldConfigurationExtension;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1820,7 +1730,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoShieldActionExtension;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1849,7 +1759,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoShieldActionExtension;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1878,7 +1788,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoDeviceActivityMonitorExtension;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1907,7 +1817,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoDeviceActivityMonitorExtension;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1936,7 +1846,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				MIVO_GOOGLE_CLIENT_ID = "78890007014-eu7ko6ltjbuqlvs5afcsfd0u31795flp.apps.googleusercontent.com";
 				MIVO_GOOGLE_REVERSED_CLIENT_ID = "com.googleusercontent.apps.78890007014-eu7ko6ltjbuqlvs5afcsfd0u31795flp";
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com;
@@ -1965,7 +1875,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1993,7 +1903,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mivo.com.MivoWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -2118,6 +2028,7 @@
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;

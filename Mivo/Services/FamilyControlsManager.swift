@@ -106,6 +106,14 @@ final class FamilyControlsManager: ObservableObject {
     #if canImport(FamilyControls) && canImport(ManagedSettings)
     @available(iOS 16.0, *)
     func saveFamilyActivitySelection(_ selection: FamilyActivitySelection) {
+        var selection = selection
+        // While Mivo is locked the list can grow but never shrink.
+        if MivoLockManager.holdsOffSwitches() {
+            let current = loadFamilyActivitySelection()
+            selection.applicationTokens.formUnion(current.applicationTokens)
+            selection.categoryTokens.formUnion(current.categoryTokens)
+            selection.webDomainTokens.formUnion(current.webDomainTokens)
+        }
         guard let data = try? JSONEncoder().encode(selection) else { return }
         userDefaults?.set(data, forKey: familyActivitySelectionKey)
         userDefaults?.synchronize()
@@ -186,7 +194,8 @@ final class FamilyControlsManager: ObservableObject {
 
         if !signedIn {
             _ = setMivoSessionActive(false)
-            if #available(iOS 16.0, *) {
+            // A Mivo lock keeps the shields up through a sign-out.
+            if #available(iOS 16.0, *), !MivoLockManager.holdsOffSwitches() {
                 clearImpulseProtection()
             }
         } else if #available(iOS 16.0, *) {
@@ -196,6 +205,11 @@ final class FamilyControlsManager: ObservableObject {
 
     func isSignedInForImpulseProtection() -> Bool {
         userDefaults?.bool(forKey: impulseProtectionSignedInKey) ?? false
+    }
+
+    /// Shields need a signed-in account, unless a Mivo lock is holding them.
+    private func shieldsAllowedForAccount() -> Bool {
+        isSignedInForImpulseProtection() || MivoLockManager.holdsOffSwitches()
     }
 
     func isLearningModeUnlocked() -> Bool {
@@ -611,9 +625,7 @@ final class FamilyControlsManager: ObservableObject {
         content.title = "Mivo Still lock ended"
         content.body = "Your apps are unlocked again."
         content.sound = .default
-        if #available(iOS 15.0, *) {
-            content.interruptionLevel = .timeSensitive
-        }
+        content.interruptionLevel = .timeSensitive
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(delay, 1), repeats: false)
         let request = UNNotificationRequest(identifier: "mivo.still.lock.ended", content: content, trigger: trigger)
         center.add(request, withCompletionHandler: nil)
@@ -856,7 +868,7 @@ func applyCheckInShieldIfSessionActive() {
 
 @available(iOS 16.0, *)
 private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
-    guard isImpulseProtectionEnabled(), isSignedInForImpulseProtection() else {
+    guard isImpulseProtectionEnabled(), shieldsAllowedForAccount() else {
         clearImpulseProtection()
         return
     }
@@ -973,9 +985,7 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
         content.sound = .default
         content.categoryIdentifier = "MIVO_SESSION_ENDED"
         content.userInfo = ["openIntervention": true]
-        if #available(iOS 15.0, *) {
-            content.interruptionLevel = .timeSensitive
-        }
+        content.interruptionLevel = .timeSensitive
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(delay, 1), repeats: false)
         let request = UNNotificationRequest(identifier: "mivo.session.ended", content: content, trigger: trigger)
@@ -996,9 +1006,7 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
         content.sound = .default
         content.categoryIdentifier = "MIVO_SESSION_ENDED"
         content.userInfo = ["openIntervention": true]
-        if #available(iOS 15.0, *) {
-            content.interruptionLevel = .timeSensitive
-        }
+        content.interruptionLevel = .timeSensitive
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(delay, 1), repeats: false)
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
@@ -1027,9 +1035,7 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
         content.sound = .default
         content.categoryIdentifier = "MIVO_SESSION_ENDED"
         content.userInfo = ["mivoRoute": "checkIn"]
-        if #available(iOS 15.0, *) {
-            content.interruptionLevel = .timeSensitive
-        }
+        content.interruptionLevel = .timeSensitive
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(interval, 1), repeats: false)
         let request = UNNotificationRequest(identifier: "mivo.session.checkIn", content: content, trigger: trigger)
@@ -1222,6 +1228,7 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
     }
 
     func setInstagramWrapperEnabled(_ enabled: Bool) {
+        guard enabled || !MivoLockManager.holdsOffSwitches() else { return }
         userDefaults?.set(enabled, forKey: MivoScreenTimeKeys.instagramWrapperEnabled)
         userDefaults?.synchronize()
     }
@@ -1281,6 +1288,8 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
 
     @available(iOS 16.0, *)
     func setImpulseProtectionEnabled(_ enabled: Bool) {
+        // A Mivo lock holds protection on; turning it off waits for the unlock.
+        guard enabled || !MivoLockManager.holdsOffSwitches() else { return }
         userDefaults?.set(enabled, forKey: impulseProtectionEnabledKey)
         userDefaults?.synchronize()
 
@@ -1293,7 +1302,7 @@ private func reapplyShieldForActiveSessionLeaseEnd(source: String) {
 
     @available(iOS 16.0, *)
     func applyImpulseProtectionIfNeeded() {
-        guard isImpulseProtectionEnabled(), isSignedInForImpulseProtection() else {
+        guard isImpulseProtectionEnabled(), shieldsAllowedForAccount() else {
             clearImpulseProtection()
             return
         }

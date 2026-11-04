@@ -164,6 +164,11 @@ final class SupabaseLockInBackend: LockInBackend {
         messages: [LockInMessage],
         images: [Data]
     ) async throws -> MiloReview {
+        // Mivo's own AI server reviews first; the Claude-backed lockin-milo function is the fallback.
+        if MivoAI.isInstalled,
+           let review = try? await MivoAI.shared.reviewProof(task: task, messages: messages, images: images) {
+            return review
+        }
         let payload: ReviewPayload = try await call("lockin-milo", timeout: 50, body: [
             "task": task,
             "started_at": ISO8601DateFormatter().string(from: startedAt),

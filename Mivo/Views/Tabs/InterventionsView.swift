@@ -5,9 +5,8 @@ struct InterventionsView: View {
     var onSessionFinished: (() -> Void)? = nil
 
     @ObservedObject private var expansion = ProductExpansionStore.shared
-    @ObservedObject private var spots = SpotManager.shared
+    @ObservedObject private var mivoLock = MivoLockManager.shared
     @State private var showFlow = false
-    @State private var showActiveSpot = false
 
     var body: some View {
         let attempts = weekAttempts
@@ -27,8 +26,6 @@ struct InterventionsView: View {
                     )
                     .padding(.top, 6)
 
-                    SpotActiveBanner { showActiveSpot = true }
-
                     heroCard
                     weekStatsCard(attempts: attempts, sessions: sessions)
                     todaysSessionsSection
@@ -42,9 +39,6 @@ struct InterventionsView: View {
         .fullScreenCover(isPresented: $showFlow) {
             InterventionFlowView { onSessionFinished?() }
                 .environmentObject(appVM)
-        }
-        .sheet(isPresented: $showActiveSpot) {
-            SpotActiveView()
         }
         .onAppear {
             // The flow's own duration step reads this fresh; a stale value here
@@ -163,6 +157,16 @@ struct InterventionsView: View {
 
             MivoListGroup {
                 setupLink(
+                    icon: mivoLock.isLocked ? "lock.fill" : "lock.open",
+                    label: "Lock Mivo",
+                    value: mivoLock.isLocked ? "Locked" : "Off",
+                    tone: mivoLock.isLocked ? .positive : .muted
+                ) {
+                    MivoLockView()
+                }
+
+                MivoListDivider()
+                setupLink(
                     icon: "checkmark.shield",
                     label: "Apps & Screen Time",
                     value: protectionStateText,
@@ -194,11 +198,6 @@ struct InterventionsView: View {
                 }
 
                 MivoListDivider()
-                setupLink(icon: "mappin.and.ellipse", label: "Mivo Spots", value: spotsStateText) {
-                    SpotsHomeView()
-                }
-
-                MivoListDivider()
                 setupLink(icon: "play.circle", label: "Practice the pause", value: nil) {
                     InterventionView(intention: nil, duration: nil)
                 }
@@ -219,11 +218,6 @@ struct InterventionsView: View {
             MivoListRow(icon: icon, title: label, value: value, valueTone: tone)
         }
         .buttonStyle(MivoRowPressStyle())
-    }
-
-    private var spotsStateText: String? {
-        if let active = spots.activeSession { return "\(active.spotName) on" }
-        return spots.spots.isEmpty ? nil : "\(spots.spots.count)"
     }
 
     private var protectionStateText: String {

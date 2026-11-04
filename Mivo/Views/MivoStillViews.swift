@@ -42,6 +42,10 @@ struct MivoStillFlowView: View {
     /// gone by then.
     @State private var activeLockMinutes = 15
 
+    init(initialMinutes: Int = 25) {
+        _selectedMinutes = State(initialValue: [15, 25, 45, 60].contains(initialMinutes) ? initialMinutes : 25)
+    }
+
     private static let durationOptions: [(value: Int, label: String)] = [
         (15, "15 min"), (25, "25 min"), (45, "45 min"), (60, "60 min")
     ]
@@ -181,7 +185,7 @@ struct MivoStillFlowView: View {
                 started = true
                 if lockModeEnabled {
                     activeLockMinutes = lockModeMinutesValue
-                    _ = FamilyControlsManager.shared.activateStillLock(durationSeconds: activeLockMinutes * 60)
+                    FamilyControlsManager.shared.activateStillLock(durationSeconds: activeLockMinutes * 60)
                     monitor.start(plannedSeconds: Double(activeLockMinutes * 60))
                     CompanionInterventionAdapter.focusBegan(endsAt: Date().addingTimeInterval(Double(activeLockMinutes * 60)))
                     startFocusLiveActivity(minutes: activeLockMinutes)

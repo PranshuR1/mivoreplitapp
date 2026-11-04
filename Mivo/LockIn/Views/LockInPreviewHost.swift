@@ -102,7 +102,7 @@ struct LockInPreviewHost: View {
         }
     }
 
-    static let sampleApps = SpotAppSelection(
+    static let sampleApps = ScreenTimeAppSelection(
         data: nil,
         appNames: ["Instagram", "TikTok", "YouTube"],
         applicationCount: 3,

@@ -112,15 +112,6 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
             return lockInConfiguration(for: lock)
         }
 
-        // ── 1. Mivo Spot ──
-        // A running Spot shields only its own apps, so this applies only when the
-        // tapped app (or its category/site) belongs to the Spot. Copy is calm and
-        // never a dead end: every Spot shield has "Open Mivo", where the Spot can
-        // be ended.
-        if let spot = spotShield(application: applicationToken, category: categoryToken, webDomain: webDomainToken) {
-            return spotConfiguration(for: spot)
-        }
-
         // ── 1.5. Social apps open inside Mivo ──
         // Matches the ShieldAction extension, which sends a chosen app to its
         // window flow ahead of every session state below, so this shield says that.
@@ -182,22 +173,6 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
 
         // ── 4. Approved protected-window experiment ──
         if isProtectedExperimentHour() {
-            if let applicationToken, let clearPlatform = mappedMivoClearPlatform(for: applicationToken) {
-                return ShieldConfiguration(
-                    backgroundBlurStyle: .systemUltraThinMaterialLight,
-                    backgroundColor: cream,
-                    icon: timerIcon(state: .locked),
-                    title: label("This hour is protected", color: textPrimary),
-                    subtitle: label(
-                        "Your approved 7-day experiment keeps the native app locked \(protectedExperimentWindowText()). Mivo Clear stays available.",
-                        color: textMuted
-                    ),
-                    primaryButtonLabel: label("Use Mivo Clear", color: .white),
-                    primaryButtonBackgroundColor: btnBrown,
-                    secondaryButtonLabel: label("Open Mivo", color: textMuted)
-                )
-            }
-
             return ShieldConfiguration(
                 backgroundBlurStyle: .systemUltraThinMaterialLight,
                 backgroundColor: cream,
@@ -227,22 +202,6 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
                 primaryButtonLabel: label("Open Mivo", color: .white),
                 primaryButtonBackgroundColor: btnBrown,
                 secondaryButtonLabel: nil
-            )
-        }
-
-        if let applicationToken, let clearPlatform = mappedMivoClearPlatform(for: applicationToken) {
-            return ShieldConfiguration(
-                backgroundBlurStyle: .systemUltraThinMaterialLight,
-                backgroundColor: cream,
-                icon: timerIcon(state: .locked),
-                title: label("Open \(clearPlatform.title) with less noise", color: textPrimary),
-                subtitle: label(
-                    "Use the focused tools in Mivo Clear, or start a timed session in the native app.",
-                    color: textMuted
-                ),
-                primaryButtonLabel: label("Use Mivo Clear", color: .white),
-                primaryButtonBackgroundColor: btnBrown,
-                secondaryButtonLabel: label("Start timed session", color: textMuted)
             )
         }
 
@@ -362,59 +321,6 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
         )
     }
 
-    // MARK: - Mivo Spots
-
-    /// The running Spot, if it wants a shield right now and covers what was tapped.
-    private func spotShield(
-        application: ApplicationToken?,
-        category: ActivityCategoryToken?,
-        webDomain: WebDomainToken?
-    ) -> SpotLiveState? {
-        let defaults = UserDefaults(suiteName: SpotKeys.appGroup)
-        guard let live = SpotLiveState.read(from: defaults), live.wantsShield(),
-              let data = defaults?.data(forKey: SpotKeys.liveSelection),
-              let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else { return nil }
-        if let application, selection.applicationTokens.contains(application) { return live }
-        if let category, selection.categoryTokens.contains(category) { return live }
-        if let webDomain, selection.webDomainTokens.contains(webDomain) { return live }
-        return nil
-    }
-
-    private func spotConfiguration(for spot: SpotLiveState) -> ShieldConfiguration {
-        let minutesLeft = max(1, Int(ceil(spot.endsAt.timeIntervalSinceNow / 60)))
-        let title: String
-        let subtitle: String
-        let primary: String
-        switch spot.mode {
-        case .pause:
-            title = "\(spot.name) is on"
-            subtitle = "Take a breath first. Open Mivo for a short pause, then decide."
-            primary = "Open Mivo"
-        case .focus:
-            title = "Focus at \(spot.name)"
-            subtitle = "\(minutesLeft) min left. You can end this Spot any time from Mivo."
-            primary = "Open Mivo"
-        case .intention:
-            title = "What did you come here to do?"
-            subtitle = "One quick answer in Mivo, and \(spot.name) won't ask again."
-            primary = "Answer in Mivo"
-        case .awareness:
-            title = "\(spot.name) is on"
-            subtitle = "Open Mivo to see this Spot."
-            primary = "Open Mivo"
-        }
-        return ShieldConfiguration(
-            backgroundBlurStyle: .systemUltraThinMaterialLight,
-            backgroundColor: cream,
-            icon: timerIcon(state: .timer),
-            title: label(title, color: textPrimary),
-            subtitle: label(subtitle, color: textMuted),
-            primaryButtonLabel: label(primary, color: .white),
-            primaryButtonBackgroundColor: btnBrown,
-            secondaryButtonLabel: label("Not now", color: textMuted)
-        )
-    }
-
     // MARK: - Helpers
 
     private func label(_ text: String, color: UIColor) -> ShieldConfiguration.Label {
@@ -434,15 +340,6 @@ final class MivoShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     private enum ClearPlatform: String, CaseIterable {
         case instagram, tiktok, youtube, snapchat
-
-        var title: String {
-            switch self {
-            case .instagram: return "Instagram"
-            case .tiktok: return "TikTok"
-            case .youtube: return "YouTube"
-            case .snapchat: return "Snapchat"
-            }
-        }
     }
 
     private enum IconState {

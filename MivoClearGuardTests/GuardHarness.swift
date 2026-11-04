@@ -153,8 +153,8 @@ extension GuardHarness: WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        guard let payload = message.body as? [String: Any] else { return }
         MainActor.assumeIsolated {
+            guard let payload = message.body as? [String: Any] else { return }
             guard message.name == "mivoClearSingleMedia" else { return }
             messages.append(payload)
             for matcher in messageMatchers where matcher.matches(payload) {

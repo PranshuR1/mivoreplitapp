@@ -41,9 +41,6 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     private let shieldPauseDurationKey = "mivo.shieldPauseDuration"
     private let mivoClearMappingPrefix = "mivo.clear.mapping."
     private let mivoClearEnabledPrefix = "mivo.clear.enabled."
-    private let pendingMivoClearPlatformKey = "mivo.clear.pendingPlatform"
-    private let pendingMivoClearEntryPointKey = "mivo.clear.pendingEntryPoint"
-    private let mivoClearNotificationPrefix = "mivo.clear.open"
     private let crossDeviceFocusActiveKey = "mivo.crossDeviceFocus.active"
     private let crossDeviceFocusEndsAtKey = "mivo.crossDeviceFocus.endsAt"
 
@@ -65,7 +62,6 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
         if handleLockInShield(action: action, application: application, category: nil, webDomain: nil, completionHandler: completionHandler) { return }
-        if handleSpotShield(action: action, application: application, category: nil, webDomain: nil, completionHandler: completionHandler) { return }
         handleShieldAction(action: action, application: application, completionHandler: completionHandler)
     }
 
@@ -75,7 +71,6 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
         if handleLockInShield(action: action, application: nil, category: category, webDomain: nil, completionHandler: completionHandler) { return }
-        if handleSpotShield(action: action, application: nil, category: category, webDomain: nil, completionHandler: completionHandler) { return }
         handleShieldAction(action: action, application: nil, completionHandler: completionHandler)
     }
 
@@ -85,7 +80,6 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
         if handleLockInShield(action: action, application: nil, category: nil, webDomain: webDomain, completionHandler: completionHandler) { return }
-        if handleSpotShield(action: action, application: nil, category: nil, webDomain: webDomain, completionHandler: completionHandler) { return }
         handleShieldAction(action: action, application: nil, completionHandler: completionHandler)
     }
 
@@ -119,6 +113,8 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
             completionHandler(.defer)
         case .secondaryButtonPressed:
             completionHandler(.close)
+        case .firstSecondarySubmenuItemPressed, .secondSecondarySubmenuItemPressed, .thirdSecondarySubmenuItemPressed:
+            completionHandler(.close)
         @unknown default:
             completionHandler(.close)
         }
@@ -143,103 +139,6 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         if #available(iOS 15.0, *) { content.interruptionLevel = .timeSensitive }
         let request = UNNotificationRequest(
             identifier: "\(openMivoNotificationPrefix).lockin.\(Int(Date().timeIntervalSince1970 * 1000))",
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
-    }
-
-    // MARK: - Mivo Spots
-
-    /// A tap on a shield that a running Spot put up. Returns false when the tapped
-    /// thing isn't the Spot's, so the existing Mivo flows handle it exactly as before.
-    ///
-    /// Like every other flow here, the extension can't show UI or reliably open the
-    /// app; it records what was asked for and posts the same "Open Mivo" local
-    /// notification. The app shows the pause / question when it comes forward.
-    private func handleSpotShield(
-        action: ShieldAction,
-        application: ApplicationToken?,
-        category: ActivityCategoryToken?,
-        webDomain: WebDomainToken?,
-        completionHandler: @escaping (ShieldActionResponse) -> Void
-    ) -> Bool {
-        let defaults = UserDefaults(suiteName: SpotKeys.appGroup)
-        guard let live = SpotLiveState.read(from: defaults), live.wantsShield(),
-              spotCovers(defaults: defaults, application: application, category: category, webDomain: webDomain) else {
-            return false
-        }
-        switch action {
-        case .primaryButtonPressed:
-            logger.info("ShieldAction primary: Spot \(live.mode.rawValue) → Open Mivo")
-            requestSpotRoute(live, application: application, defaults: defaults)
-            completionHandler(.defer)
-        case .secondaryButtonPressed:
-            completionHandler(.close)
-        @unknown default:
-            completionHandler(.close)
-        }
-        return true
-    }
-
-    private func spotCovers(
-        defaults: UserDefaults?,
-        application: ApplicationToken?,
-        category: ActivityCategoryToken?,
-        webDomain: WebDomainToken?
-    ) -> Bool {
-        guard let data = defaults?.data(forKey: SpotKeys.liveSelection),
-              let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else { return false }
-        if let application, selection.applicationTokens.contains(application) { return true }
-        if let category, selection.categoryTokens.contains(category) { return true }
-        if let webDomain, selection.webDomainTokens.contains(webDomain) { return true }
-        // This callback is given an app without its category. If the Spot covers
-        // whole categories or sites, an app that isn't in the person's own
-        // protected list is taken to be here because of the Spot.
-        if let application, !selection.categoryTokens.isEmpty || !selection.webDomainTokens.isEmpty {
-            return !loadSelection().applicationTokens.contains(application)
-        }
-        return false
-    }
-
-    private func requestSpotRoute(_ live: SpotLiveState, application: ApplicationToken?, defaults: UserDefaults?) {
-        let route: String
-        switch live.mode {
-        case .pause: route = "pause"
-        case .intention: route = "intention"
-        case .focus, .awareness: route = "status"
-        }
-        defaults?.set(route, forKey: SpotKeys.pendingRoute)
-        defaults?.set(Date().timeIntervalSince1970, forKey: SpotKeys.pendingAt)
-        if let application, let name = Application(token: application).localizedDisplayName {
-            defaults?.set(name, forKey: SpotKeys.pendingAppName)
-        } else {
-            defaults?.removeObject(forKey: SpotKeys.pendingAppName)
-        }
-        defaults?.synchronize()
-
-        if let url = URL(string: "mivo://spot-prompt") {
-            openWithExtensionContextIfAvailable(url)
-        }
-
-        let content = UNMutableNotificationContent()
-        switch live.mode {
-        case .pause:
-            content.title = "A short pause first"
-            content.body = "\(live.name) is on. Tap to open Mivo."
-        case .intention:
-            content.title = "What did you come here to do?"
-            content.body = "Tap to answer in Mivo."
-        case .focus, .awareness:
-            content.title = "\(live.name) is on"
-            content.body = "Tap to open Mivo."
-        }
-        content.sound = .default
-        content.categoryIdentifier = "MIVO_SESSION_ENDED"
-        content.userInfo = ["mivoRoute": SpotKeys.notificationRoute]
-        if #available(iOS 15.0, *) { content.interruptionLevel = .timeSensitive }
-        let request = UNNotificationRequest(
-            identifier: "\(openMivoNotificationPrefix).spot.\(Int(Date().timeIntervalSince1970 * 1000))",
             content: content,
             trigger: nil
         )
@@ -274,8 +173,8 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
                 // On by default: tapping a chosen social app goes straight to
                 // that app's window flow in Mivo, which opens it inside Mivo —
                 // that *is* how the app is used now, not a gate in front of
-                // it. Takes priority over the mid-scroll check-in and Mivo
-                // Clear, since both of those assume the native app opens next.
+                // it. Takes priority over the mid-scroll check-in, which
+                // assumes the native app opens next.
                 logger.info("ShieldAction primary: \(app.rawValue) + wrapper enabled → routing into Mivo")
                 requestAppWindow(app)
                 completionHandler(.defer)
@@ -301,11 +200,6 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
                 requestMidScrollCheckIn(application: application)
                 completionHandler(.defer)
 
-            } else if let application, let platform = mappedMivoClearPlatform(for: application) {
-                logger.info("ShieldAction primary: mapped app → Mivo Clear \(platform.rawValue)")
-                requestMivoClear(platform)
-                completionHandler(.defer)
-
             } else {
                 // The intention and adaptive pause now happen inside Mivo. Keep the
                 // selected app shielded and route there immediately.
@@ -321,19 +215,13 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
             } else if let application, wrapperApp(for: application) != nil, isWrapperEnabled() {
                 // "Not now" on the opens-in-Mivo shield: just leave.
                 completionHandler(.close)
-            } else if let application,
-               mappedMivoClearPlatform(for: application) != nil,
-               !isCountingDownActive(),
-               !isExpiredSessionAwaitingMivo(),
-               !isPendingSetupWithoutSession(),
-               !isSessionActive() {
-                logger.info("ShieldAction secondary: mapped app → timed session setup")
-                openMivoForIntervention()
-                completionHandler(.defer)
             } else {
                 logger.info("ShieldAction secondary: dismiss → .close")
                 completionHandler(.close)
             }
+
+        case .firstSecondarySubmenuItemPressed, .secondSecondarySubmenuItemPressed, .thirdSecondarySubmenuItemPressed:
+            completionHandler(.close)
 
         @unknown default:
             completionHandler(.close)
@@ -341,28 +229,6 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
     }
 
     // MARK: - Countdown helpers
-
-    private func requestMivoClear(_ platform: ClearPlatform) {
-        let defaults = UserDefaults(suiteName: appGroup)
-        defaults?.set(platform.rawValue, forKey: pendingMivoClearPlatformKey)
-        defaults?.set("shield", forKey: pendingMivoClearEntryPointKey)
-        defaults?.synchronize()
-
-        let content = UNMutableNotificationContent()
-        content.title = "Open Mivo Clear"
-        content.body = "Use \(platform.title) without the endless short-form feed."
-        content.sound = .default
-        content.categoryIdentifier = "MIVO_CLEAR"
-        content.userInfo = ["mivoRoute": "mivoClear", "platform": platform.rawValue]
-        if #available(iOS 15.0, *) { content.interruptionLevel = .timeSensitive }
-
-        let request = UNNotificationRequest(
-            identifier: "\(mivoClearNotificationPrefix).\(platform.rawValue).\(Int(Date().timeIntervalSince1970 * 1000))",
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
-    }
 
     private func mappedMivoClearPlatform(for token: ApplicationToken) -> ClearPlatform? {
         guard let defaults = UserDefaults(suiteName: appGroup) else { return nil }
@@ -377,15 +243,6 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
 
     private enum ClearPlatform: String, CaseIterable {
         case instagram, tiktok, youtube, snapchat
-
-        var title: String {
-            switch self {
-            case .instagram: return "Instagram"
-            case .tiktok: return "TikTok"
-            case .youtube: return "YouTube"
-            case .snapchat: return "Snapchat"
-            }
-        }
     }
 
     /// The social app a token belongs to. `Application(token:)` built here
@@ -413,9 +270,9 @@ final class MivoShieldActionExtension: ShieldActionDelegate {
         UserDefaults(suiteName: appGroup)?.object(forKey: instagramWrapperEnabledKey) as? Bool ?? true
     }
 
-    /// Mirrors `requestMivoClear(_:)`'s flag-plus-notification handoff — the
-    /// app picks this up in `checkPendingAppWindowFlag()` on foreground and
-    /// opens that app's window flow.
+    /// A flag-plus-notification handoff — the app picks this up in
+    /// `checkPendingAppWindowFlag()` on foreground and opens that app's window
+    /// flow.
     private func requestAppWindow(_ app: WrapperApp) {
         let defaults = UserDefaults(suiteName: appGroup)
         defaults?.set(app.rawValue, forKey: pendingAppWindowKey)

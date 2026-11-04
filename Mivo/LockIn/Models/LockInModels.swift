@@ -129,6 +129,43 @@ enum LockInPhase: Equatable {
     case released(LockInReleaseReason)
 }
 
+/// The apps a lock covers, as chosen in Apple's picker.
+struct ScreenTimeAppSelection: Codable, Equatable {
+    /// JSON-encoded `FamilyActivitySelection`; nil until apps are chosen.
+    var data: Data?
+    /// Names resolved at selection time. Apple does not guarantee a name for
+    /// every token, so this can be shorter than `applicationCount`.
+    var appNames: [String]
+    var applicationCount: Int
+    var categoryCount: Int
+    var webDomainCount: Int
+
+    static let empty = ScreenTimeAppSelection(
+        data: nil, appNames: [], applicationCount: 0, categoryCount: 0, webDomainCount: 0
+    )
+
+    var isEmpty: Bool { applicationCount + categoryCount + webDomainCount == 0 }
+
+    /// "Instagram, TikTok, YouTube" when every app has a name, otherwise a count.
+    var summary: String {
+        if isEmpty { return "No apps yet" }
+        if applicationCount > 0, appNames.count == applicationCount,
+           categoryCount == 0, webDomainCount == 0 {
+            return Self.joined(appNames, limit: 3)
+        }
+        var parts: [String] = []
+        if applicationCount > 0 { parts.append(applicationCount == 1 ? "1 app" : "\(applicationCount) apps") }
+        if categoryCount > 0 { parts.append(categoryCount == 1 ? "1 category" : "\(categoryCount) categories") }
+        if webDomainCount > 0 { parts.append(webDomainCount == 1 ? "1 site" : "\(webDomainCount) sites") }
+        return parts.joined(separator: " · ")
+    }
+
+    static func joined(_ names: [String], limit: Int) -> String {
+        guard names.count > limit else { return names.joined(separator: ", ") }
+        return names.prefix(limit).joined(separator: ", ") + " +\(names.count - limit)"
+    }
+}
+
 /// One lock, from the moment apps are shielded to the moment they are not.
 struct LockIn: Codable, Equatable, Identifiable {
     let id: String
@@ -137,7 +174,7 @@ struct LockIn: Codable, Equatable, Identifiable {
     /// The check-in time. Never past the safety cap.
     let endsAt: Date
     var keyholder: LockInKeyholder?
-    var apps: SpotAppSelection
+    var apps: ScreenTimeAppSelection
     var messages: [LockInMessage] = []
     /// Milo's one-line account of the evidence, set once Milo is convinced. It is
     /// what a keyholder is shown.

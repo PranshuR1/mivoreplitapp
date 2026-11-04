@@ -38,6 +38,65 @@ enum MivoClearEntryPoint: String, Codable {
     case deepLink = "deep_link"
 }
 
+enum MivoClearJob: String, CaseIterable, Identifiable {
+    case messages, search, create, sharedVideo
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .messages: return "Reply to someone"
+        case .search: return "Look something up"
+        case .create: return "Post something"
+        case .sharedVideo: return "Watch a shared video"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .messages: return "message"
+        case .search: return "magnifyingglass"
+        case .create: return "plus.app"
+        case .sharedVideo: return "play.rectangle"
+        }
+    }
+    var quickActionID: String? { self == .sharedVideo ? nil : rawValue }
+}
+
+/// Only direct media URLs are accepted here. The browser's existing navigation
+/// and single-media guards still enforce the platform rules after navigation.
+enum MivoClearSharedLink {
+    static func route(_ raw: String, entryPoint: MivoClearEntryPoint = .home) -> MivoClearRoute? {
+        guard var components = URLComponents(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              components.scheme?.lowercased() == "https", components.user == nil,
+              components.password == nil, components.port == nil,
+              let host = components.host?.lowercased() else { return nil }
+        let path = components.path
+        let platform: MivoClearPlatform
+        if ["instagram.com", "www.instagram.com", "m.instagram.com"].contains(host) {
+            let parts = path.split(separator: "/")
+            guard parts.count == 2, parts.first == "reel", !parts[1].isEmpty else { return nil }
+            platform = .instagram
+        } else if ["tiktok.com", "www.tiktok.com", "m.tiktok.com"].contains(host) {
+            let parts = path.split(separator: "/")
+            guard parts.count == 3, parts[0].hasPrefix("@"), parts[1] == "video",
+                  !parts[2].isEmpty, parts[2].allSatisfy(\.isNumber) else { return nil }
+            platform = .tiktok
+        } else if ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"].contains(host) {
+            let identifier = host == "youtu.be"
+                ? String(path.dropFirst())
+                : components.queryItems?.first(where: { $0.name == "v" })?.value
+            guard host == "youtu.be" || path == "/watch", let identifier,
+                  identifier.count == 11,
+                  identifier.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) else { return nil }
+            components.host = "www.youtube.com"
+            components.path = "/watch"
+            components.queryItems = [URLQueryItem(name: "v", value: identifier)]
+            platform = .youtube
+        } else { return nil }
+        components.fragment = nil
+        guard let url = components.url else { return nil }
+        return MivoClearRoute(platform: platform, directURL: url, entryPoint: entryPoint)
+    }
+}
+
 enum MivoClearMappingError: LocalizedError {
     case selectOneApp
     case alreadyMapped(MivoClearPlatform)

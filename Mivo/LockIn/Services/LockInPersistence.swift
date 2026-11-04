@@ -13,8 +13,8 @@ protocol LockInPersisting: AnyObject {
     func loadKeyholder() -> LockInKeyholder?
     func saveKeyholder(_ keyholder: LockInKeyholder?)
     /// The apps used for the last lock, offered again next time.
-    func loadLastApps() -> SpotAppSelection?
-    func saveLastApps(_ apps: SpotAppSelection)
+    func loadLastApps() -> ScreenTimeAppSelection?
+    func saveLastApps(_ apps: ScreenTimeAppSelection)
     /// Removes everything stored for the current account.
     func erase()
 }
@@ -52,8 +52,8 @@ final class StorageLockInPersistence: LockInPersisting {
         }
     }
 
-    func loadLastApps() -> SpotAppSelection? { load(SpotAppSelection.self, .mivoLockInLastApps) }
-    func saveLastApps(_ apps: SpotAppSelection) { save(apps, .mivoLockInLastApps) }
+    func loadLastApps() -> ScreenTimeAppSelection? { load(ScreenTimeAppSelection.self, .mivoLockInLastApps) }
+    func saveLastApps(_ apps: ScreenTimeAppSelection) { save(apps, .mivoLockInLastApps) }
 
     func erase() {
         remove(.mivoLockIn)
@@ -90,7 +90,7 @@ final class InMemoryLockInPersistence: LockInPersisting {
     private var current: LockIn?
     private var history: [LockIn] = []
     private var keyholder: LockInKeyholder?
-    private var lastApps: SpotAppSelection?
+    private var lastApps: ScreenTimeAppSelection?
 
     init() {}
 
@@ -100,7 +100,7 @@ final class InMemoryLockInPersistence: LockInPersisting {
     func saveHistory(_ history: [LockIn]) { self.history = history }
     func loadKeyholder() -> LockInKeyholder? { keyholder }
     func saveKeyholder(_ keyholder: LockInKeyholder?) { self.keyholder = keyholder }
-    func loadLastApps() -> SpotAppSelection? { lastApps }
-    func saveLastApps(_ apps: SpotAppSelection) { lastApps = apps }
+    func loadLastApps() -> ScreenTimeAppSelection? { lastApps }
+    func saveLastApps(_ apps: ScreenTimeAppSelection) { lastApps = apps }
     func erase() { current = nil; history = []; keyholder = nil; lastApps = nil }
 }

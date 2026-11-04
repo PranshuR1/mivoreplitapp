@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// Presented when the ShieldAction extension's `requestMidScrollCheckIn()`
 /// sets the pending flag mid-session (see `AppViewModel.checkMidScrollCheckInFlag`).

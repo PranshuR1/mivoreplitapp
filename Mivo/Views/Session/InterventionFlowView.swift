@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 private let flowDurations: [Int] = [5, 10, 15, 30]
 
@@ -18,7 +19,7 @@ private let flowDurations: [Int] = [5, 10, 15, 30]
 /// that were kept intentionally: friction escalates on repeated openings
 /// (asks what pulled you back, then offers a replacement action), a late-night
 /// gate asks for a deliberate yes before unlocking, and a duration cap can
-/// redirect to Mivo Clear entirely when no window is open. These render as a
+/// redirect to messages in Mivo when no window is open. These render as a
 /// light panel under the breathing glow rather than disappearing.
 struct InterventionFlowView: View {
     @EnvironmentObject var appVM: AppViewModel
@@ -53,7 +54,6 @@ struct InterventionFlowView: View {
     @State private var durationLimitNotice: String?
 
     @State private var showOutsideWindowClearPrompt = false
-    @State private var showMivoClear = false
     @State private var showIntentGames = false
     @State private var showSwapConfirm = false
 
@@ -130,9 +130,6 @@ struct InterventionFlowView: View {
         .sheet(isPresented: $showSwapConfirm) {
             swapConfirmSheet
         }
-        .fullScreenCover(isPresented: $showMivoClear, onDismiss: { walkAway() }) {
-            MivoClearHubView().environmentObject(appVM)
-        }
         .fullScreenCover(isPresented: $showIntentGames) {
             if let selectedIntention {
                 IntentGamePickerView(
@@ -142,12 +139,6 @@ struct InterventionFlowView: View {
                         showIntentGames = false
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
                             beginPause(intention: selectedIntention, duration: minutes)
-                        }
-                    },
-                    onUseMivoClear: {
-                        showIntentGames = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                            showMivoClear = true
                         }
                     }
                 )

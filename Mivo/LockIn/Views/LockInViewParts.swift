@@ -146,7 +146,7 @@ struct LockInStatusPill: View {
 
 /// The apps a lock covers, as a short readable line.
 struct LockInAppsLabel: View {
-    let apps: SpotAppSelection
+    let apps: ScreenTimeAppSelection
 
     var body: some View {
         HStack(spacing: 10) {

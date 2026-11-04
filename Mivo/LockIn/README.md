@@ -2,7 +2,7 @@
 
 Name one thing. Mivo shields the person's chosen apps until they have done it and shown Milo. A friend
 (the **keyholder**) can have the last word. It adds no new Screen Time authorization: it shields with a
-`ManagedSettingsStore` of its own (`mivo.lockIn`), the same way Mivo Spots do.
+`ManagedSettingsStore` of its own (`mivo.lockIn`), the same way Still Lock does.
 
 ## How a lock ends
 

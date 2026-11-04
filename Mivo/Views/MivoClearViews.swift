@@ -211,9 +211,20 @@ struct MivoClearHubView: View {
     @State private var showTutorial = false
     @State private var showAgeConfirmation = false
     @State private var ageBlocked = false
+    @State private var selectedJob: MivoClearJob = .messages
+    @State private var isLoadingTools = true
+    @State private var sharedLink = ""
+    @State private var jobError: String?
+    @State private var showVisitCheckIn = false
+    @State private var returnToDay = false
+    @State private var showPlus = false
+    @ObservedObject private var plus = MivoPlusStore.shared
 
     init(initialRoute: MivoClearRoute? = nil) {
         self.initialRoute = initialRoute
+        _selectedJob = State(initialValue: initialRoute?.directURL != nil
+                            ? .sharedVideo
+                            : (MivoClearJob(rawValue: initialRoute?.quickActionID ?? "") ?? .messages))
     }
 
     var body: some View {
@@ -223,9 +234,16 @@ struct MivoClearHubView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 16) {
                         intro
-                        ForEach(MivoClearPlatform.supportedCases) { platform in
-                            platformRow(platform)
+                        jobPicker
+                        jobActions
+                        DisclosureGroup("All tools by platform") {
+                            VStack(spacing: 14) {
+                                ForEach(MivoClearPlatform.supportedCases) { platform in
+                                    platformRow(platform)
+                                }
+                            }.padding(.top, 12)
                         }
+                        if let jobError { Text(jobError).font(.system(size: 13)).foregroundColor(MivoColors.timerRed) }
                         usageCard
                         privacyCard
                     }
@@ -243,12 +261,14 @@ struct MivoClearHubView: View {
             }
         }
         .task {
+            isLoadingTools = true
             await ProductExpansionStore.shared.prepare(for: appVM)
             await store.prepare(for: appVM)
+            isLoadingTools = false
             guard let initialRoute else { return }
             open(initialRoute)
         }
-        .fullScreenCover(item: $selectedRoute) { route in
+        .fullScreenCover(item: $selectedRoute, onDismiss: { showVisitCheckIn = true }) { route in
             if let platform = route.platform,
                let config = store.configuration(for: platform) {
                 switch platform {
@@ -268,21 +288,42 @@ struct MivoClearHubView: View {
                 MivoClearUnavailableView()
             }
         }
-        .sheet(isPresented: $showDisclosure) {
+        .sheet(isPresented: $showPlus) { MivoPlusPaywallView(feature: .mivoClear) }
+        .sheet(isPresented: $showVisitCheckIn, onDismiss: {
+            if returnToDay {
+                returnToDay = false
+                dismiss()
+            }
+        }) {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Finished what you came for?").font(.system(size: 25, weight: .bold))
+                Text("You can head back to your day or choose another specific task.")
+                    .foregroundColor(MivoColors.inkBody)
+                MivoPrimaryButton(label: "Back to my day") {
+                    returnToDay = true
+                    showVisitCheckIn = false
+                }
+                Button("Choose another task") { showVisitCheckIn = false }
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .padding(24)
+            .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showDisclosure, onDismiss: {
+            if store.hasSeenDisclosure() { continueAfterDisclosure() }
+        }) {
             MivoClearDisclosureView {
                 store.acceptDisclosure()
                 showDisclosure = false
-                continueAfterDisclosure()
             }
             .interactiveDismissDisabled()
         }
-        .fullScreenCover(isPresented: $showTutorial) {
+        .fullScreenCover(isPresented: $showTutorial, onDismiss: {
+            if store.hasCompletedTutorial() { continueOpening() }
+        }) {
             MivoClearTutorialView {
                 store.completeTutorial()
                 showTutorial = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    continueOpening()
-                }
             }
             .interactiveDismissDisabled()
         }
@@ -318,7 +359,7 @@ struct MivoClearHubView: View {
             Label("Useful social tools. Less automatic scrolling.", systemImage: "sparkles")
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundColor(MivoColors.textPrimary)
-            Text("Your native social apps stay protected. Choose what you came to do and Mivo opens the focused version.")
+            Text("Choose what you came to do. Mivo opens a filtered social website here. Native app protection is managed separately with your Screen Time selections.")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(MivoColors.textSecondary)
                 .lineSpacing(3)
@@ -327,6 +368,78 @@ struct MivoClearHubView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(MivoColors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var jobPicker: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("What did you come here to do?").font(.system(size: 23, weight: .bold))
+            ForEach(MivoClearJob.allCases) { job in
+                Button {
+                    selectedJob = job
+                    jobError = nil
+                } label: {
+                    HStack(spacing: 12) {
+                        Label(job.title, systemImage: job.icon)
+                        Spacer(minLength: 4)
+                        Image(systemName: selectedJob == job ? "checkmark.circle.fill" : "circle")
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(MivoColors.ink)
+                    .padding(14)
+                    .background(selectedJob == job ? MivoColors.surfaceV2 : MivoColors.surfaceRaised)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selectedJob == job ? .isSelected : [])
+            }
+        }
+    }
+
+    @ViewBuilder private var jobActions: some View {
+        if isLoadingTools {
+            ProgressView("Getting Clear ready")
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+        } else if selectedJob == .sharedVideo {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("Paste a direct video link", text: $sharedLink)
+                    .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .padding(14).background(MivoColors.surfaceRaised)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                Text("An Instagram Reel, a TikTok /video/ link, or a YouTube watch link. Shortened TikTok links and YouTube Shorts aren't supported here.")
+                    .font(.system(size: 12)).foregroundColor(MivoColors.inkMuted)
+                MivoPrimaryButton(label: "Open this video", disabled: sharedLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+                    guard let route = MivoClearSharedLink.route(sharedLink) else {
+                        jobError = "Use a direct video link from one of the supported platforms."
+                        return
+                    }
+                    open(route)
+                }
+            }
+        } else {
+            if availableJobPlatforms.isEmpty {
+                Text("This task is temporarily unavailable. Try another task, check the tools below, or come back later.")
+                    .font(.system(size: 13)).foregroundColor(MivoColors.inkBody)
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(MivoColors.surfaceRaised)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            ForEach(availableJobPlatforms) { platform in
+                if let configuration = store.configuration(for: platform),
+                   let action = configuration.userFacingQuickActions.first(where: { $0.id == selectedJob.quickActionID }) {
+                    MivoPrimaryButton(label: "\(action.title) · \(platform.title)") {
+                        open(MivoClearRoute(platform: platform, quickActionID: action.id, entryPoint: .home))
+                    }
+                }
+            }
+        }
+    }
+
+    private var availableJobPlatforms: [MivoClearPlatform] {
+        guard let actionID = selectedJob.quickActionID else { return [] }
+        return MivoClearPlatform.supportedCases.filter { platform in
+            store.configuration(for: platform)?.userFacingQuickActions.contains(where: { $0.id == actionID }) == true
+        }
     }
 
     private func platformRow(_ platform: MivoClearPlatform) -> some View {
@@ -430,7 +543,15 @@ struct MivoClearHubView: View {
     }
 
     private func open(_ route: MivoClearRoute) {
-        guard store.configuration(for: route.platform ?? .instagram) != nil else { return }
+        guard MivoPlusAccess.allows(isPlus: plus.isPlus, isAdmin: appVM.isAdminUser) else {
+            showPlus = true
+            return
+        }
+        guard store.configuration(for: route.platform ?? .instagram) != nil else {
+            jobError = "This platform is temporarily unavailable. Try another task or return later."
+            return
+        }
+        jobError = nil
         switch store.isEligible(profile: appVM.onboardingProfile) {
         case .some(false): ageBlocked = true
         case .none: showAgeConfirmation = true; pendingRoute = route
@@ -457,14 +578,8 @@ struct MivoClearHubView: View {
     }
 
     private func continueAfterDisclosure() {
-        let needsTutorial = !store.hasCompletedTutorial()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            if needsTutorial {
-                showTutorial = true
-            } else {
-                continueOpening()
-            }
-        }
+        if !store.hasCompletedTutorial() { showTutorial = true }
+        else { continueOpening() }
     }
 
     private func platformDescription(_ platform: MivoClearPlatform) -> String {

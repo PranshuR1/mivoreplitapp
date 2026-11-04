@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct MainTabView: View {
     @EnvironmentObject var appVM: AppViewModel
@@ -13,7 +14,6 @@ struct MainTabView: View {
     @State private var openExpiredAddTimeImmediately = false
     @State private var completedExperimentForReview: WeeklyExperiment?
     @State private var deferredExperimentReviewID: String?
-    @State private var showPostOnboardingPaywall = false
 
     init(initialTab: Int = 0) {
         _selectedTab = State(initialValue: initialTab)
@@ -50,10 +50,6 @@ struct MainTabView: View {
             )
                 .environmentObject(appVM)
                 .interactiveDismissDisabled()
-        }
-        .fullScreenCover(item: $appVM.pendingMivoClearRoute) { route in
-            MivoClearHubView(initialRoute: route)
-                .environmentObject(appVM)
         }
         .fullScreenCover(item: $appVM.pendingSessionFeedback) { feedback in
             ReflectionView(
@@ -106,11 +102,11 @@ struct MainTabView: View {
             InterventionFlowView(preselectedApp: request.app) {}
                 .environmentObject(appVM)
         }
-        .fullScreenCover(isPresented: $showPostOnboardingPaywall) {
+        .fullScreenCover(isPresented: $appVM.showPlusPrompt) {
             MivoPlusPaywallView()
                 .environmentObject(appVM)
         }
-        .task { await presentPostOnboardingPaywallIfDue() }
+        .task { await presentPlusPromptIfDue() }
         .sheet(isPresented: $appVM.showRatingPrompt) {
             MivoRatingPromptView()
                 .environmentObject(appVM)
@@ -183,7 +179,6 @@ struct MainTabView: View {
             selectedTab = 3
             requestedAdminUser = AdminUserRoute(id: userID)
         }
-        .spotsPresentation()
         .lockInPresentation()
         .studyPresentation()
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: tutorialStep)
@@ -276,7 +271,6 @@ struct MainTabView: View {
                 await loadAnnouncement()
             }
             routePendingAdminNotification()
-            appVM.checkPendingMivoClearRoute()
 
             if shouldShowTutorial {
                 selectedTab = currentTutorialStep.tab
@@ -285,6 +279,9 @@ struct MainTabView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            // A paywall left open would block a shield's check-in from
+            // presenting when the person comes back, so it closes on leaving.
+            if phase == .background { appVM.showPlusPrompt = false }
             guard phase == .active, !shouldShowTutorial else { return }
             // Defense in depth: every time Mivo becomes active, re-check whether
             // the session has expired in the background and apply shields immediately.
@@ -301,7 +298,6 @@ struct MainTabView: View {
             appVM.checkDeepLinkInterventionFlag()   // pick up flag written by shield extension
             appVM.checkMidScrollCheckInFlag()
             appVM.checkPendingAppWindowFlag()
-            appVM.checkPendingMivoClearRoute()
             routeForForegroundOpen()
             appVM.scheduleTimeTruthNotification()
             appVM.scheduleDailyScrollScheduleNotification()
@@ -321,6 +317,7 @@ struct MainTabView: View {
                 await MivoBackendService.logEvent("app_open")
                 await loadAnnouncement()
             }
+            Task { await presentPlusPromptIfDue(afterSeconds: 2.5) }
             routePendingAdminNotification()
         }
         .onReceive(adminRolePoller) { _ in
@@ -342,6 +339,7 @@ struct MainTabView: View {
             appVM.evaluateScrollGoalPrompt()
             appVM.evaluateGoalForecastPrompt()
             appVM.evaluateAppPicksPrompt()
+            Task { await presentPlusPromptIfDue(afterSeconds: 0) }
             appVM.evaluateRatingPrompt()
             appVM.evaluateSwapPrompt()
             appVM.evaluateNamePrompt()
@@ -349,7 +347,6 @@ struct MainTabView: View {
             presentCompletedExperimentReviewIfNeeded()
             Task {
                 await ProductExpansionStore.shared.prepare(for: appVM)
-                await MivoClearStore.shared.prepare(for: appVM)
             }
         }
         .onReceive(pendingInterventionPoller) { _ in
@@ -373,10 +370,6 @@ struct MainTabView: View {
             guard action != nil, !shouldShowTutorial else { return }
             routeToLiveActivityActionIfNeeded()
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("mivoClearRequested"))) { _ in
-            guard !shouldShowTutorial else { return }
-            appVM.checkPendingMivoClearRoute()
-        }
         .onChange(of: tutorialStep) { _, newValue in
             let safeIndex = min(max(0, newValue), tutorialSteps.count - 1)
             selectedTab = tutorialSteps[safeIndex].tab
@@ -399,21 +392,27 @@ struct MainTabView: View {
         }
     }
 
-    /// Opens the Mivo Plus paywall once, right after onboarding. A cover that is
-    /// already true when this view first appears is easy for SwiftUI to drop, so
-    /// the flag is stored and the cover is opened here after the screen settles.
-    /// Anyone who already has Plus is not shown it.
-    private func presentPostOnboardingPaywallIfDue() async {
-        let flag = PostOnboardingPaywall()
-        guard flag.isDue(account: appVM.user?.email) else { return }
+    /// Opens the Mivo Plus paywall right after onboarding and then every
+    /// `PlusPromptSchedule.gap` (on launch, on coming back, or on the minute
+    /// poll). A cover that is already true when this view first appears is easy
+    /// for SwiftUI to drop, so it waits for the screen to settle, and it never
+    /// lands on the shield's Interventions tab or on top of anything presented.
+    private func presentPlusPromptIfDue(afterSeconds delay: Double = 0.8) async {
         MivoPlusStore.shared.start()
-        try? await Task.sleep(nanoseconds: 800_000_000)
-        guard !Task.isCancelled else { return }
-        let account = appVM.user?.email
-        guard flag.isDue(account: account) else { return }
-        flag.clear(account: account)
-        guard !MivoPlusAccess.allows(isPlus: MivoPlusStore.shared.isPlus, isAdmin: appVM.isAdminUser) else { return }
-        showPostOnboardingPaywall = true
+        if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+        guard !Task.isCancelled, scenePhase == .active, selectedTab != 2, !isPresentingAnything() else { return }
+        appVM.evaluatePlusPrompt()
+    }
+
+    /// True while any sheet or cover is already up, such as a study session,
+    /// a Lock in screen, or another prompt.
+    private func isPresentingAnything() -> Bool {
+        let root = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .rootViewController
+        return root?.presentedViewController != nil
     }
 
     private var shouldShowTutorial: Bool {
@@ -555,13 +554,12 @@ struct MainTabView: View {
 
     /// A shield's "Open Mivo" means "start a window", so the flow opens right
     /// away on its first question (which app), unless something that has to
-    /// come first is already up: a session to review, a check-in, Mivo Clear.
+    /// come first is already up: a session to review or a check-in.
     private func openWindowFlowIfClear() {
         guard appVM.pendingAppWindow == nil,
               appVM.pendingExpiredRunningSession == nil,
               appVM.pendingSessionFeedback == nil,
               appVM.pendingResumedActiveSession == nil,
-              appVM.pendingMivoClearRoute == nil,
               !appVM.pendingMidScrollCheckIn else { return }
         appVM.pendingAppWindow = AppWindowRequest(app: nil)
     }
@@ -1737,14 +1735,6 @@ private struct AppTutorialStep: Identifiable {
             buttonTitle: "Continue", requiresDemo: false, demoCompletion: nil, requiresScreenTimeAccess: false
         ),
         AppTutorialStep(
-            id: 15, tab: 0, icon: "sparkles.rectangle.stack.fill", eyebrow: "Mivo Clear", title: "Use social tools without the feed",
-            body: "Map Instagram, TikTok, or YouTube once. The native app stays protected while Mivo Clear keeps useful actions available.",
-            shortBody: "Try the sample mapping, then choose a focused shortcut instead of opening an endless short-form feed.",
-            bullets: ["Messages, profile, and posting", "A shared reel returns you to the chat", "Device-only app mappings"],
-            hint: "Tap the demo to map Instagram and open Messages.", targetLabel: "Mivo Clear setup", focus: .middle,
-            buttonTitle: "Continue", requiresDemo: true, demoCompletion: "Instagram mapped. The shield would now offer Mivo Clear, and Messages would open as the focused destination.", requiresScreenTimeAccess: false
-        ),
-        AppTutorialStep(
             id: 11, tab: 2, icon: "waveform.path.ecg", eyebrow: "Final Step", title: "Connect Screen Time",
             body: "Screen Time access lets Mivo measure real usage, run the observation, protect selected apps, and enforce your schedule.",
             shortBody: "Allow access once so the core Mivo experience can work accurately.",
@@ -1983,8 +1973,6 @@ private struct AppTutorialTarget: View {
             personalControlsPreview
         case 10:
             privacySharingPreview
-        case 15:
-            mivoClearPreview
         case 11:
             screenTimePreview
         case 12, 13:
@@ -2032,18 +2020,6 @@ private struct AppTutorialTarget: View {
             demoHeader("Today’s Guide", subtitle: "One useful next action")
             demoRow("Truth check", value: "Ready", selected: true)
             miniProgress(title: "Today’s plan is ready", progress: 0.52)
-        }
-    }
-
-    private var mivoClearPreview: some View {
-        demoStack {
-            demoHeader("Mivo Clear", subtitle: demoCompleted ? "Instagram mapped" : "Choose one native app")
-            demoRow("Instagram", value: demoCompleted ? "Mapped" : "Map", selected: true)
-            HStack(spacing: 7) {
-                miniPill("Messages", selected: demoCompleted)
-                miniPill("Following", selected: false)
-                miniPill("Post", selected: false)
-            }
         }
     }
 

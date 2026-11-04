@@ -9,7 +9,6 @@ import SwiftUI
 struct IntentGamePickerView: View {
     let intention: Intention
     let onSessionReady: (Int) -> Void
-    let onUseMivoClear: () -> Void
 
     @EnvironmentObject private var appVM: AppViewModel
     @Environment(\.dismiss) private var dismiss
@@ -130,7 +129,6 @@ struct IntentGamePickerView: View {
             onSessionReady: { minutes in
                 onSessionReady(minutes)
             },
-            onUseMivoClear: onUseMivoClear,
             onExit: { dismiss() }
         )
     }
@@ -205,7 +203,6 @@ struct DailyTimeBalanceView: View {
 struct IntentGameContainerView: View {
     let gameType: IntentGameType
     let onSessionReady: (Int) -> Void
-    let onUseMivoClear: () -> Void
     let onExit: () -> Void
 
     @EnvironmentObject private var appVM: AppViewModel
@@ -216,8 +213,6 @@ struct IntentGameContainerView: View {
     @State private var result: IntentGameResult?
     @State private var penaltyApplication: DropPathPenaltyApplication?
     private let sessionID = UUID().uuidString.lowercased()
-
-    private var mivoClearEligible: Bool { ProductExpansionStore.shared.isEnabled(.mivoClear) }
 
     var body: some View {
         Group {
@@ -281,8 +276,7 @@ struct IntentGameContainerView: View {
             } else if appVM.isHardProtectionActive() {
                 ProtectedTimeActiveView(
                     result: result,
-                    onStayProtected: onExit,
-                    onUseMivoClear: mivoClearEligible ? onUseMivoClear : nil
+                    onStayProtected: onExit
                 )
             } else {
                 let needed = result.awardedMinutes - todayRemaining
@@ -302,8 +296,7 @@ struct IntentGameContainerView: View {
                         )
                         onSessionReady(todayRemaining + borrowMinutes)
                     },
-                    onDecline: onExit,
-                    onUseMivoClear: mivoClearEligible ? onUseMivoClear : nil
+                    onDecline: onExit
                 )
             }
         }
@@ -427,7 +420,6 @@ struct IntentGameResultView: View {
 struct ProtectedTimeActiveView: View {
     let result: IntentGameResult
     let onStayProtected: () -> Void
-    let onUseMivoClear: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -448,12 +440,7 @@ struct ProtectedTimeActiveView: View {
                 .lineSpacing(13.5 * 0.5)
                 .frame(maxWidth: 280)
             Spacer()
-            if let onUseMivoClear {
-                MivoPrimaryButton(label: "Use Mivo Clear instead", action: onUseMivoClear)
-                MivoTertiaryButton(label: "Stay protected", action: onStayProtected)
-            } else {
-                MivoPrimaryButton(label: "Stay protected", action: onStayProtected)
-            }
+            MivoPrimaryButton(label: "Stay protected", action: onStayProtected)
         }
         .padding(.horizontal, MivoMetrics.screenPadding)
         .padding(.bottom, 24)

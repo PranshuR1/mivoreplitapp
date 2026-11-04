@@ -36,7 +36,7 @@ final class LockInManager: ObservableObject {
         current: LockIn?,
         history: [LockIn] = [],
         keyholder: LockInKeyholder? = nil,
-        lastApps: SpotAppSelection = .empty
+        lastApps: ScreenTimeAppSelection = .empty
     ) {
         self.current = current
         self.history = history
@@ -52,7 +52,7 @@ final class LockInManager: ObservableObject {
     @Published private(set) var history: [LockIn] = []
     @Published private(set) var keyholder: LockInKeyholder?
     /// The apps chosen for the last lock, offered again for the next one.
-    @Published private(set) var lastApps: SpotAppSelection = .empty
+    @Published private(set) var lastApps: ScreenTimeAppSelection = .empty
     /// Milo is reading the latest message.
     @Published private(set) var isReviewing = false
     /// A lock that just ended, shown once as a wrap-up.
@@ -99,6 +99,7 @@ final class LockInManager: ObservableObject {
     var isLocked: Bool { current != nil }
     var isScreenTimeAuthorized: Bool { screenTime.isAuthorized }
     var isBackendAvailable: Bool { backend.isAvailable }
+    var accountEmail: String? { loadedEmail }
 
     // MARK: Account
 
@@ -159,7 +160,7 @@ final class LockInManager: ObservableObject {
     func start(
         task rawTask: String,
         durationMinutes: Int,
-        apps: SpotAppSelection
+        apps: ScreenTimeAppSelection
     ) -> LockInStartResult {
         guard current == nil else { return .alreadyLocked }
         guard let task = LockInRules.cleanTask(rawTask) else { return .invalidTask }

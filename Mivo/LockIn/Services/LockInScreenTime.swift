@@ -85,6 +85,33 @@ final class NoopLockInScreenTime: LockInScreenTimeControlling {
 
 #if canImport(FamilyControls) && canImport(ManagedSettings) && canImport(DeviceActivity)
 
+// MARK: - Selection bridging
+
+extension ScreenTimeAppSelection {
+    /// Captures a picker selection: the persisted data, plus counts and
+    /// best-effort names for showing it back.
+    init(_ selection: FamilyActivitySelection) {
+        let data = try? JSONEncoder().encode(selection)
+        let names = selection.applicationTokens
+            .compactMap { Application(token: $0).localizedDisplayName }
+            .sorted()
+        self.init(
+            data: data,
+            appNames: names,
+            applicationCount: selection.applicationTokens.count,
+            categoryCount: selection.categoryTokens.count,
+            webDomainCount: selection.webDomainTokens.count
+        )
+    }
+
+    var activitySelection: FamilyActivitySelection {
+        guard let data, let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else {
+            return FamilyActivitySelection()
+        }
+        return selection
+    }
+}
+
 @MainActor
 final class LockInScreenTime: LockInScreenTimeControlling {
     private let defaults: UserDefaults?
@@ -194,7 +221,7 @@ final class LockInScreenTime: LockInScreenTimeControlling {
 
     // MARK: Alarms
 
-    /// Same trick the Still lock and Spots use: the schedule *starts* at the moment
+    /// Same trick the Still lock uses: the schedule *starts* at the moment
     /// the lock must end, so iOS wakes the monitor extension then — even if Mivo was
     /// closed — and the extension lifts the shield.
     private func scheduleEndAlarm(at date: Date) {

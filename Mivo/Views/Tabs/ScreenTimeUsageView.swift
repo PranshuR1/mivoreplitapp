@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 #if canImport(DeviceActivity)
 import DeviceActivity

@@ -68,8 +68,6 @@ enum MivoScreenTimeKeys {
     static let experimentStrongerFriction = "mivo.experiment.strongerFriction"
     static let mivoClearMappingPrefix = "mivo.clear.mapping."
     static let mivoClearEnabledPrefix = "mivo.clear.enabled."
-    static let pendingMivoClearPlatform = "mivo.clear.pendingPlatform"
-    static let pendingMivoClearEntryPoint = "mivo.clear.pendingEntryPoint"
 
     /// Set by the ShieldAction extension's `requestMidScrollCheckIn()` when
     /// the primary shield button is tapped during an already-active session —

@@ -1,7 +1,0 @@
-# usemivo.app deployment
-
-- Serve `.well-known/apple-app-site-association` at exactly `https://usemivo.app/.well-known/apple-app-site-association` with `Content-Type: application/json` and no redirect. It claims `/s/*` (official Mivo Spots) and `/spot/*` (Spots from the first version), and nothing else.
-- Keep HTTPS enabled. Apple verifies the association file before universal links open Mivo directly.
-- Rewrite `/accountability/*` to `/accountability/index.html` while preserving the `token` query string. This page displays only the sanitized, expiring weekly summary returned by the Supabase Edge Function.
-- Rewrite `/s/*` to `/s/index.html` while preserving the original path. **Mivo Spots (physical product):** every Mivo Spot is programmed with `https://usemivo.app/s/<ID>` before it ships. iOS background tag reading only hands a tag to Mivo when that URL is a universal link, so this path must stay in the association file. The page is the fallback for phones without Mivo and for Safari; it never looks the ID up, so it reveals nothing about a Spot.
-- Rewrite `/spot/*` to `/spot/index.html` while preserving the original path. **Mivo Spots:** NFC stickers carry `https://usemivo.app/spot/<spot-id>`; iOS background tag reading only hands a tag to Mivo when that URL is a universal link, so this path must stay in the association file. The page is the fallback for phones without Mivo and for Safari.

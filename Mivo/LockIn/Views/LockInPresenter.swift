@@ -43,6 +43,8 @@ struct LockInPresenter: ViewModifier {
                 }
             }
             .onChange(of: appVM.user?.email) { _, _ in bind() }
+            .onChange(of: manager.history) { _, _ in syncCommitments() }
+            .onChange(of: manager.current) { _, _ in syncCommitments() }
             .onReceive(ticker) { _ in manager.reconcile() }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name(LockInKeys.routeChangedNotification))) { _ in
                 manager.reconcile()
@@ -64,6 +66,11 @@ struct LockInPresenter: ViewModifier {
     private func bind() {
         manager.ownerName = appVM.user?.name.split(separator: " ").first.map(String.init) ?? ""
         manager.setAccount(appVM.user?.email ?? StorageService.activeUserEmail)
+        syncCommitments()
+    }
+
+    private func syncCommitments() {
+        appVM.syncAttentionCommitments(current: manager.current, history: manager.history)
     }
 }
 

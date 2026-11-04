@@ -1,5 +1,6 @@
 import OSLog
 import SwiftUI
+import Combine
 import WebKit
 
 private let wrapperLog = Logger(subsystem: "app.mivo.com", category: "AppWrapper")

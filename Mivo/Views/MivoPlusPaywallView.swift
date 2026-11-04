@@ -52,6 +52,8 @@ struct MivoPlusPaywallView: View {
         }
         .task {
             store.start()
+            // Any paywall on screen restarts the wait before it opens by itself.
+            if !hasPlus { PlusPromptStore().markShown(account: appVM.user?.email) }
             await store.loadProducts()
         }
         .task(id: offerLive) {
@@ -241,7 +243,7 @@ struct MivoPlusPaywallView: View {
     }
 
     private var heroSubtitle: String {
-        if hasPlus { return "Everything beyond the basic pause is yours." }
+        if hasPlus { return "Clear, quiet time, and weekly experiments are yours." }
         if offerLive {
             return "Up to \(bestPercentOff)% off Mivo Plus, only while the timer runs."
         }
@@ -631,5 +633,95 @@ struct MivoPlusPaywallView: View {
         case .lifetime:
             return "One payment, no subscription."
         }
+    }
+}
+
+/// The Plus card at the top of Home for anyone without Plus. While the
+/// five-minute discount runs it shows the countdown instead.
+struct MivoPlusHomeBanner: View {
+    let action: () -> Void
+
+    @ObservedObject private var offer = MivoPlusOffer.shared
+    @ObservedObject private var store = MivoPlusStore.shared
+
+    private static let gold = Color(hex: "#F2C46D")
+
+    var body: some View {
+        Button {
+            HapticsService.selection()
+            action()
+        } label: {
+            if case .running = offer.phase(), let deadline = offer.deadline {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let remaining = max(0, deadline.timeIntervalSince(context.date))
+                    card(
+                        eyebrow: "LIMITED-TIME OFFER",
+                        title: "Your discount is still on",
+                        detail: "Ends in \(MivoPlusOfferClock.format(remaining))",
+                        cta: "Claim it",
+                        offerLive: remaining > 0
+                    )
+                }
+            } else {
+                card(
+                    eyebrow: "MIVO PLUS",
+                    title: "Get more from Mivo",
+                    detail: "Earn scroll time from studying, Replay, Clear, Still and more.",
+                    cta: store.hasFreeTrial(offer: false) ? "Try free" : "See plans",
+                    offerLive: false
+                )
+            }
+        }
+        .buttonStyle(MivoPressStyle())
+        .accessibilityHint("Opens Mivo Plus")
+    }
+
+    private func card(eyebrow: String, title: String, detail: String, cta: String, offerLive: Bool) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.14))
+                    .frame(width: 44, height: 44)
+                Image(systemName: offerLive ? "gift.fill" : "sparkles")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(eyebrow)
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.2)
+                    .foregroundColor(Self.gold)
+                Text(title)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.white)
+                Text(detail)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.82))
+                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 6)
+
+            Text(cta)
+                .font(.system(size: 13.5, weight: .bold))
+                .foregroundColor(Color(hex: "#2E1A0E"))
+                .padding(.horizontal, 14)
+                .frame(height: 34)
+                .background(Capsule().fill(Self.gold))
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: MivoMetrics.cardRadius, style: .continuous)
+                .fill(LinearGradient(
+                    colors: offerLive
+                        ? [Color(hex: "#5C3317"), Color(hex: "#C06F22")]
+                        : [Color(hex: "#2E1A0E"), Color(hex: "#7A4424")],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ))
+        )
+        .contentShape(Rectangle())
     }
 }

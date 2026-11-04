@@ -92,7 +92,7 @@ private final class HapticFeedbackCoordinator {
     private init() {}
 
     func scheduleTap() {
-        let schedule = {
+        let schedule = { [weak self] in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.035) { [weak self] in
                 guard let self else { return }
                 let now = ProcessInfo.processInfo.systemUptime

@@ -38,7 +38,7 @@ enum LockInKeys {
     static let routeChangedNotification = "mivoLockInRequested"
 
     /// A lock is never allowed to outlive this, so a forgotten lock cannot keep
-    /// apps shielded indefinitely. Same ceiling Mivo Spots use for an open-ended Spot.
+    /// apps shielded indefinitely.
     static let hardCapHours = 12
 }
 
@@ -64,6 +64,7 @@ struct LockInLiveState: Equatable {
 
     /// Whole minutes left, never below 1 while the lock is live.
     func minutesLeft(now: Date = Date()) -> Int {
-        max(1, Int(ceil(endsAt.timeIntervalSince(now) / 60)))
+        // Whole seconds first: a stored end time can come back a hair late and read as an extra minute.
+        max(1, Int(ceil(endsAt.timeIntervalSince(now).rounded() / 60)))
     }
 }

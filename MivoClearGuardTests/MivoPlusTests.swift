@@ -150,6 +150,35 @@ final class MivoPlusTests: XCTestCase {
         XCTAssertFalse(flag.isDue(account: "a@example.com"))
     }
 
+    func testPlusPromptComesBackAfterTheGap() {
+        XCTAssertTrue(PlusPromptSchedule.isDue(lastShownAt: nil, now: now))
+        XCTAssertFalse(PlusPromptSchedule.isDue(lastShownAt: now, now: now))
+        XCTAssertFalse(PlusPromptSchedule.isDue(lastShownAt: now, now: now.addingTimeInterval(PlusPromptSchedule.gap - 1)))
+        XCTAssertTrue(PlusPromptSchedule.isDue(lastShownAt: now, now: now.addingTimeInterval(PlusPromptSchedule.gap)))
+    }
+
+    func testPlusPromptStoreIsKeptPerAccount() {
+        let suite = "PlusPromptStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PlusPromptStore(defaults: defaults)
+
+        XCTAssertTrue(store.isDue(account: "a@example.com", now: now))
+        store.markShown(account: "a@example.com", now: now)
+        XCTAssertFalse(store.isDue(account: "a@example.com", now: now.addingTimeInterval(60)))
+        XCTAssertTrue(store.isDue(account: "b@example.com", now: now))
+        XCTAssertTrue(store.isDue(account: "a@example.com", now: now.addingTimeInterval(PlusPromptSchedule.gap)))
+    }
+
+    func testReviewCardShowsDailyUntilReviewedForThisVersion() {
+        let day = MivoRatingPromptRules.minimumGap
+        XCTAssertTrue(MivoRatingPromptRules.shouldShow(lastShownAt: nil, reviewedVersion: nil, currentVersion: "3.1", now: now))
+        XCTAssertFalse(MivoRatingPromptRules.shouldShow(lastShownAt: now, reviewedVersion: nil, currentVersion: "3.1", now: now.addingTimeInterval(day - 1)))
+        XCTAssertTrue(MivoRatingPromptRules.shouldShow(lastShownAt: now, reviewedVersion: nil, currentVersion: "3.1", now: now.addingTimeInterval(day)))
+        XCTAssertFalse(MivoRatingPromptRules.shouldShow(lastShownAt: nil, reviewedVersion: "3.1", currentVersion: "3.1", now: now))
+        XCTAssertTrue(MivoRatingPromptRules.shouldShow(lastShownAt: nil, reviewedVersion: "3.0", currentVersion: "3.1", now: now))
+    }
+
     func testAccessForPlusAndAdmins() {
         XCTAssertTrue(MivoPlusAccess.allows(isPlus: true, isAdmin: false))
         XCTAssertTrue(MivoPlusAccess.allows(isPlus: false, isAdmin: true))

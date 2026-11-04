@@ -12,7 +12,6 @@ struct TimeLoanConfirmationView: View {
     let tomorrowProjectedBefore: Int
     let onConfirm: () -> Void
     let onDecline: () -> Void
-    let onUseMivoClear: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -109,14 +108,9 @@ struct TimeLoanConfirmationView: View {
 
     @ViewBuilder
     private var declineOptions: some View {
-        VStack(spacing: 8) {
-            if let onUseMivoClear {
-                MivoTertiaryButton(label: "Use Mivo Clear instead") { onUseMivoClear() }
-            }
-            HStack(spacing: 8) {
-                declineTextButton(label: "Stay protected")
-                declineTextButton(label: "Try later")
-            }
+        HStack(spacing: 8) {
+            declineTextButton(label: "Stay protected")
+            declineTextButton(label: "Try later")
         }
     }
 

@@ -204,6 +204,37 @@ struct PostOnboardingPaywall {
     }
 }
 
+/// How often the paywall opens by itself for someone without Plus: right after
+/// onboarding, then again each time `gap` has passed since any paywall was last
+/// on screen. One opened from a locked feature counts too.
+enum PlusPromptSchedule {
+    static let gap: TimeInterval = 6 * 60 * 60
+
+    static func isDue(lastShownAt: Date?, now: Date) -> Bool {
+        guard let lastShownAt else { return true }
+        return now.timeIntervalSince(lastShownAt) >= gap
+    }
+}
+
+/// When a paywall was last on screen, kept apart per account.
+struct PlusPromptStore {
+    static let key = "mivo.plus.prompt.lastShownAt"
+
+    var defaults: UserDefaults = .standard
+
+    func lastShownAt(account: String?) -> Date? {
+        defaults.object(forKey: AccountScopedKey.make(Self.key, account: account)) as? Date
+    }
+
+    func markShown(account: String?, now: Date = Date()) {
+        defaults.set(now, forKey: AccountScopedKey.make(Self.key, account: account))
+    }
+
+    func isDue(account: String?, now: Date = Date()) -> Bool {
+        PlusPromptSchedule.isDue(lastShownAt: lastShownAt(account: account), now: now)
+    }
+}
+
 /// The first week of the study loop earns scroll time free. The clock starts
 /// at the first session someone begins and never restarts. After it, a session
 /// still logs a receipt and a streak, but earning scroll time needs Plus.
@@ -247,24 +278,24 @@ enum PlusFeature: String, Identifiable {
         switch self {
         case .studyScroll: return "Earning scroll time from studying is part of Mivo Plus once your \(StudyTrial.days) free days are up."
         case .instagramInMivo: return "Replay mode is part of Mivo Plus."
-        case .mivoClear: return "Mivo Clear is part of Mivo Plus."
-        case .mivoStill: return "Mivo Still is part of Mivo Plus."
-        case .experiments: return "Weekly experiments are part of Mivo Plus."
+        case .mivoClear: return "Keep messages and search, with endless feeds filtered out inside Mivo. Clear is part of Plus."
+        case .mivoStill: return "Make room for a quiet break with Mivo Still, part of Plus."
+        case .experiments: return "Try one change for seven days, review what happened, and keep what helps with Plus."
         case .receipt: return "Your attention receipt is part of Mivo Plus."
         case .forecast: return "The 30-day forecast is part of Mivo Plus."
-        case .general: return "Mivo Plus unlocks everything beyond the basic pause."
+        case .general: return "Keep useful social tools, try a change each week, and find what helps you follow through."
         }
     }
 }
 
 enum MivoPlusCopy {
-    static let basicPauseLine = "The 5-second pause on your protected apps stays free."
+    static let basicPauseLine = "Your starting point, commitments, check-ins, and basic pause stay free."
 
     static let benefits: [(icon: String, text: String)] = [
         ("timer", "Keep earning scroll time from studying after your \(StudyTrial.days) free days"),
         ("repeat", "Replay mode: after your reels, only ones you've seen"),
-        ("sparkles", "Mivo Clear and Mivo Still"),
-        ("flask", "Weekly experiments and your 30-day forecast"),
+        ("moon", "Make space for quiet time with Mivo Still"),
+        ("flask", "One weekly experiment: try, review, keep or adjust"),
         ("doc.text", "Your attention receipt, every day")
     ]
 

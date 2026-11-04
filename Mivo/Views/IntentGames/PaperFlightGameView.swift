@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// A screen-time flight inspired by Aviamasters' altitude-changing modifier
 /// path. Signed circles scroll into the plane, update its onboard minutes, and

@@ -6,6 +6,7 @@ import FamilyControls
 /// Start a lock: what you'll do → which apps → a keyholder → make it hard to undo →
 /// confirm. Nothing is locked until the last step.
 struct LockInSetupFlowView: View {
+    @EnvironmentObject private var appVM: AppViewModel
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var manager = LockInManager.shared
     @ObservedObject private var companion = CompanionStateManager.shared
@@ -15,7 +16,7 @@ struct LockInSetupFlowView: View {
     @State private var step: Step = .task
     @State private var task = ""
     @State private var durationMinutes = LockInRules.defaultDurationMinutes
-    @State private var appSelection: SpotAppSelection
+    @State private var appSelection: ScreenTimeAppSelection
     @State private var screenTimeAllowed = LockInManager.shared.isScreenTimeAuthorized
     @State private var showPicker = false
     @State private var keyholderName = ""
@@ -29,7 +30,8 @@ struct LockInSetupFlowView: View {
 
     private static let suggestions = ["Finish my essay outline", "Study for the exam", "Clear my inbox", "Go for a run"]
 
-    init() {
+    init(initialTask: String = "") {
+        _task = State(initialValue: initialTask)
         let last = LockInManager.shared.lastApps
         _appSelection = State(initialValue: last)
         #if canImport(FamilyControls)
@@ -71,7 +73,7 @@ struct LockInSetupFlowView: View {
         #if canImport(FamilyControls)
         .familyActivityPicker(isPresented: $showPicker, selection: $pickerSelection)
         .onChange(of: pickerSelection) { _, newValue in
-            appSelection = SpotAppSelection(newValue)
+            appSelection = ScreenTimeAppSelection(newValue)
         }
         #endif
         .interactiveDismissDisabled(!task.isEmpty)
@@ -230,7 +232,7 @@ struct LockInSetupFlowView: View {
         HapticsService.selection()
         let existing = FamilyControlsManager.shared.loadFamilyActivitySelection()
         pickerSelection = existing
-        appSelection = SpotAppSelection(existing)
+        appSelection = ScreenTimeAppSelection(existing)
         #endif
     }
 
@@ -434,7 +436,8 @@ struct LockInSetupFlowView: View {
     private func startLock() {
         errorText = nil
         switch manager.start(task: task, durationMinutes: durationMinutes, apps: appSelection) {
-        case .started:
+        case .started(let lock):
+            appVM.syncAttentionCommitments(current: lock, history: manager.history)
             HapticsService.success()
             dismiss()
         case .blocked(let limitations):

@@ -51,8 +51,6 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<key>NFCReaderUsageDescription</key>
-	<string>Mivo reads and writes NFC stickers only when you choose to connect or scan a Mivo Spot.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Mivo uses Face ID to protect your data.</string>
 	<key>NSCameraUsageDescription</key>

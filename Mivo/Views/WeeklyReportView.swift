@@ -471,6 +471,12 @@ struct WeeklyReportView: View {
             Text("Here is what Mivo noticed")
                 .reportTitle()
 
+            if let firstDay = reportData.selectedWeekDates.first,
+               let lastDay = reportData.selectedWeekDates.last,
+               let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: lastDay)) {
+                AttentionCompletionCard(start: calendar.startOfDay(for: firstDay), end: end)
+            }
+
             VStack(spacing: 0) {
                 recapRow(value: formatDuration(averageDailyMinutes), label: "Average tracked per day", badge: comparisonBadge)
                 recapRow(value: "\(sessionCount)", label: "Saved sessions", badge: "\(reflectedCount) reflected")

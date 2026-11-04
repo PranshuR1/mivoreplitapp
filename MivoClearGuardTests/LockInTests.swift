@@ -82,7 +82,7 @@ final class LockInSharedTests: XCTestCase {
 
 final class LockInModelTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_800_000_000)
-    private let apps = SpotAppSelection(data: nil, appNames: ["Instagram"], applicationCount: 1, categoryCount: 0, webDomainCount: 0)
+    private let apps = ScreenTimeAppSelection(data: nil, appNames: ["Instagram"], applicationCount: 1, categoryCount: 0, webDomainCount: 0)
 
     private func makeLock(keyholder: LockInKeyholder? = nil) -> LockIn {
         LockIn(
@@ -167,7 +167,7 @@ final class LockInManagerTests: XCTestCase {
     private var screenTime = NoopLockInScreenTime()
     private var backend = InMemoryLockInBackend()
 
-    private let apps = SpotAppSelection(data: nil, appNames: ["Instagram"], applicationCount: 1, categoryCount: 0, webDomainCount: 0)
+    private let apps = ScreenTimeAppSelection(data: nil, appNames: ["Instagram"], applicationCount: 1, categoryCount: 0, webDomainCount: 0)
 
     override func setUp() {
         super.setUp()
@@ -603,7 +603,7 @@ final class LockInManagerTests: XCTestCase {
     func testOtherLinksAreLeftAlone() {
         let manager = makeManager()
         XCTAssertFalse(manager.handle(url: URL(string: "mivo://companion")!))
-        XCTAssertFalse(manager.handle(url: URL(string: "https://usemivo.app/s/ABC")!))
+        XCTAssertFalse(manager.handle(url: URL(string: "https://usemivo.app/room/ABC")!))
         XCTAssertFalse(manager.showRequested)
     }
 

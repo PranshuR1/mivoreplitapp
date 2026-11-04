@@ -105,6 +105,30 @@ struct ExperimentMetrics: Codable, Equatable {
     let worthwhileRate: Double
 }
 
+enum WeeklyExperimentComparison {
+    static func outcome(type: WeeklyExperimentType, baseline: ExperimentMetrics, result: ExperimentMetrics) -> WeeklyExperimentOutcome {
+        guard baseline.comparableSessions >= 3, result.comparableSessions >= 3 else { return .inconclusive }
+        let before: Double
+        let during: Double
+        let higherIsBetter: Bool
+        switch type {
+        case .protectedWindow:
+            before = Double(baseline.outsideWindowMinutes); during = Double(result.outsideWindowMinutes)
+            higherIsBetter = false
+        case .reduceExtensions:
+            before = baseline.extensionRate; during = result.extensionRate; higherIsBetter = false
+        case .strongerFriction:
+            before = baseline.cancellationRate; during = result.cancellationRate; higherIsBetter = true
+        }
+        // A percentage change from an empty baseline is not evidence of improvement.
+        guard before > 0 else { return .inconclusive }
+        let difference = higherIsBetter ? (during - before) / before : (before - during) / before
+        if difference >= 0.10 { return .helped }
+        if difference <= -0.10 { return .worsened }
+        return .inconclusive
+    }
+}
+
 struct WeeklyExperimentRule: Codable, Equatable {
     var startHour: Int?
     var endHour: Int?

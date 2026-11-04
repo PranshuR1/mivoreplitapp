@@ -2,7 +2,7 @@
 # Adds the Lock-in source (Mivo/LockIn/**) and its tests to mivoreplitapp.xcodeproj.
 # gen_project.py no longer describes this project, so the pbxproj is edited in
 # place. LockInShared.swift is Foundation-only and is also compiled into the
-# Screen Time extensions, the same way SpotShared.swift is. Idempotent.
+# Screen Time extensions. Idempotent.
 #
 #   ruby scripts/add_lock_in_files.rb
 require 'xcodeproj'

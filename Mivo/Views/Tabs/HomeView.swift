@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 #if canImport(DeviceActivity)
 import DeviceActivity
@@ -24,12 +25,9 @@ struct HomeView: View {
     @State private var adaptivePlan: ScreenTimeReductionPlan? = nil
     @State private var showMonthlyForecast = false
     @State private var showExperimentHub = false
-    @State private var showMivoClear = false
     @State private var showMivoStill = false
     @State private var showAttentionReceipt = false
     @State private var showSchedule = false
-    @State private var showSpots = false
-    @State private var showActiveSpot = false
     @ObservedObject private var stillStore = MivoStillStore.shared
     @ObservedObject private var companion = CompanionStateManager.shared
     @ObservedObject private var expansion = ProductExpansionStore.shared
@@ -52,15 +50,25 @@ struct HomeView: View {
                 // One card per job, in the order a day goes: how much so far,
                 // what is allowed, then everything optional. The optional
                 // features are grouped by what they are for — Practice (the
-                // experiment), Explore (modes and places) and Review (reports
+                // experiment), Explore (modes and tools) and Review (reports
                 // and planning) — instead of one run of identical rows.
                 VStack(alignment: .leading, spacing: MivoMetrics.cardSpacing) {
                     MivoGreetingBar(name: firstName)
                         .padding(.top, 6)
 
-                    SpotActiveBanner { showActiveSpot = true }
+                    if !hasPlus {
+                        MivoPlusHomeBanner { paywallFeature = .general }
+                    }
+
+                    AttentionHomeSection()
 
                     screenTimeHero
+
+                    // Straight after today's number and always open. These
+                    // used to sit inside a collapsed "More tools and reports"
+                    // fold at the very bottom, which is why Study, Lock in and
+                    // the Receipt were hard to find.
+                    exploreSection
 
                     ComebackHomeSection()
 
@@ -68,10 +76,8 @@ struct HomeView: View {
                         scrollingPlanSection
                     }
 
-                    replayModeRow
+                    AttentionExperimentCard()
 
-                    practiceSection
-                    exploreSection
                     reviewSection
                 }
                 .padding(.horizontal, MivoMetrics.tabPadding)
@@ -168,10 +174,6 @@ struct HomeView: View {
                     .presentationDetents([.large])
             }
         }
-        .fullScreenCover(isPresented: $showMivoClear) {
-            MivoClearHubView()
-                .environmentObject(appVM)
-        }
         .fullScreenCover(isPresented: $showMivoStill) {
             MivoStillFlowView()
                 .environmentObject(appVM)
@@ -188,12 +190,6 @@ struct HomeView: View {
         }
         .navigationDestination(isPresented: $showSchedule) {
             SettingsView(page: .schedule)
-        }
-        .navigationDestination(isPresented: $showSpots) {
-            SpotsHomeView()
-        }
-        .sheet(isPresented: $showActiveSpot) {
-            SpotActiveView()
         }
     }
 
@@ -494,18 +490,23 @@ struct HomeView: View {
         }
     }
 
-    /// Modes and places, two to a row. Focus Break (formerly Intent Games) is
+    /// Modes and tools, two to a row. Focus Break (formerly Intent Games) is
     /// not here: it sits behind its own opt-in toggle on Protect, so it reads
     /// as an explicit trial someone chooses rather than something advertised
-    /// beside Still and Clear.
+    /// beside Still.
     private var exploreSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            MivoSectionTitle(text: "Explore")
+            MivoSectionTitle(text: "Tools")
 
             LazyVGrid(
                 columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
                 spacing: 10
             ) {
+                // The two most used first.
+                StudyHomeRow()
+
+                LockInHomeRow()
+
                 if expansion.isEnabled(.mivoStill) {
                     MivoStillRow {
                         requirePlus(.mivoStill) { showMivoStill = true }
@@ -513,32 +514,21 @@ struct HomeView: View {
                     .plusLockBadge(!hasPlus)
                 }
 
-                if expansion.isEnabled(.mivoClear) {
-                    MivoToolTile(icon: "sparkles", title: "Mivo Clear", subtitle: mivoClearMeta) {
-                        requirePlus(.mivoClear) { showMivoClear = true }
-                    }
-                    .plusLockBadge(!hasPlus)
-                }
-
-                SpotsEntryRow {
-                    showSpots = true
-                }
-
                 // Present while Companion is on; before onboarding it reads "Meet Milo".
                 if companion.isActive || companion.preferences.isAwaitingIntroduction {
                     CompanionHomeRow()
                 }
 
-                LockInHomeRow()
-
-                StudyHomeRow()
+                MivoAskRow()
             }
+
+            replayModeRow
         }
     }
 
     private var reviewSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            MivoSectionTitle(text: "Review")
+            MivoSectionTitle(text: "Reports")
 
             MivoListGroup {
                 reviewRow(icon: "doc.text", title: "Receipt", subtitle: "What today actually cost you", locked: !hasPlus) {
@@ -620,11 +610,6 @@ struct HomeView: View {
             return "7-day experiment · none running"
         }
         return "7-day experiment · day \(experiment.dayNumber) of 7"
-    }
-
-    private var mivoClearMeta: String {
-        let minutes = MivoClearStore.shared.minutesToday
-        return minutes > 0 ? "\(minutes)m today" : "Social without the feed"
     }
 
     // MARK: - Screen Time figures
@@ -879,7 +864,7 @@ struct WeeklyExperimentSheet: View {
             experimentRuleCard
             VStack(alignment: .leading, spacing: 5) {
                 Text("How Mivo will measure it").font(.system(size: 13, weight: .bold))
-                Text("The primary metric is \(metricLabel). Mivo calls it helpful after at least three comparable sessions and a 10% improvement.")
+                Text("The primary metric is \(metricLabel), calculated from saved Mivo sessions and your check-ins. At least three comparable sessions and a 10% change are needed to flag a difference. This comparison can't establish what caused the change.")
                     .font(.system(size: 12)).foregroundColor(MivoColors.textSecondary).lineSpacing(3)
             }
             .padding(14).background(MivoColors.card).clipShape(RoundedRectangle(cornerRadius: 8))
@@ -921,6 +906,12 @@ struct WeeklyExperimentSheet: View {
             experimentRuleCard
             Text("You can keep using Mivo normally. The experiment only applies the rule you approved.")
                 .font(.system(size: 12)).foregroundColor(MivoColors.textSecondary)
+            Button("Stop this experiment") {
+                appVM.stopWeeklyExperiment(id: experiment.id)
+                dismiss()
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(MivoColors.deep)
         }
     }
 
@@ -939,6 +930,14 @@ struct WeeklyExperimentSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(MivoColors.card)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                if finalDecision == .keep {
+                    Button("Stop using this rule") {
+                        appVM.decideWeeklyExperiment(id: experiment.id, decision: .stop)
+                        dismiss()
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(MivoColors.deep)
+                }
             } else {
                 Button {
                     completionReviewExperiment = experiment
@@ -970,7 +969,7 @@ struct WeeklyExperimentSheet: View {
     }
     private var outcomeCopy: String {
         switch experiment.outcome {
-        case .helped: return "The primary metric improved by at least 10%. This experiment appears to have helped."
+        case .helped: return "The primary metric improved by at least 10% in your saved sessions. Other changes in your week may also have contributed. Your own check-in helps decide what to keep."
         case .worsened: return "The primary metric moved in the other direction. That does not mean failure; this rule may simply not fit your week."
         default: return "There was no clear change, or there were fewer than three comparable sessions."
         }
@@ -1145,7 +1144,7 @@ struct WeeklyExperimentCompletionView: View {
 
     private var outcomeCopy: String {
         switch experiment.outcome {
-        case .helped: return "The main measure improved by at least 10%. This change appears to have helped."
+        case .helped: return "The main measure improved by at least 10% in your saved sessions. This comparison doesn't establish the cause. Tell Mivo whether the rule felt helpful."
         case .worsened: return "The measure moved in the other direction. This rule may simply not have fit your week."
         default: return "There was no clear change yet, or Mivo did not have three comparable sessions."
         }

@@ -47,6 +47,8 @@ struct SettingsView: View {
     @State private var exportPayload: MivoDataExportPayload?
     @State private var impulseProtectionEnabled = FamilyControlsManager.shared.isImpulseProtectionEnabled()
     @State private var instagramWrapperEnabled = FamilyControlsManager.shared.isInstagramWrapperEnabled()
+    @ObservedObject private var mivoLock = MivoLockManager.shared
+    @State private var showLockedResetAlert = false
     @ObservedObject private var plus = MivoPlusStore.shared
     @State private var plusPaywallFeature: PlusFeature?
     @State private var focusBreakTrialOptedIn = FocusBreakTrial.isOptedIn
@@ -167,6 +169,11 @@ struct SettingsView: View {
             Button("Sign out", role: .destructive) { appVM.logout() }
         } message: {
             Text("You'll need to sign in again.")
+        }
+        .alert("Mivo is locked", isPresented: $showLockedResetAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Resetting would lift the lock. Ask to unlock on Protect ▸ Lock Mivo and wait it out first.")
         }
         .alert("Reset data", isPresented: $showResetAlert) {
             Button("Cancel", role: .cancel) {}
@@ -392,9 +399,8 @@ struct SettingsView: View {
         }
     }
 
-    /// The Settings tab: account, preferences, privacy, devices and help.
-    /// Anything that configures protection or the daily plan lives on Protect
-    /// and Home now, next to the thing it changes.
+    /// The Settings tab: account, Plus, protection, preferences, privacy,
+    /// devices and help. Protection rows open the same pages Protect does.
     private var rootPage: some View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
@@ -422,6 +428,51 @@ struct SettingsView: View {
                         }
                     }
 
+                    // The same pages Protect opens. People look for "which
+                    // apps" and "Screen Time" in Settings first, so they are
+                    // reachable from both places.
+                    settingsSection("Protection") {
+                        settingsNavigationRow(
+                            icon: "checkmark.shield",
+                            title: "Apps & Screen Time",
+                            subtitle: "Which apps Mivo pauses"
+                        ) {
+                            SettingsView(page: .protection)
+                        }
+                        rowSeparator()
+                        settingsNavigationRow(
+                            icon: "calendar",
+                            title: "Today's schedule",
+                            subtitle: "When scrolling is available today"
+                        ) {
+                            SettingsView(page: .schedule)
+                        }
+                        rowSeparator()
+                        settingsNavigationRow(
+                            icon: "moon",
+                            title: "Late-night protection",
+                            subtitle: "Wake time and longer pauses at night"
+                        ) {
+                            SettingsView(page: .lateNight)
+                        }
+                        rowSeparator()
+                        settingsNavigationRow(
+                            icon: "lock",
+                            title: "Lock in",
+                            subtitle: "Lock apps until the work is done"
+                        ) {
+                            LockInEntryView()
+                        }
+                        rowSeparator()
+                        settingsNavigationRow(
+                            icon: mivoLock.isLocked ? "lock.fill" : "lock.open",
+                            title: "Lock Mivo",
+                            subtitle: mivoLock.isLocked ? "Locked" : "Make Mivo hard to turn off"
+                        ) {
+                            MivoLockView()
+                        }
+                    }
+
                     settingsSection("Preferences") {
                         appearancePreferenceRow
                         rowSeparator()
@@ -439,14 +490,6 @@ struct SettingsView: View {
                             subtitle: "A small character in your pauses"
                         ) {
                             CompanionEntryView()
-                        }
-                        rowSeparator()
-                        settingsNavigationRow(
-                            icon: "lock",
-                            title: "Lock in",
-                            subtitle: "Lock apps until the work is done"
-                        ) {
-                            LockInEntryView()
                         }
                     }
 
@@ -493,6 +536,14 @@ struct SettingsView: View {
                             subtitle: "Practice the newest tools again"
                         ) {
                             appVM.restartTutorial()
+                        }
+                        rowSeparator()
+                        settingsActionRow(
+                            icon: "star",
+                            title: "Leave a review",
+                            subtitle: "Help other people find Mivo"
+                        ) {
+                            MivoRatingPromptAction.openWriteReview()
                         }
                         rowSeparator()
                         settingsNavigationRow(
@@ -670,17 +721,18 @@ struct SettingsView: View {
         settingsSubpage(title: "Apps & Screen Time", subtitle: "Manage protected apps, intervention behavior, and Screen Time access.") {
             settingsStatusStrip
 
-            if expansion.isEnabled(.mivoClear) {
-                settingsSection("Focused Social") {
-                    settingsNavigationRow(
-                        icon: "sparkles.rectangle.stack.fill",
-                        title: "Mivo Clear",
-                        subtitle: "Map Instagram, TikTok, and YouTube"
-                    ) {
-                        MivoClearSettingsView().environmentObject(appVM)
-                    }
+            settingsSection("Lock") {
+                settingsNavigationRow(
+                    icon: mivoLock.isLocked ? "lock.fill" : "lock.open",
+                    title: "Lock Mivo",
+                    subtitle: mivoLock.isLocked
+                        ? "Locked. Turning things off waits for the unlock"
+                        : "Make Mivo hard to turn off when the urge hits"
+                ) {
+                    MivoLockView()
                 }
             }
+
             settingsSection("Protected Apps") {
                 interventionRows
             }
@@ -726,7 +778,11 @@ struct SettingsView: View {
                 }
                 rowSeparator()
                 settingsActionRow(icon: "trash", title: "Reset all data", subtitle: "Delete local account, sessions, and settings", destructive: true) {
-                    showResetAlert = true
+                    if mivoLock.isLocked {
+                        showLockedResetAlert = true
+                    } else {
+                        showResetAlert = true
+                    }
                 }
             }
         }
@@ -893,6 +949,7 @@ struct SettingsView: View {
             Toggle("", isOn: $lateNightProtectionEnabled)
                 .tint(MivoColors.accent)
                 .labelsHidden()
+                .disabled(mivoLock.isLocked && lateNightProtectionEnabled)
                 .onChange(of: lateNightProtectionEnabled) { _, _ in
                     saveLateNightProtection()
                 }
@@ -964,6 +1021,7 @@ struct SettingsView: View {
             Toggle("", isOn: $impulseProtectionEnabled)
                 .tint(MivoColors.accent)
                 .labelsHidden()
+                .disabled(mivoLock.isLocked && impulseProtectionEnabled)
                 .onChange(of: impulseProtectionEnabled) { _, enabled in
                     setImpulseProtection(enabled)
                 }
@@ -985,7 +1043,12 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 12) {
                 settingsIcon("app.badge.checkmark", color: MivoColors.blue)
-                rowText(title: "Change selected apps", subtitle: "Pick which apps get the 5-second Mivo pause")
+                rowText(
+                    title: "Change selected apps",
+                    subtitle: mivoLock.isLocked
+                        ? "Mivo is locked: you can add apps, not remove them"
+                        : "Pick which apps get the 5-second Mivo pause"
+                )
                 Spacer()
                 chevron
             }
@@ -1005,6 +1068,7 @@ struct SettingsView: View {
             Toggle("", isOn: $instagramWrapperEnabled)
                 .tint(MivoColors.accent)
                 .labelsHidden()
+                .disabled(mivoLock.isLocked && instagramWrapperEnabled)
                 .onChange(of: instagramWrapperEnabled) { _, enabled in
                     FamilyControlsManager.shared.setInstagramWrapperEnabled(enabled)
                     HapticsService.selection()
@@ -1654,6 +1718,7 @@ struct SettingsView: View {
                     Toggle("", isOn: $impulseProtectionEnabled)
                         .tint(MivoColors.accent)
                         .labelsHidden()
+                        .disabled(mivoLock.isLocked && impulseProtectionEnabled)
                         .onChange(of: impulseProtectionEnabled) { _, enabled in
                             setImpulseProtection(enabled)
                         }

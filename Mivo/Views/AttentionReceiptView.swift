@@ -43,6 +43,9 @@ struct AttentionReceiptView: View {
                             ReceiptPaperCard(data: data)
                                 .padding(.top, 18)
 
+                            AttentionCompletionCard(start: commitmentRangeStart, end: commitmentRangeEnd)
+                                .padding(.horizontal, MivoMetrics.screenPadding)
+
                             Text("Real time, straight from Screen Time. Recall, straight from you.")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(MivoColors.inkMuted)
@@ -71,6 +74,15 @@ struct AttentionReceiptView: View {
         case .week:
             return ReceiptData.thisWeek(appVM: appVM)
         }
+    }
+
+    private var commitmentRangeEnd: Date {
+        Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+    }
+
+    private var commitmentRangeStart: Date {
+        let today = Calendar.current.startOfDay(for: Date())
+        return range == .today ? today : (Calendar.current.date(byAdding: .day, value: -6, to: today) ?? today)
     }
 }
 

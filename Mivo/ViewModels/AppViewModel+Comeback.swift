@@ -322,7 +322,7 @@ extension AppViewModel {
                     timeInterval: TimeInterval(days * 24 * 60 * 60),
                     repeats: false
                 )
-                center.add(UNNotificationRequest(
+                UNUserNotificationCenter.current().add(UNNotificationRequest(
                     identifier: "mivo.comeback.nudge.\(days)",
                     content: content,
                     trigger: trigger

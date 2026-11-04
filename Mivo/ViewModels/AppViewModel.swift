@@ -58,12 +58,15 @@ class AppViewModel: ObservableObject {
     @Published var pendingComebackPrompt: ComebackPrompt? = nil
     @Published var comebackAnchor: ComebackAnchor? = nil
     @Published var comebackLapse: ComebackLapseRecord? = nil
-    /// The periodic "rate us / give feedback" card. No payload needed — see
-    /// `MivoRatingPromptStore` for the every-two-days, stops-when-acted-on logic.
+    /// The periodic "leave a review / give feedback" card. No payload needed —
+    /// see `MivoRatingPromptRules` for the once-a-day, until-reviewed logic.
     @Published var showRatingPrompt = false
+    /// The Mivo Plus paywall opening by itself — see `evaluatePlusPrompt()`.
+    @Published var showPlusPrompt = false
     /// The user's pre-committed real-world substitute for opening a blocked
     /// app — see `evaluateSwapPrompt()` for how existing users are asked once.
     @Published var userSwap: UserSwap? = nil
+    @Published var attentionJourney = AttentionJourney()
     @Published var showSwapPrompt = false
     /// "Which apps do you use?" once, for people who finished onboarding
     /// before it asked — see `evaluateAppPicksPrompt()`.
@@ -84,7 +87,6 @@ class AppViewModel: ObservableObject {
     @Published var pendingMidScrollCheckInAppName: String? = nil
     /// A shield on a chosen app asked for that app's window flow.
     @Published var pendingAppWindow: AppWindowRequest? = nil
-    @Published var pendingMivoClearRoute: MivoClearRoute? = nil
     @Published var liveActivityDeepLinkAction: LiveActivityDeepLinkAction? = nil
     private var remoteSyncTask: Task<Void, Never>? = nil
 
@@ -163,6 +165,7 @@ class AppViewModel: ObservableObject {
     }
 
     private func resetUserScopedState() {
+        attentionJourney = AttentionJourney()
         sessions = []
         truthChecks = []
         recallCheckIns = []
@@ -278,6 +281,7 @@ class AppViewModel: ObservableObject {
     }
 
     private func loadUserScopedData(for email: String) {
+        attentionJourney = StorageService.load(AttentionJourney.self, forKey: .attentionJourney, email: email) ?? AttentionJourney()
         sessions = StorageService.load([Session].self, forKey: .sessions, email: email) ?? []
         truthChecks = StorageService.load([TruthCheckGuess].self, forKey: .truthChecks, email: email) ?? []
         recallCheckIns = StorageService.load([RecallCheckIn].self, forKey: .recallCheckIns, email: email) ?? []
@@ -698,7 +702,7 @@ class AppViewModel: ObservableObject {
             Task { await RemoteAuthService.unregisterPushDevice(installationID: installationID, record: record) }
         }
         // Offload storage mutation to background to avoid blocking the UI
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             StorageService.remove(forKey: .authSession)
             StorageService.remove(forKey: .rememberedEmail)
             // Update published state on main actor
@@ -708,8 +712,6 @@ class AppViewModel: ObservableObject {
                 FamilyControlsManager.shared.setSignedInForImpulseProtection(false)
                 // Drops the account's companion state and clears the widget's snapshot.
                 CompanionStateManager.shared.prepare(forEmail: nil)
-                // Ends a running Spot and lifts its shield; the account's Spots stay saved.
-                SpotManager.shared.signOut()
                 // Lifts a running lock's shield so it can't outlive the account that set it.
                 LockInManager.shared.signOut()
                 // Ends a running study session; the account's log and balance stay saved.
@@ -750,7 +752,6 @@ class AppViewModel: ObservableObject {
         // another Mivo account after the deletion.
         DeviceBindingService.releaseIfBound(email: email)
         ParentalConsentTicketStore.clear()
-        SpotManager.shared.eraseAllData()
         LockInManager.shared.eraseAllData()
         StudyService.shared.eraseAllData()
 
@@ -1363,7 +1364,7 @@ class AppViewModel: ObservableObject {
             let trigger = UNCalendarNotificationTrigger(dateMatching: date, repeats: true)
             let request = UNNotificationRequest(identifier: "mivo.scrollSchedule.daily", content: content, trigger: trigger)
 
-            center.add(request) { error in
+            UNUserNotificationCenter.current().add(request) { error in
                 guard error == nil else { return }
                 DispatchQueue.main.async {
                     self?.saveForCurrentUser(scheduleKey, forKey: .dailyScrollScheduleNotification)
@@ -1510,23 +1511,54 @@ class AppViewModel: ObservableObject {
         saveForCurrentUser(true, forKey: .goalForecastShown)
     }
 
-    /// Every-two-days "rate us / give feedback" card — see
-    /// `MivoRatingPromptStore` for the frequency and stop-forever rules.
+    /// Once-a-day "leave a review / give feedback" card — see
+    /// `MivoRatingPromptRules` for the frequency and until-reviewed rules.
     /// Never interrupts anything: it only checks in on the same minute-poll
     /// every other periodic prompt already uses, and skips entirely while a
-    /// bigger prompt is already up.
+    /// bigger prompt is already up or the paywall was only just closed.
     func evaluateRatingPrompt() {
         guard isLoggedIn, settings.onboardingComplete else { return }
-        guard !showRatingPrompt else { return }
+        guard !showRatingPrompt, !showPlusPrompt else { return }
         guard pendingScrollGoalPrompt == nil,
               pendingGoalForecastPrompt == nil,
               pendingComebackPrompt == nil,
               pendingTimeTruthPrompt == nil,
               pendingDailyScrollSchedulePrompt == nil,
               !showNamePrompt, !showAppPicksPrompt else { return }
+        if let paywallAt = PlusPromptStore().lastShownAt(account: user?.email),
+           Date().timeIntervalSince(paywallAt) < 15 * 60 { return }
         guard MivoRatingPromptStore.shouldShow() else { return }
         MivoRatingPromptStore.markShown()
         showRatingPrompt = true
+    }
+
+    /// Opens the Mivo Plus paywall right after onboarding, then again every
+    /// `PlusPromptSchedule.gap` for anyone without Plus. `MainTabView` calls it
+    /// only once the screen has settled and nothing else is presented; this
+    /// also stands down while a shield, session or another prompt is pending.
+    func evaluatePlusPrompt() {
+        guard isLoggedIn, settings.onboardingComplete else { return }
+        guard !showPlusPrompt, !showRatingPrompt, !showNamePrompt, !showSwapPrompt, !showAppPicksPrompt else { return }
+        guard !MivoPlusAccess.allows(isPlus: MivoPlusStore.shared.isPlus, isAdmin: isAdminUser) else { return }
+        guard pendingExpiredRunningSession == nil,
+              pendingResumedActiveSession == nil,
+              pendingSessionFeedback == nil,
+              pendingTimeTruthPrompt == nil,
+              pendingDailyScrollSchedulePrompt == nil,
+              pendingComebackPrompt == nil,
+              pendingScrollGoalPrompt == nil,
+              pendingGoalForecastPrompt == nil,
+              liveActivityDeepLinkAction == nil,
+              !pendingMidScrollCheckIn,
+              pendingAppWindow == nil,
+              !deepLinkInterventionRequested else { return }
+        let account = user?.email
+        let afterOnboarding = PostOnboardingPaywall()
+        let prompts = PlusPromptStore()
+        guard afterOnboarding.isDue(account: account) || prompts.isDue(account: account) else { return }
+        afterOnboarding.clear(account: account)
+        prompts.markShown(account: account)
+        showPlusPrompt = true
     }
 
     func saveUserSwap(_ swap: UserSwap) {
@@ -1548,7 +1580,7 @@ class AppViewModel: ObservableObject {
               pendingComebackPrompt == nil,
               pendingTimeTruthPrompt == nil,
               pendingDailyScrollSchedulePrompt == nil,
-              !showRatingPrompt, !showNamePrompt, !showAppPicksPrompt else { return }
+              !showRatingPrompt, !showNamePrompt, !showPlusPrompt, !showAppPicksPrompt else { return }
         if let email = user?.email,
            StorageService.load(Bool.self, forKey: .userSwapPromptShown, email: email) == true { return }
         showSwapPrompt = true
@@ -1571,14 +1603,13 @@ class AppViewModel: ObservableObject {
               pendingExpiredRunningSession == nil,
               pendingResumedActiveSession == nil,
               pendingSessionFeedback == nil,
-              pendingMivoClearRoute == nil,
               !pendingMidScrollCheckIn,
               pendingScrollGoalPrompt == nil,
               pendingGoalForecastPrompt == nil,
               pendingComebackPrompt == nil,
               pendingTimeTruthPrompt == nil,
               pendingDailyScrollSchedulePrompt == nil,
-              !showRatingPrompt, !showNamePrompt, !showSwapPrompt else { return }
+              !showRatingPrompt, !showNamePrompt, !showSwapPrompt, !showPlusPrompt else { return }
         showAppPicksPrompt = true
     }
 
@@ -1608,7 +1639,7 @@ class AppViewModel: ObservableObject {
               pendingComebackPrompt == nil,
               pendingTimeTruthPrompt == nil,
               pendingDailyScrollSchedulePrompt == nil,
-              !showRatingPrompt, !showSwapPrompt, !showAppPicksPrompt else { return }
+              !showRatingPrompt, !showSwapPrompt, !showPlusPrompt, !showAppPicksPrompt else { return }
         if StorageService.load(Bool.self, forKey: .namePromptDismissed, email: user.email) == true { return }
         showNamePrompt = true
     }
@@ -1660,7 +1691,7 @@ class AppViewModel: ObservableObject {
             let trigger = UNCalendarNotificationTrigger(dateMatching: date, repeats: true)
             let request = UNNotificationRequest(identifier: "mivo.timeTruth.daily", content: content, trigger: trigger)
 
-            center.add(request) { error in
+            UNUserNotificationCenter.current().add(request) { error in
                 guard error == nil else { return }
                 DispatchQueue.main.async {
                     self?.saveForCurrentUser(scheduleKey, forKey: .timeTruthNotificationSchedule)
@@ -1862,8 +1893,9 @@ class AppViewModel: ObservableObject {
 
     func resetAllData() {
         let resetEmail = user?.email ?? StorageService.activeUserEmail
+        attentionJourney = AttentionJourney()
+        if let resetEmail { StorageService.remove(forKey: .attentionJourney, email: resetEmail) }
         mivoLaunchGateActive = false
-        SpotManager.shared.eraseAllData()
         LockInManager.shared.eraseAllData()
         StudyService.shared.eraseAllData()
 
@@ -2002,30 +2034,6 @@ class AppViewModel: ObservableObject {
     // MARK: - Deep link (shield "Open Mivo" button)
 
     func handleDeepLink(_ url: URL) {
-        // A Mivo Spot link — from an NFC tag read by iOS, a scan inside Mivo, or a
-        // tapped link. Handled first: it is a universal link on the same host as
-        // the others below.
-        if SpotManager.shared.handle(url: url) { return }
-        if url.scheme == "mivo", url.host == "clear" {
-            let platformName = url.pathComponents.first(where: { $0 != "/" })
-            if let platformName, let platform = MivoClearPlatform(rawValue: platformName.lowercased()) {
-                let directURL = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                    .queryItems?.first(where: { $0.name == "url" })?.value.flatMap(URL.init(string:))
-                pendingMivoClearRoute = MivoClearRoute(platform: platform, directURL: directURL, entryPoint: .deepLink)
-            }
-            return
-        }
-        if url.host == "usemivo.app" {
-            let parts = url.pathComponents.filter { $0 != "/" }
-            if parts.count >= 2, parts[0] == "clear",
-               let platform = MivoClearPlatform(rawValue: parts[1].lowercased()) {
-                let directURL = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                    .queryItems?.first(where: { $0.name == "url" })?.value.flatMap(URL.init(string:))
-                pendingMivoClearRoute = MivoClearRoute(platform: platform, directURL: directURL, entryPoint: .deepLink)
-                return
-            }
-            return
-        }
         guard url.scheme == "mivo" else { return }
         if url.host == "companion" {
             CompanionStateManager.shared.requestOpen()
@@ -2224,18 +2232,6 @@ class AppViewModel: ObservableObject {
         return snapshot
             .map { (name: $0.key, minutes: $0.value) }
             .sorted { $0.minutes > $1.minutes }
-    }
-
-    func checkPendingMivoClearRoute() {
-        let defaults = UserDefaults(suiteName: MivoScreenTimeKeys.appGroup)
-        guard let platformName = defaults?.string(forKey: MivoScreenTimeKeys.pendingMivoClearPlatform),
-              let platform = MivoClearPlatform(rawValue: platformName) else { return }
-        let entryPoint = defaults?.string(forKey: MivoScreenTimeKeys.pendingMivoClearEntryPoint)
-            .flatMap(MivoClearEntryPoint.init(rawValue:)) ?? .shield
-        defaults?.removeObject(forKey: MivoScreenTimeKeys.pendingMivoClearPlatform)
-        defaults?.removeObject(forKey: MivoScreenTimeKeys.pendingMivoClearEntryPoint)
-        defaults?.synchronize()
-        pendingMivoClearRoute = MivoClearRoute(platform: platform, entryPoint: entryPoint)
     }
 
     func markMivoLaunchSessionStarted(plannedMinutes: Int = 0) {
@@ -2856,7 +2852,9 @@ class AppViewModel: ObservableObject {
     }
 
     func updateLateNightProtection(enabled: Bool, startHour: Int, wakeHour: Int) {
+        // A Mivo lock holds late-night protection on once it's on.
         settings.lateNightProtectionEnabled = enabled
+            || (lateNightProtectionEnabled && MivoLockManager.holdsOffSwitches())
         settings.lateNightStartHour = min(23, max(20, startHour))
         settings.lateNightWakeHour = min(10, max(5, wakeHour))
         let updated = settings
@@ -3003,6 +3001,7 @@ class AppViewModel: ObservableObject {
 
     func exportData() -> String {
         let data: [String: Any] = [
+            "attentionJourney": (try? JSONEncoder().encode(attentionJourney)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}",
             "sessions": (try? JSONEncoder().encode(sessions)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]",
             "truthChecks": (try? JSONEncoder().encode(truthChecks)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         ]
@@ -3018,9 +3017,11 @@ class AppViewModel: ObservableObject {
         // Snapshot current arrays on main actor
         let sessionsSnapshot = sessions
         let truthSnapshot = truthChecks
+        let journeySnapshot = attentionJourney
 
         return await Task.detached(priority: .userInitiated) {
             let data: [String: Any] = [
+                "attentionJourney": (try? JSONEncoder().encode(journeySnapshot)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}",
                 "sessions": (try? JSONEncoder().encode(sessionsSnapshot)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]",
                 "truthChecks": (try? JSONEncoder().encode(truthSnapshot)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             ]
@@ -3824,44 +3825,18 @@ class AppViewModel: ObservableObject {
 
         let baselineStart = Calendar.current.date(byAdding: .day, value: -7, to: now) ?? now
         let baseline = experimentMetrics(from: baselineStart, to: now)
-        let recentSessions = sessionsInRange(from: baselineStart, to: now)
-        let extensionRate = recentSessions.isEmpty ? 0 : Double(recentSessions.filter(\.extendedOnce).count) / Double(recentSessions.count)
-        let repeatedAutomatic = recentSessions.filter { $0.urgeReason == .habit || $0.urgeReason == .bored }.count
-        let type: WeeklyExperimentType = extensionRate >= 0.25
-            ? .reduceExtensions
-            : (repeatedAutomatic >= 2 ? .strongerFriction : .protectedWindow)
-        let clusteredHour = mostCommonSessionHour(in: recentSessions) ?? 21
-
-        let presentation: (String, String, String, WeeklyExperimentRule)
-        switch type {
-        case .reduceExtensions:
-            presentation = (
-                "Try one week without extensions",
-                "Extensions appeared in \(Int((extensionRate * 100).rounded()))% of your recent sessions. This experiment keeps the original limit intact.",
-                "extension_rate",
-                WeeklyExperimentRule(startHour: nil, endHour: nil, allowedMinutes: nil, strongerFrictionEnabled: false)
-            )
-        case .strongerFriction:
-            presentation = (
-                "Add friction to repeated openings",
-                "Several recent sessions began from boredom or habit. Repeated openings within 30 minutes will use a stronger pause.",
-                "cancellation_rate",
-                WeeklyExperimentRule(startHour: nil, endHour: nil, allowedMinutes: nil, strongerFrictionEnabled: true)
-            )
-        case .protectedWindow:
-            presentation = (
-                "Protect your \(experimentHourLabel(clusteredHour)) hour",
-                "Your recent sessions cluster around \(experimentHourLabel(clusteredHour)). Mivo can protect that hour unless today's locked schedule explicitly allows it.",
-                "outside_window_minutes",
-                WeeklyExperimentRule(startHour: clusteredHour, endHour: (clusteredHour + 1) % 24, allowedMinutes: 0, strongerFrictionEnabled: false)
-            )
+        let suggestion = attentionExperimentSuggestion
+        let metric: String
+        switch suggestion.type {
+        case .protectedWindow: metric = "outside_window_minutes"
+        case .reduceExtensions: metric = "extension_rate"
+        case .strongerFriction: metric = "cancellation_rate"
         }
-
         let timestamp = experimentTimestamp(now)
         let experiment = WeeklyExperiment(
-            id: UUID().uuidString.lowercased(), userId: nil, type: type, status: .proposed,
-            title: presentation.0, reason: presentation.1, primaryMetric: presentation.2,
-            rule: presentation.3, baselineMetrics: baseline, resultMetrics: nil,
+            id: UUID().uuidString.lowercased(), userId: nil, type: suggestion.type, status: .proposed,
+            title: suggestion.title, reason: suggestion.detail, primaryMetric: metric,
+            rule: suggestion.rule, baselineMetrics: baseline, resultMetrics: nil,
             startsAt: nil, endsAt: nil, outcome: nil, finalDecision: nil,
             createdAt: timestamp, updatedAt: timestamp
         )
@@ -3919,6 +3894,19 @@ class AppViewModel: ObservableObject {
         weeklyExperiments[index].updatedAt = experimentTimestamp(Date())
         syncWeeklyExperimentEnforcement()
         persistWeeklyExperimentsAndSync(weeklyExperiments[index], event: "weekly_experiment_declined")
+    }
+
+    func stopWeeklyExperiment(id: String, now: Date = Date()) {
+        guard let index = weeklyExperiments.firstIndex(where: { $0.id == id && $0.status == .active }) else { return }
+        let start = weeklyExperiments[index].startsAt.flatMap(WeeklyExperiment.experimentDate(from:)) ?? now
+        weeklyExperiments[index].resultMetrics = experimentMetrics(from: start, to: now)
+        weeklyExperiments[index].status = .completed
+        weeklyExperiments[index].outcome = .inconclusive
+        weeklyExperiments[index].finalDecision = .stop
+        weeklyExperiments[index].endsAt = experimentTimestamp(now)
+        weeklyExperiments[index].updatedAt = experimentTimestamp(now)
+        syncWeeklyExperimentEnforcement()
+        persistWeeklyExperimentsAndSync(weeklyExperiments[index], event: "weekly_experiment_stopped_early")
     }
 
     func finishWeeklyExperimentIfNeeded(now: Date = Date()) {
@@ -4128,20 +4116,7 @@ class AppViewModel: ObservableObject {
     }
 
     private func experimentOutcome(for experiment: WeeklyExperiment, result: ExperimentMetrics) -> WeeklyExperimentOutcome {
-        guard result.comparableSessions >= 3 else { return .inconclusive }
-        let baseline = experiment.baselineMetrics
-        let improvement: Double
-        switch experiment.type {
-        case .protectedWindow:
-            improvement = relativeReduction(from: Double(baseline.outsideWindowMinutes), to: Double(result.outsideWindowMinutes))
-        case .reduceExtensions:
-            improvement = relativeReduction(from: baseline.extensionRate, to: result.extensionRate)
-        case .strongerFriction:
-            improvement = relativeIncrease(from: baseline.cancellationRate, to: result.cancellationRate)
-        }
-        if improvement >= 0.10 { return .helped }
-        if improvement <= -0.10 { return .worsened }
-        return .inconclusive
+        WeeklyExperimentComparison.outcome(type: experiment.type, baseline: experiment.baselineMetrics, result: result)
     }
 
     private func scrollWindow(_ window: ScreenScrollWindow, contains hour: Int) -> Bool {

@@ -140,18 +140,7 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
             intentIdentifiers: [],
             options: []
         )
-        let clearAction = UNNotificationAction(
-            identifier: "OPEN_MIVO_CLEAR",
-            title: "Open Mivo Clear",
-            options: [.foreground]
-        )
-        let clearCategory = UNNotificationCategory(
-            identifier: "MIVO_CLEAR",
-            actions: [clearAction],
-            intentIdentifiers: [],
-            options: []
-        )
-        UNUserNotificationCenter.current().setNotificationCategories([category, rescueCategory, adminAccountCategory, clearCategory])
+        UNUserNotificationCenter.current().setNotificationCategories([category, rescueCategory, adminAccountCategory])
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
@@ -234,26 +223,11 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
             completionHandler([])
             return
         }
-        if (notification.request.content.userInfo["mivoRoute"] as? String) == SpotKeys.notificationRoute {
-            // A Mivo Spot finished, or a Spot's shield asked to open Mivo — and Mivo
-            // is already open, so there is nothing to banner; just act on it.
-            center.removeDeliveredNotifications(withIdentifiers: [notification.request.identifier])
-            NotificationCenter.default.post(name: Notification.Name(SpotKeys.routeChangedNotification), object: nil)
-            completionHandler([])
-            return
-        }
         if (notification.request.content.userInfo["mivoRoute"] as? String) == LockInKeys.notificationRoute {
             // A lock ran out, or a lock's shield asked to open Mivo — and Mivo is
             // already open, so there is nothing to banner; just act on it.
             center.removeDeliveredNotifications(withIdentifiers: [notification.request.identifier])
             NotificationCenter.default.post(name: Notification.Name(LockInKeys.routeChangedNotification), object: nil)
-            completionHandler([])
-            return
-        }
-        if (notification.request.content.userInfo["mivoRoute"] as? String) == "mivoClear" {
-            persistMivoClearRoute(from: notification.request.content.userInfo)
-            center.removeDeliveredNotifications(withIdentifiers: [notification.request.identifier])
-            NotificationCenter.default.post(name: Notification.Name("mivoClearRequested"), object: nil)
             completionHandler([])
             return
         }
@@ -277,24 +251,9 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
 
-        if (userInfo["mivoRoute"] as? String) == SpotKeys.notificationRoute {
-            center.removeDeliveredNotifications(withIdentifiers: [response.notification.request.identifier])
-            NotificationCenter.default.post(name: Notification.Name(SpotKeys.routeChangedNotification), object: nil)
-            completionHandler()
-            return
-        }
-
         if (userInfo["mivoRoute"] as? String) == LockInKeys.notificationRoute {
             center.removeDeliveredNotifications(withIdentifiers: [response.notification.request.identifier])
             NotificationCenter.default.post(name: Notification.Name(LockInKeys.routeChangedNotification), object: nil)
-            completionHandler()
-            return
-        }
-
-        if (userInfo["mivoRoute"] as? String) == "mivoClear" {
-            persistMivoClearRoute(from: userInfo)
-            center.removeDeliveredNotifications(withIdentifiers: [response.notification.request.identifier])
-            NotificationCenter.default.post(name: Notification.Name("mivoClearRequested"), object: nil)
             completionHandler()
             return
         }
@@ -347,14 +306,6 @@ final class MivoAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
             }
         }
         completionHandler()
-    }
-
-    private func persistMivoClearRoute(from userInfo: [AnyHashable: Any]) {
-        guard let platform = userInfo["platform"] as? String else { return }
-        let defaults = UserDefaults(suiteName: MivoScreenTimeKeys.appGroup)
-        defaults?.set(platform, forKey: MivoScreenTimeKeys.pendingMivoClearPlatform)
-        defaults?.set(MivoClearEntryPoint.shield.rawValue, forKey: MivoScreenTimeKeys.pendingMivoClearEntryPoint)
-        defaults?.synchronize()
     }
 }
 
@@ -512,14 +463,6 @@ struct MivoApp: App {
                         appVM.handleDeepLink(url)
                     }
                 }
-                // Background tag reading hands a tapped Mivo Spot to the app as a
-                // universal-link user activity. `onOpenURL` normally sees it too;
-                // this makes sure it is never missed. A repeat delivery is ignored
-                // by `SpotManager`, so it can't turn a Spot straight back off.
-                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
-                    guard let url = activity.webpageURL, SpotLink.target(from: url) != nil else { return }
-                    appVM.handleDeepLink(url)
-                }
         }
     }
 }
@@ -543,7 +486,11 @@ struct RootView: View {
     var body: some View {
         Group {
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("-MivoPreviewOnboarding") {
+            if ProcessInfo.processInfo.arguments.contains("-MivoPreviewStudy") {
+                StudyRoomPreviewHost()
+            } else if let mode = UserDefaults.standard.string(forKey: "MivoPreviewAttention") {
+                AttentionJourneyPreviewHost(mode: mode)
+            } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewOnboarding") {
                 OnboardingWelcomeView()
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewFirstLaunch") {
                 MivoFirstLaunchIntroView(onComplete: {})
@@ -581,6 +528,8 @@ struct RootView: View {
                 NavigationStack { InterventionsView() }
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewSettings") {
                 NavigationStack { SettingsView() }
+            } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewLock") {
+                NavigationStack { MivoLockView() }
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewClear") {
                 MivoClearAppStorePreviewView()
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewStill") {
@@ -598,8 +547,6 @@ struct RootView: View {
                 ComebackFlowView(prompt: ComebackPreviewFixtures.prompt)
             } else if ProcessInfo.processInfo.arguments.contains("-MivoPreviewComebackHome") {
                 ComebackHomePreview()
-            } else if let spotScreen = SpotPreviewHost.screen(from: ProcessInfo.processInfo.arguments) {
-                SpotPreviewHost(screen: spotScreen)
             } else if let companionMode = UserDefaults.standard.string(forKey: "MivoPreviewCompanion") {
                 CompanionPreviewHost(mode: companionMode)
             } else if let lockInMode = UserDefaults.standard.string(forKey: "MivoPreviewLockIn") {

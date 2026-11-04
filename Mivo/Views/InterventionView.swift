@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// A standalone preview of the §4.3 pause, reachable from Settings → Help and
 /// from the app tour. Both call sites pass `intention: nil, duration: nil` —
