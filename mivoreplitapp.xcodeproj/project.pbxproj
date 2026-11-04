@@ -67,6 +67,7 @@
 		3F2001182FA4000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3F2001192FA4000000000001 /* PrivacyInfo.xcprivacy */; };
 		4132FECFF2E6E0FB1ADA5C63 /* LockInPreviewHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F197DDA51BD623DBFED9B1 /* LockInPreviewHost.swift */; };
 		41989750EF4E45128334B151 /* ComebackModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E2DE554D7F546FD8555BB04 /* ComebackModels.swift */; };
+		434704D146F37AE0C4F00307 /* LinkedStudy.swift in Sources */ = {isa = PBXBuildFile; fileRef = F38D4EF6837980CDF13EBFB0 /* LinkedStudy.swift */; };
 		46B0EA55E9E95CEDE5F7CF7C /* MivoClearRuntimeGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14E64F7119F635901C901B63 /* MivoClearRuntimeGuardTests.swift */; };
 		47A6CC981824B0B6028EA07A /* CompanionRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12BA70FD3A43F3AF8F3DF1E0 /* CompanionRuntime.swift */; };
 		484E1553E2D16A1334C5B534 /* OnboardingWhyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A5B5AD5658BBDC54B49C03 /* OnboardingWhyView.swift */; };
@@ -506,6 +507,7 @@
 		F0757B6ACB459F5BAF9FBDD0 /* InterventionFlowView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InterventionFlowView.swift; sourceTree = "<group>"; };
 		F158B42FAD9B0581E939EBA1 /* CompanionBehaviorEngine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CompanionBehaviorEngine.swift; sourceTree = "<group>"; };
 		F1A2B3C4D5E6F7A8B9C0D1E1 /* FamilyControlsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyControlsManager.swift; sourceTree = "<group>"; };
+		F38D4EF6837980CDF13EBFB0 /* LinkedStudy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LinkedStudy.swift; sourceTree = "<group>"; };
 		F27BDF0D6ED77801B60EB868 /* SpotShared.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotShared.swift; sourceTree = "<group>"; };
 		F676E12238F819C8249814A0 /* SpotInsights.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpotInsights.swift; sourceTree = "<group>"; };
 		F81CD1E0DBEB61A4B3FBDBB7 /* ReelAttentionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReelAttentionTests.swift; sourceTree = "<group>"; };
@@ -660,6 +662,7 @@
 				6D9C69972DDF4AFBA6B847D5 /* StudyLog.swift */,
 				807421B33D06BF0125E6EE91 /* ReplayFeed.swift */,
 				4F65D20838739BC2351D25A6 /* MivoPlus.swift */,
+				F38D4EF6837980CDF13EBFB0 /* LinkedStudy.swift */,
 				5E6FD31E68257861D4F4A86F /* ReelAttention.swift */,
 				5C9447830329D477E1001513 /* SocialApps.swift */,
 				E5C8F5406406FDA90D49D12D /* AppPurposeReport.swift */,
@@ -1562,6 +1565,7 @@
 				8FBE54A2C1FF294E7FBE7425 /* MivoPlusStore.swift in Sources */,
 				C13C3612D9D2FCD3B2AE60E9 /* MivoPlusOffer.swift in Sources */,
 				6E8E27AF5E95DBC3D819044C /* MivoPlusPaywallView.swift in Sources */,
+				434704D146F37AE0C4F00307 /* LinkedStudy.swift in Sources */,
 				F8F4618B945C71DA4C44081D /* ReelAttention.swift in Sources */,
 				95DBD14C07AAB1D0DA7EBB03 /* ReelAttentionCard.swift in Sources */,
 				7D3094E31B523CD61DEDCC9F /* SocialApps.swift in Sources */,

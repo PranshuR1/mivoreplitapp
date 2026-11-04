@@ -59,6 +59,10 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
         logger.info("intervalDidStart: activity=\(activity.rawValue)")
+        if activity.rawValue == "mivo.studyFocus.end" {
+            endStudyFocusIfDue()
+            return
+        }
 
         // Schedules are now arranged so intervalStart = desired relock time.
         // iOS fires intervalDidStart reliably (must launch extension to begin usage counting).
@@ -124,6 +128,10 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
         logger.info("intervalDidEnd: activity=\(activity.rawValue)")
+        if activity.rawValue == "mivo.studyFocus.end" {
+            endStudyFocusIfDue()
+            return
+        }
         if activity.rawValue == leaseEnforcementActivityName {
             relockForActiveSessionCheckIn(source: "active-check-in")
             return
@@ -173,6 +181,15 @@ final class MivoSessionRelockMonitor: DeviceActivityMonitor {
         // Primary fallback for relock schedule.
         guard activity.rawValue == sessionRelockActivityName else { return }
         relockForEndedSession(source: "session-end")
+    }
+
+    private func endStudyFocusIfDue() {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return }
+        let end = defaults.double(forKey: "mivo.studyFocus.endsAt")
+        guard end <= Date().timeIntervalSince1970 else { return }
+        ManagedSettingsStore(named: .init("mivo.studyFocus")).clearAllSettings()
+        defaults.removeObject(forKey: "mivo.studyFocus.endsAt")
+        defaults.synchronize()
     }
 
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {

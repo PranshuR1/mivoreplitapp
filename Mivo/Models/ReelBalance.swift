@@ -36,6 +36,9 @@ struct ReelBalance: Codable, Equatable {
     var spentSeconds: Int
     /// Seconds added today on top of the allowance (see `credit`).
     var bonusSeconds: Int
+    /// Saved atomically with the balance, so replayed server grants cannot credit twice.
+    var linkedStudyCredits: Set<UUID>? = nil
+    var linkedStudyCreditAmounts: [UUID: Int]? = nil
 
     init(dayKey: String, spentSeconds: Int = 0, bonusSeconds: Int = 0) {
         self.dayKey = dayKey
@@ -94,6 +97,20 @@ struct ReelBalance: Codable, Equatable {
         bonusSeconds += earned
         return earned
     }
+    @discardableResult
+    mutating func creditLinkedStudy(_ reward: LinkedStudyReward) -> Int {
+        guard reward.dayKey == dayKey, !(linkedStudyCredits ?? []).contains(reward.sessionID) else { return 0 }
+        let earned = min(max(0, reward.scrollSeconds), max(0, Self.dailyEarnCapSeconds - bonusSeconds))
+        bonusSeconds += earned
+        var ids = linkedStudyCredits ?? []
+        ids.insert(reward.sessionID)
+        linkedStudyCredits = ids
+        var amounts = linkedStudyCreditAmounts ?? [:]
+        amounts[reward.sessionID] = earned
+        linkedStudyCreditAmounts = amounts
+        return earned
+    }
+
 }
 
 /// Persists today's `ReelBalance` on this device (UserDefaults), one balance

@@ -885,3 +885,182 @@ extension MivoBackendService {
         )
     }
 }
+
+// MARK: - Study sync and study rooms
+//
+// Finished study sessions are saved to the account so the website shows the same streak, and the
+// person's study room (usemivo.app/room/<code>) is kept live while they study. See
+// supabase/migrations/20261029120000_study_sync_and_rooms.sql. Only the task and the times go up;
+// the video never leaves the phone.
+
+extension MivoBackendService {
+    private struct StudySyncResponse: Decodable {
+        let accepted: Int
+        let rejected: Int
+    }
+
+    private struct StudySessionResponse: Decodable {
+        let id: String
+        let task: String
+        let startedAt: String
+        let endedAt: String
+        let source: String?
+        let focusedSeconds: Int?
+    }
+
+    private struct StudyRoomResponse: Decodable {
+        struct Sitter: Decodable {
+            let id: String
+            let name: String
+        }
+
+        let hasRoom: Bool
+        let code: String?
+        let displayName: String?
+        let isOpen: Bool?
+        let showTask: Bool?
+        let studying: Bool?
+        let sitting: [Sitter]?
+
+        var state: StudyRoomState {
+            guard hasRoom, let code else { return .none }
+            return StudyRoomState(
+                hasRoom: true,
+                code: code,
+                displayName: displayName ?? "",
+                isOpen: isOpen ?? false,
+                showTask: showTask ?? true,
+                studying: studying ?? false,
+                sitting: (sitting ?? []).compactMap { sitter in
+                    UUID(uuidString: sitter.id).map { StudyRoomState.Visitor(id: $0, name: sitter.name) }
+                }
+            )
+        }
+    }
+
+    private static func studyDate(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
+
+    /// Postgres emits ISO-8601 with microseconds and an offset.
+    static func parsePostgresDate(_ raw: String?) -> Date? {
+        guard let raw else { return nil }
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFraction.date(from: raw) { return date }
+        return ISO8601DateFormatter().date(from: raw)
+    }
+
+    /// Saves sessions run on this phone. Saving one the account already has changes nothing.
+    static func syncStudySessions(_ entries: [StudyEntry]) async throws {
+        let rows: [[String: Any]] = entries.map { entry in
+            [
+                "id": entry.id.uuidString.lowercased(),
+                "task": entry.task,
+                "started_at": studyDate(entry.startedAt),
+                "ended_at": studyDate(entry.endedAt),
+                "recorded_seconds": entry.recordedSeconds,
+                "scroll_seconds_earned": entry.scrollSecondsEarned,
+                "source": "ios"
+            ]
+        }
+        let _: StudySyncResponse = try await rpc(
+            "sync_study_sessions", body: ["input_sessions": rows], authenticated: true
+        )
+    }
+
+    static func myStudySessions(since: Date) async throws -> [RemoteStudySession] {
+        let rows: [StudySessionResponse] = try await rpc(
+            "my_study_sessions", body: ["input_since": studyDate(since)], authenticated: true
+        )
+        return rows.compactMap { row in
+            guard let id = UUID(uuidString: row.id),
+                  let start = parsePostgresDate(row.startedAt),
+                  let end = parsePostgresDate(row.endedAt) else { return nil }
+            return RemoteStudySession(id: id, task: row.task, startedAt: start, endedAt: end, source: row.source, focusedSeconds: row.focusedSeconds)
+        }
+    }
+
+    static func myStudyRoom() async throws -> StudyRoomState {
+        let response: StudyRoomResponse = try await rpc("my_study_room", body: [:], authenticated: true)
+        return response.state
+    }
+
+    static func ensureStudyRoom() async throws -> StudyRoomState {
+        let response: StudyRoomResponse = try await rpc("ensure_study_room", body: [:], authenticated: true)
+        return response.state
+    }
+
+    static func updateStudyRoom(displayName: String?, isOpen: Bool?, showTask: Bool?) async throws -> StudyRoomState {
+        let response: StudyRoomResponse = try await rpc(
+            "update_study_room",
+            body: [
+                "input_display_name": displayName ?? NSNull(),
+                "input_is_open": isOpen ?? NSNull(),
+                "input_show_task": showTask ?? NSNull()
+            ],
+            authenticated: true
+        )
+        return response.state
+    }
+
+    static func rotateStudyRoomCode() async throws -> StudyRoomState {
+        let response: StudyRoomResponse = try await rpc("rotate_study_room_code", body: [:], authenticated: true)
+        return response.state
+    }
+
+    static func removeStudyRoomVisitor(id: UUID) async throws -> StudyRoomState {
+        let response: StudyRoomResponse = try await rpc(
+            "remove_study_room_visitor",
+            body: ["input_visitor_id": id.uuidString.lowercased()],
+            authenticated: true
+        )
+        return response.state
+    }
+
+    /// "Still studying." The room reads two quiet minutes as not studying.
+    static func studyRoomPing(task: String, startedAt: Date) async throws -> StudyRoomState {
+        let response: StudyRoomResponse = try await rpc(
+            "study_room_ping",
+            body: ["input_task": task, "input_started_at": studyDate(startedAt)],
+            authenticated: true
+        )
+        return response.state
+    }
+
+    static func studyRoomEnd() async throws -> StudyRoomState {
+        let response: StudyRoomResponse = try await rpc("study_room_end", body: [:], authenticated: true)
+        return response.state
+    }
+}
+
+
+// MARK: - Linked computer study
+extension MivoBackendService {
+    static func currentLinkedStudy() async throws -> LinkedStudySession? {
+        try await rpc("my_linked_study", body: [:], authenticated: true)
+    }
+    static func requestLinkedStudy(id: UUID, task: String) async throws -> LinkedStudySession {
+        try await rpc("request_linked_study", body: ["input_id": id.uuidString, "input_task": task], authenticated: true)
+    }
+    static func finishLinkedStudy(id: UUID) async throws -> LinkedStudySession {
+        try await rpc("finish_linked_study", body: ["input_id": id.uuidString], authenticated: true)
+    }
+    static func linkedStudyRewards(deviceID: UUID, hasPlus: Bool, timeZone: String) async throws -> [LinkedStudyReward] {
+        try await rpc("linked_study_rewards", body: ["input_device_id": deviceID.uuidString,
+            "input_has_plus": hasPlus, "input_time_zone": timeZone], authenticated: true)
+    }
+}
+
+final class BackendLinkedStudyBackend: LinkedStudyBackend {
+    func current() async throws -> LinkedStudySession? { try await MivoBackendService.currentLinkedStudy() }
+    func create(id: UUID, task: String) async throws -> LinkedStudySession {
+        try await MivoBackendService.requestLinkedStudy(id: id, task: task)
+    }
+    func finish(id: UUID) async throws -> LinkedStudySession { try await MivoBackendService.finishLinkedStudy(id: id) }
+    func rewards(deviceID: UUID, hasPlus: Bool, timeZone: String) async throws -> [LinkedStudyReward] {
+        try await MivoBackendService.linkedStudyRewards(deviceID: deviceID, hasPlus: hasPlus, timeZone: timeZone)
+    }
+}

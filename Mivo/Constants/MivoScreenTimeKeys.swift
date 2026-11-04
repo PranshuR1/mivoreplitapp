@@ -41,6 +41,9 @@ enum SessionStartError: Error, Equatable, Identifiable {
 enum MivoScreenTimeKeys {
     static let appGroup = "group.com.mivo.mivoapp"
     static let shieldStoreName = "mivo.intervention"
+    static let studyFocusStore = "mivo.studyFocus"
+    static let studyFocusEndActivity = "mivo.studyFocus.end"
+    static let studyFocusEndsAt = "mivo.studyFocus.endsAt"
 
     static let familyActivitySelection = "mivo.familyActivitySelection"
     static let impulseProtectionEnabled = "mivo.impulseProtectionEnabled"
