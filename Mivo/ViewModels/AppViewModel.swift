@@ -1745,10 +1745,12 @@ class AppViewModel: ObservableObject {
             }
         }
 
-        // Set flag
+        // Set flag. The app tour no longer follows onboarding: onboarding ends
+        // with a real app opening, and each tool explains itself when it's
+        // first used. The tour is still in Settings for anyone who wants it.
         settings.onboardingComplete = true
         if !isReplay {
-            settings.tutorialComplete = false
+            settings.tutorialComplete = true
         }
         // Reassign to force @Published notifications in case of in-place mutation
         let updated = settings

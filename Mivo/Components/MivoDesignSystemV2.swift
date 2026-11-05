@@ -805,12 +805,14 @@ struct MivoListRow: View {
     }
 }
 
-/// A compact entry point shown two to a row — the tools that used to be a run
-/// of full-width rows. `leading` is normally an icon tile; Companion passes its
-/// figure.
+/// One tool in Home's Tools list: icon, name, a short status line, chevron.
+/// Rows inside one card replaced a two-column grid of tall tiles, so the
+/// tools take a third of the height. `leading` is normally an icon tile;
+/// Companion passes its figure. `badge` marks a tool that needs Plus.
 struct MivoToolTile<Leading: View>: View {
     let title: String
     let subtitle: String
+    var badge: String? = nil
     let action: () -> Void
     @ViewBuilder let leading: () -> Leading
 
@@ -819,34 +821,48 @@ struct MivoToolTile<Leading: View>: View {
             HapticsService.selection()
             action()
         } label: {
-            VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
                 leading()
-                    .frame(height: 40, alignment: .topLeading)
-                Text(title)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(MivoColors.ink)
-                    .padding(.top, 12)
-                Text(subtitle)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundColor(MivoColors.inkBody)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .padding(.top, 2)
-                Spacer(minLength: 0)
+                    .frame(width: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(MivoColors.ink)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(MivoColors.inkBody)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 8)
+                if let badge {
+                    Text(badge)
+                        .font(.system(size: 10.5, weight: .bold))
+                        .foregroundColor(MivoColors.deep)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(MivoColors.surfaceV2))
+                        .fixedSize()
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(MivoColors.inkMuted)
+                    .accessibilityHidden(true)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
-            .mivoCardBackground()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(MivoPressStyle())
+        .buttonStyle(MivoRowPressStyle())
         .accessibilityElement(children: .combine)
     }
 }
 
 extension MivoToolTile where Leading == MivoIconTile {
-    init(icon: String, title: String, subtitle: String, action: @escaping () -> Void) {
-        self.init(title: title, subtitle: subtitle, action: action) {
+    init(icon: String, title: String, subtitle: String, badge: String? = nil, action: @escaping () -> Void) {
+        self.init(title: title, subtitle: subtitle, badge: badge, action: action) {
             MivoIconTile(systemName: icon)
         }
     }

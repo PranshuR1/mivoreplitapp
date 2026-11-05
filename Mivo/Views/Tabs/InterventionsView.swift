@@ -158,7 +158,7 @@ struct InterventionsView: View {
             MivoListGroup {
                 setupLink(
                     icon: mivoLock.isLocked ? "lock.fill" : "lock.open",
-                    label: "Lock Mivo",
+                    label: "Keep Mivo on",
                     value: mivoLock.isLocked ? "Locked" : "Off",
                     tone: mivoLock.isLocked ? .positive : .muted
                 ) {

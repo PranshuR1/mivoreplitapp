@@ -36,7 +36,7 @@ struct LockInHomeView: View {
                 .padding(.bottom, MivoMetrics.scrollBottomPadding)
             }
         }
-        .navigationTitle("Lock in")
+        .navigationTitle("Task lock")
         .navigationBarTitleDisplayMode(.inline)
         .hidesRoamingCompanion()
         .fullScreenCover(isPresented: $showSetup) {
@@ -51,7 +51,7 @@ struct LockInHomeView: View {
             LockInMiloFigure(state: .focused, height: 150)
                 .padding(.top, 18)
 
-            Text("Lock in")
+            Text("Task lock")
                 .font(.system(size: 28, weight: .bold))
                 .tracking(Font.mivoTracking(-0.025, at: 28))
                 .foregroundColor(MivoColors.ink)

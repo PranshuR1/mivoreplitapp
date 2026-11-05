@@ -1,7 +1,4 @@
 import SwiftUI
-#if canImport(FamilyControls)
-import FamilyControls
-#endif
 
 private struct FirstLaunchMoment {
     let eyebrow: String
@@ -236,13 +233,13 @@ struct MivoFirstLaunchIntroView: View {
 // MARK: - Onboarding (v2 redesign)
 
 /// One decision per screen, progress always visible, never more than four
-/// options — a short intro, three questions, then the starting point.
+/// options: three questions, the apps Mivo opens, then one real opening of
+/// an app. No story screens and no tour; tools explain themselves when used.
 ///
 /// Answers are written straight into `AppViewModel.onboardingProfile` so the
 /// plan, the pause and the app shield all read the same values the user chose.
 struct OnboardingWelcomeView: View {
     @EnvironmentObject private var appVM: AppViewModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let replayMode: Bool
 
@@ -250,7 +247,7 @@ struct OnboardingWelcomeView: View {
         self.replayMode = replayMode
     }
 
-    /// `-1` is the intro; the questions are followed by an optional swap and the plan.
+    /// The questions, then the apps step, then the first opening.
     @State private var index = Self.initialIndex
 
     /// Lets `-MivoPreviewOnboardingStep <n>` open a single screen directly, in
@@ -261,50 +258,38 @@ struct OnboardingWelcomeView: View {
         if let flag = arguments.firstIndex(of: "-MivoPreviewOnboardingStep"),
            arguments.indices.contains(flag + 1),
            let step = Int(arguments[flag + 1]) {
-            return step
+            return max(0, step)
         }
         #endif
-        return -1
+        return 0
     }
     @State private var answers: [Int: String] = [:]
     @State private var isRequestingScreenTime = false
-    @State private var glow = false
-    @State private var swapSelection: UserSwap? = nil
     @State private var chosenApps = AppPicksList.currentPicks()
     @State private var screenTimeAuthorized = FamilyControlsManager.shared.cachedAuthorizationStatus() == true
-    #if canImport(FamilyControls)
-    @State private var protectedSelection = FamilyActivitySelection()
-    @State private var showProtectedPicker = false
-    #endif
+    @State private var showFirstOpening = false
+    @State private var isFinishing = false
 
     private var questions: [OnboardingQuestion] { OnboardingQuestion.all }
 
     var body: some View {
         ZStack {
-            if index < 0 {
-                intro.transition(.opacity)
-            } else if index == questions.count {
+            if index == questions.count {
                 appsStep.transition(.opacity)
-            } else if index == questions.count + 1 {
-                swapStep.transition(.opacity)
-            } else if index > questions.count + 1 {
-                planReady.transition(.opacity)
+            } else if index > questions.count {
+                firstOpeningStep.transition(.opacity)
             } else {
-                question(questions[index]).transition(.opacity)
+                question(questions[max(0, index)]).transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.24), value: index)
-        #if canImport(FamilyControls)
-        .familyActivityPicker(isPresented: $showProtectedPicker, selection: $protectedSelection)
-        .onChange(of: protectedSelection) { _, selection in
-            FamilyControlsManager.shared.saveFamilyActivitySelection(selection)
-            FamilyControlsManager.shared.setImpulseProtectionEnabled(FamilyControlsManager.shared.hasImpulseSelection())
-        }
         .onAppear {
-            protectedSelection = FamilyControlsManager.shared.loadFamilyActivitySelection()
             if let problem = appVM.attentionJourney.problem { answers[0] = problem.rawValue }
         }
-        #endif
+        .fullScreenCover(isPresented: $showFirstOpening, onDismiss: finishOnboarding) {
+            InterventionFlowView(preselectedApp: firstOpeningApp) {}
+                .environmentObject(appVM)
+        }
         .overlay(alignment: .topTrailing) {
             if replayMode {
                 Button {
@@ -313,7 +298,7 @@ struct OnboardingWelcomeView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(index < 0 ? MivoColors.heroText : MivoColors.ink)
+                        .foregroundColor(MivoColors.ink)
                         .frame(width: 42, height: 42)
                 }
                 .accessibilityLabel("Exit onboarding replay")
@@ -323,79 +308,6 @@ struct OnboardingWelcomeView: View {
         }
     }
 
-    // MARK: 8.1 Cinematic intro
-
-    private var intro: some View {
-        ZStack {
-            MivoColors.stage.ignoresSafeArea()
-
-            // Ambient, slower than the pause screen's breath.
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [MivoColors.accent.opacity(0.26), .clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 210
-                    )
-                )
-                .frame(width: 420, height: 420)
-                .scaleEffect(glow ? 1.06 : 0.94)
-                .opacity(glow ? 1 : 0.72)
-                .animation(
-                    reduceMotion ? nil : .easeInOut(duration: 5).repeatForever(autoreverses: true),
-                    value: glow
-                )
-
-            VStack(spacing: 18) {
-                Spacer()
-                // Template rendering knocks the mark out to cream, per §8.1.
-                // Tinting the original would leave the dark artwork dark.
-                Image("MivoLogoMark")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 132)
-                    .foregroundColor(MivoColors.heroText)
-                    .accessibilityLabel("Mivo")
-
-                Text("Your attention, on your terms")
-                    .font(.system(size: 27, weight: .bold))
-                    .foregroundColor(MivoColors.heroText)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(27 * 0.28)
-                    .frame(maxWidth: 280)
-
-                Text("Choose what gets in the way. Start with one useful change.")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(MivoColors.heroText.opacity(0.6))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(14 * 0.6)
-                    .frame(maxWidth: 262)
-
-                Spacer()
-
-                Button {
-                    HapticsService.impact(style: .heavy)
-                    index = 0
-                } label: {
-                    Text("Begin")
-                        .font(.system(size: 15.5, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(MivoColors.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .shadow(color: Color(red: 0.47, green: 0.27, blue: 0.08).opacity(0.30), radius: 2, y: 1)
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 52)
-            }
-        }
-        .preferredColorScheme(.dark)
-        .onAppear { glow = true }
-    }
 
     // MARK: 8.2 Question screens
 
@@ -478,6 +390,10 @@ struct OnboardingWelcomeView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Go back")
+            // The first question is the first screen: nothing to go back to.
+            .opacity(index > 0 ? 1 : 0)
+            .disabled(index == 0)
+            .accessibilityHidden(index == 0)
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
@@ -604,11 +520,6 @@ struct OnboardingWelcomeView: View {
                 primaryButton(title: chosenApps.isEmpty ? "Choose at least one" : "Continue", enabled: !chosenApps.isEmpty, loading: false) {
                     AppPicksPrompt.markAnswered()
                     AppPicksList.turnOnProtection()
-                    #if canImport(FamilyControls)
-                    // The general picker on the plan screen edits this copy;
-                    // reload it so it can't save over the apps just picked.
-                    protectedSelection = FamilyControlsManager.shared.loadFamilyActivitySelection()
-                    #endif
                     HapticsService.success()
                     index += 1
                 }
@@ -618,16 +529,13 @@ struct OnboardingWelcomeView: View {
         }
     }
 
-    // MARK: 8.2b Swap step
+    // MARK: 8.3 First opening
     //
-    // Cold turkey (just removing the reward) rarely holds. Habit substitution
-    // does — same cue, same physical routine, a different, real reward. This
-    // asks the user to pre-commit to theirs now, before any urge is actually
-    // happening, so there's nothing left to decide in the moment. Existing
-    // users who signed up before this shipped get the same choice once via
-    // `AppViewModel.evaluateSwapPrompt()`; both write to the same
-    // `userSwap`, and it stays editable in Settings after this.
-    private var swapStep: some View {
+    // Instead of a plan summary and an app tour, the last step is the thing
+    // Mivo is for: opening one app on purpose, for real. Onboarding completes
+    // when that window closes, so Home, the tools and any prompts come after
+    // the person has already used Mivo once.
+    private var firstOpeningStep: some View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
 
@@ -635,15 +543,21 @@ struct OnboardingWelcomeView: View {
                 topBar
                     .padding(.top, 56)
 
-                Text("Pick your swap")
+                Text("TRY IT ONCE")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
+                    .tracking(10 * 0.13)
+                    .foregroundColor(MivoColors.inkMuted)
+                    .padding(.top, 34)
+
+                Text(firstOpeningTitle)
                     .font(.system(size: 27, weight: .bold))
                     .tracking(27 * -0.025)
                     .foregroundColor(MivoColors.ink)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 290, alignment: .leading)
-                    .padding(.top, 34)
+                    .frame(maxWidth: 300, alignment: .leading)
+                    .padding(.top, 8)
 
-                Text("Pick one small thing you'd like to do when you reach for an app. You can turn it into a commitment on Home and check in when it's done.")
+                Text("This is how every app opens through Mivo. It takes about ten seconds.")
                     .font(.system(size: 13.5, weight: .medium))
                     .foregroundColor(MivoColors.inkBody)
                     .lineSpacing(13.5 * 0.55)
@@ -651,30 +565,38 @@ struct OnboardingWelcomeView: View {
                     .frame(maxWidth: 295, alignment: .leading)
                     .padding(.top, 10)
 
-                ScrollView(showsIndicators: false) {
-                    SwapPickerRows(selection: $swapSelection)
-                        .padding(.top, 28)
+                VStack(alignment: .leading, spacing: 18) {
+                    firstOpeningRow(1, "Say what you came for", "Messages, a search or a few videos. Mivo opens the app right there.")
+                    firstOpeningRow(2, "Choose how much", "A number of videos or a few minutes. Messages stay unlimited.")
+                    firstOpeningRow(3, "Mivo holds you to it", "Wander off and it reminds you why you came. Once you've had what you chose, the feed slows down.")
                 }
+                .padding(.top, 28)
 
                 Spacer(minLength: 0)
 
+                if let problem = appVM.attentionJourney.problem {
+                    Text("Afterwards, your next step is waiting on Home: \u{201C}\(problem.actionTitle)\u{201D}.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(MivoColors.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 10)
+                }
+
                 Button {
                     HapticsService.selection()
-                    index += 1
+                    finishOnboarding()
                 } label: {
-                    Text("I'll decide later")
+                    Text("Not now, go to Home")
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundColor(MivoColors.inkMuted)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(maxWidth: .infinity, minHeight: 36, alignment: .center)
                 }
                 .buttonStyle(.plain)
-                .padding(.bottom, 10)
+                .padding(.bottom, 6)
 
-                primaryButton(title: "Continue", enabled: swapSelection != nil, loading: false) {
-                    guard let swapSelection else { return }
-                    appVM.saveUserSwap(swapSelection)
-                    HapticsService.success()
-                    index += 1
+                primaryButton(title: "Open \(firstOpeningApp?.title ?? "an app") now", enabled: true, loading: false) {
+                    HapticsService.impact(style: .medium)
+                    showFirstOpening = true
                 }
                 .padding(.bottom, 30)
             }
@@ -682,120 +604,53 @@ struct OnboardingWelcomeView: View {
         }
     }
 
-    // MARK: 8.3 Plan ready
-
-    private var planReady: some View {
-        ZStack {
-            MivoColors.background.ignoresSafeArea()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("YOUR PLAN")
-                        .font(.system(size: 10, weight: .bold).monospacedDigit())
-                        .tracking(10 * 0.13)
-                        .foregroundColor(MivoColors.inkMuted)
-                        .padding(.top, 66)
-
-                    Text(planHeadline)
-                        .font(.system(size: 30, weight: .bold))
-                        .tracking(30 * -0.03)
-                        .foregroundColor(MivoColors.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 280, alignment: .leading)
-                        .padding(.top, 10)
-
-                    Text(planExplanation)
-                        .font(.system(size: 13.5, weight: .medium))
-                        .foregroundColor(MivoColors.inkBody)
-                        .lineSpacing(13.5 * 0.55)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 14)
-
-                    VStack(spacing: 0) {
-                        ForEach(planRows, id: \.label) { row in
-                            Rectangle().fill(MivoColors.hairline).frame(height: 1)
-                            HStack {
-                                Text(row.label)
-                                    .font(.system(size: 14.5, weight: .semibold))
-                                    .foregroundColor(row.emphasised ? MivoColors.deep : MivoColors.ink)
-                                Spacer()
-                                Text(row.value)
-                                    .font(.system(size: 14.5, weight: row.emphasised ? .heavy : .bold).monospacedDigit())
-                                    .foregroundColor(row.emphasised ? MivoColors.deep : MivoColors.ink)
-                            }
-                            .padding(.vertical, 15)
-                        }
-                        Rectangle().fill(MivoColors.hairline).frame(height: 1)
-                    }
-                    .padding(.top, 26)
-
-                    Button("Choose protected apps") { chooseProtectedApps() }
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(MivoColors.deep)
-                        .padding(.top, 18)
-
-                    Text("Clear opens social sites inside Mivo. App protection needs Screen Time access and the apps you select here.")
-                        .font(.system(size: 12)).foregroundColor(MivoColors.inkMuted)
-                        .padding(.top, 8)
-
-                    Text("You can change any of this later. Nothing here is a promise you have to keep perfectly.")
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundColor(MivoColors.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 18)
-
-                    Spacer(minLength: 0)
-
-                    primaryButton(title: "Start my plan", enabled: true, loading: false) {
-                        HapticsService.success()
-                        appVM.completeOnboarding()
-                    }
-
-                    Button {
-                        HapticsService.selection()
-                        answers = [:]
-                        index = -1
-                    } label: {
-                        Text("Replay onboarding")
-                            .font(.system(size: 13.5, weight: .bold))
-                            .foregroundColor(MivoColors.inkMuted)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 40)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.bottom, 24)
-                }
-                .padding(.horizontal, 24)
+    private func firstOpeningRow(_ number: Int, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(number)")
+                .font(.system(size: 13, weight: .bold).monospacedDigit())
+                .foregroundColor(MivoColors.deep)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(MivoColors.surfaceV2))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(MivoColors.ink)
+                Text(detail)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .accessibilityElement(children: .combine)
     }
 
-    private var goalMinutes: Int { appVM.onboardingProfile.dailyScrollGoalMinutes ?? 45 }
-
-    /// The measured baseline when Screen Time has reported, otherwise the
-    /// planning default. Never presented as measured when it is not.
-    private var baselineMinutes: Int? { appVM.onboardingProfile.scrollEstimateMinutes }
-
-    private var planHeadline: String {
-        appVM.attentionJourney.problem?.actionTitle ?? "One useful change to start"
+    /// The app named in "Which app pulls hardest?", else the first one picked
+    /// in Apple's list. Nil lets the window flow ask, as it does from Home.
+    private var firstOpeningApp: SocialApp? {
+        if let answer = answers[1], let app = SocialApp(rawValue: answer) { return app }
+        if let named = appVM.onboardingProfile.preferredApps.first,
+           let app = SocialApp.allCases.first(where: { $0.title.caseInsensitiveCompare(named) == .orderedSame }) {
+            return app
+        }
+        return SocialApp.allCases.first { chosenApps.contains($0) }
     }
 
-    private var planExplanation: String {
-        appVM.attentionJourney.problem?.startingPoint ?? "Choose one small commitment on Home, then review what helped."
+    private var firstOpeningTitle: String {
+        guard let app = firstOpeningApp else { return "Open one app the Mivo way" }
+        return "Open \(app.title) the Mivo way"
     }
 
-    private struct PlanRow { let label: String; let value: String; let emphasised: Bool }
-
-    private var planRows: [PlanRow] {
-        return [
-            PlanRow(label: "Starting point", value: "One change", emphasised: true),
-            PlanRow(label: "Protected apps", value: FamilyControlsManager.shared.hasImpulseSelection() ? "Selected" : "Choose below", emphasised: false),
-            PlanRow(label: "Progress", value: "Your check-ins", emphasised: false)
-        ]
-    }
-
-    private func formatted(_ minutes: Int) -> String {
-        minutes < 60 ? "\(minutes)m" : String(format: "%dh %02dm", minutes / 60, minutes % 60)
+    /// Ends onboarding once, from either button. The swap is offered where it
+    /// is used (the commitment screen and Settings) instead of as a prompt.
+    private func finishOnboarding() {
+        guard !isFinishing else { return }
+        isFinishing = true
+        HapticsService.success()
+        if !replayMode, appVM.userSwap == nil {
+            appVM.skipSwapPromptForNow()
+        }
+        appVM.completeOnboarding()
     }
 
     // MARK: Shared
@@ -852,23 +707,6 @@ struct OnboardingWelcomeView: View {
                 index += 1
             }
         }
-    }
-
-    private func chooseProtectedApps() {
-        #if canImport(FamilyControls)
-        if FamilyControlsManager.shared.cachedAuthorizationStatus() == true {
-            showProtectedPicker = true
-        } else {
-            guard !isRequestingScreenTime else { return }
-            isRequestingScreenTime = true
-            FamilyControlsManager.shared.requestAuthorization { granted in
-                Task { @MainActor in
-                    isRequestingScreenTime = false
-                    if granted { showProtectedPicker = true }
-                }
-            }
-        }
-        #endif
     }
 
     /// The spec's copy promises nothing is self-reported, so the baseline comes

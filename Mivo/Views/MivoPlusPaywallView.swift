@@ -666,7 +666,7 @@ struct MivoPlusHomeBanner: View {
                 card(
                     eyebrow: "MIVO PLUS",
                     title: "Get more from Mivo",
-                    detail: "Earn scroll time from studying, Replay, Clear, Still and more.",
+                    detail: "Earn scroll time from studying, Replay, Still and more.",
                     cta: store.hasFreeTrial(offer: false) ? "Try free" : "See plans",
                     offerLive: false
                 )

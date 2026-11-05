@@ -402,7 +402,7 @@ struct LockInSetupFlowView: View {
                 MivoPrimaryButton(label: "Continue") { go(.review) }
                 MivoTertiaryButton(label: "Back") { go(.keyholder) }
             case .review:
-                MivoPrimaryButton(label: "Lock in") { startLock() }
+                MivoPrimaryButton(label: "Lock my apps") { startLock() }
                 MivoTertiaryButton(label: "Back") { go(.harden) }
             }
         }

@@ -415,10 +415,11 @@ struct MainTabView: View {
         return root?.presentedViewController != nil
     }
 
+    /// Only when asked for from Settings ("Take the app tour"). It used to open
+    /// for every new account and again for each new tour version, which put
+    /// eleven screens of teaching between someone and their first use.
     private var shouldShowTutorial: Bool {
-        appVM.settings.onboardingComplete
-            && (appVM.settings.tutorialComplete != true
-                || UserDefaults.standard.integer(forKey: tutorialVersionKey) < currentTutorialVersion)
+        appVM.settings.onboardingComplete && appVM.settings.tutorialComplete == false
     }
 
     private var tutorialVersionKey: String {

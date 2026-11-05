@@ -2,10 +2,17 @@ import SwiftUI
 
 /// Home tile for configured, signed-in accounts. Service outages fall back to bundled notes.
 struct MivoAskRow: View {
+    /// Off for 3.1: the `mivo-ai` server is not configured yet, so Ask Milo
+    /// could only ever say it couldn't reach the AI service.
+    static let isReleased = false
+
+    /// Home places a divider before the row only when it shows.
+    static var isVisible: Bool { isReleased && MivoAI.isInstalled }
+
     @State private var showAsk = false
 
     var body: some View {
-        if MivoAI.isInstalled {
+        if Self.isVisible {
             MivoToolTile(icon: "bubble.left.and.text.bubble.right", title: "Ask Milo", subtitle: "Questions about Mivo, answered by Milo.") {
                 showAsk = true
             }
@@ -37,12 +44,12 @@ struct MivoAskView: View {
     private static let starters = [
         "What does Mivo Plus include?",
         "How does studying earn scroll time?",
-        "How do I protect a commitment with Lock-in?",
+        "How do I lock my apps until a task is done?",
         "How does Mivo Still work?",
     ]
 
     @State private var lines: [Line] = [
-        Line(fromMilo: true, text: "Hi, I'm Milo. Ask me about Plus, studying, Lock-in or how Mivo works. I answer from what I know, and I'll say so when I don't.")
+        Line(fromMilo: true, text: "Hi, I'm Milo. Ask me about Plus, studying, task locks or how Mivo works. I answer from what I know, and I'll say so when I don't.")
     ]
     @State private var draft = ""
     @State private var isThinking = false

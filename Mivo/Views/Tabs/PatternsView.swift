@@ -35,8 +35,15 @@ struct PatternsView: View {
                     )
                     .padding(.top, 6)
 
-                    rangeMetricSection(derived)
-                    windowsKeptSection(derived)
+                    // No sessions in this range: one card that says so and
+                    // what to do next, instead of 0m, an empty chart and
+                    // "0% windows kept", which read as failing.
+                    if derived.totalWindowCount == 0 {
+                        noSessionsSection
+                    } else {
+                        rangeMetricSection(derived)
+                        windowsKeptSection(derived)
+                    }
                     appUsageSection
                     reelAttentionSection
                     noticedSection
@@ -85,10 +92,51 @@ struct PatternsView: View {
         }
     }
 
-    private func rangeNote(_ derived: Derived) -> String {
-        guard derived.totalWindowCount > 0 else {
-            return "Complete a session to start building this view."
+    // MARK: - No sessions yet
+
+    private var noSessionsSection: some View {
+        let hasAppVisits = appVM.appPurposeReport(days: range.rawValue).hasData
+        return MivoCard {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text("Intentional scrolling")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(MivoColors.inkBody)
+
+                    Spacer(minLength: 8)
+
+                    MivoSegmentedChips(
+                        options: PatternsRange.allCases.map { ($0, $0.label) },
+                        selection: $range
+                    )
+                }
+
+                Text("No sessions yet")
+                    .font(.system(size: 24, weight: .bold))
+                    .tracking(Font.mivoTracking(-0.02, at: 24))
+                    .foregroundColor(MivoColors.ink)
+                    .padding(.top, 14)
+
+                Text(hasAppVisits
+                     ? "Timed windows you start from Home show up here, with how many you kept. Your visits to apps inside Mivo are below."
+                     : "Open an app through Mivo and say what it's for. Each visit adds to your patterns, and kept windows show up here.")
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+
+                if !hasAppVisits {
+                    MivoPrimaryButton(label: "Open an app on purpose") {
+                        HapticsService.selection()
+                        appVM.pendingAppWindow = AppWindowRequest(app: nil)
+                    }
+                    .padding(.top, 18)
+                }
+            }
         }
+    }
+
+    private func rangeNote(_ derived: Derived) -> String {
         let delta = derived.previousPeriodMinutes - derived.totalMinutes
         let keptClause = "\(derived.keptPercent)% of windows kept."
         guard derived.previousPeriodMinutes > 0, abs(delta) >= 1 else { return keptClause }
@@ -278,7 +326,7 @@ struct PatternsView: View {
                 weekOffset: -offset,
                 title: "Week of \(weekFormatter.string(from: interval.start))",
                 subtitle: weekSessions.isEmpty
-                    ? "No sessions logged"
+                    ? "No sessions yet"
                     : "\(formatDuration(minutes)) intentional · \(keptPct)% kept"
             )
         }

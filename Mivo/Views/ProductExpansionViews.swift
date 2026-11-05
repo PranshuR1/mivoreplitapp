@@ -516,7 +516,7 @@ struct AppPersonalitiesView: View {
             MivoColors.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    statusBanner("Each profile stays on this device. Mivo never sends selected-app identities to the server.", icon: "lock.shield")
+                    statusBanner("Each profile's settings sync to your account. Your Screen Time app selection stays on this phone.", icon: "lock.shield")
                     ForEach(expansion.appProfiles) { profile in
                         AppPersonalityEditor(profile: profile) { expansion.updateAppProfile($0) }
                     }
@@ -650,16 +650,36 @@ struct MivoPrivacyCenterView: View {
         ZStack {
             MivoColors.background.ignoresSafeArea()
             List {
-                Section("Stored on this device") {
-                    privacyRow("Selected-app identities", "Never uploaded", "iphone.gen3")
-                    privacyRow("Screen Time tokens", "Device only", "lock.shield")
-                    privacyRow("App personalities", "Device only", "slider.horizontal.3")
+                // Two lists that match what the code does: `StudyService`
+                // keeps videos and the scroll balance on the phone, and
+                // `AppViewModel.performCurrentUserStateRemoteSync` lists
+                // everything that syncs. Keep them in step.
+                Section {
+                    privacyRow("Study videos", "Never uploaded", "video")
+                    privacyRow("Your Screen Time app selection", "Never uploaded", "iphone.gen3")
+                    privacyRow("Sign-ins to social apps", "Apple's browser storage", "person.badge.key")
+                    privacyRow("Your commitments", "This phone only", "checkmark.circle")
+                    privacyRow("Scroll time earned by studying", "This phone only", "timer")
+                } header: {
+                    Text("Stays on this phone")
+                } footer: {
+                    Text("Your study videos never leave this phone. Mivo never sees your social app passwords or messages.")
                 }
-                Section("Synced to your account") {
+                Section {
+                    privacyRow("Account and settings", "To sign in again", "person.crop.circle")
+                    privacyRow("Study tasks and times", "For your streak online", "books.vertical")
                     privacyRow("Sessions", "\(appVM.sessions.count) records", "clock.arrow.circlepath")
+                    privacyRow("Apps opened in Mivo", "\(appVM.instagramWrapperSessions.count) visits", "rectangle.on.rectangle")
+                    privacyRow("Daily Screen Time totals", "Minutes per day", "hourglass")
+                    privacyRow("Mivo Still sessions", "\(MivoStillStore.shared.sessions.count) records", "moon")
                     privacyRow("Truth checks", "\(appVM.truthChecks.count) records", "eye")
                     privacyRow("Experiments", "\(appVM.weeklyExperiments.count) records", "flask")
+                    privacyRow("App rules and personalities", "Settings per app", "slider.horizontal.3")
                     privacyRow("Partner summaries", "High-level totals only", "person.2")
+                } header: {
+                    Text("Synced to your account")
+                } footer: {
+                    Text("Synced while you're signed in, so your history comes back on a new phone and shows on usemivo.app and Mivo for Mac. Also synced: the pauses you went through, your swap and a short activity log. Export or delete all of it below.")
                 }
                 Section("Permissions") {
                     privacyRow("Notifications", notificationsAuthorized ? "Allowed" : "Not allowed", "bell")

@@ -47,27 +47,18 @@ struct HomeView: View {
             MivoColors.background.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
-                // One card per job, in the order a day goes: how much so far,
-                // what is allowed, then everything optional. The optional
-                // features are grouped by what they are for — Practice (the
-                // experiment), Explore (modes and tools) and Review (reports
-                // and planning) — instead of one run of identical rows.
+                // Three things lead: the one recommended action, today's
+                // usage, and a compact list of tools. Planning, the weekly
+                // experiment and reports follow. Mivo Plus comes last, after
+                // everything that is useful without it.
                 VStack(alignment: .leading, spacing: MivoMetrics.cardSpacing) {
                     MivoGreetingBar(name: firstName)
                         .padding(.top, 6)
-
-                    if !hasPlus {
-                        MivoPlusHomeBanner { paywallFeature = .general }
-                    }
 
                     AttentionHomeSection()
 
                     screenTimeHero
 
-                    // Straight after today's number and always open. These
-                    // used to sit inside a collapsed "More tools and reports"
-                    // fold at the very bottom, which is why Study, Lock in and
-                    // the Receipt were hard to find.
                     exploreSection
 
                     ComebackHomeSection()
@@ -79,6 +70,10 @@ struct HomeView: View {
                     AttentionExperimentCard()
 
                     reviewSection
+
+                    if !hasPlus {
+                        MivoPlusHomeBanner { paywallFeature = .general }
+                    }
                 }
                 .padding(.horizontal, MivoMetrics.tabPadding)
                 .padding(.bottom, MivoMetrics.scrollBottomPadding)
@@ -390,33 +385,31 @@ struct HomeView: View {
     /// The on/off switch for replay mode in Mivo's app view. On by default;
     /// held off during the 3-day observation so the baseline stays clean.
     private var replayModeRow: some View {
-        MivoListGroup {
-            HStack(spacing: 12) {
-                MivoIconTile(systemName: "repeat")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Replay mode")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(MivoColors.ink)
-                    Text(replayModeSubtitle)
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundColor(MivoColors.inkBody)
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(3)
-                }
-                Spacer(minLength: 8)
-                Toggle("Replay mode", isOn: Binding(
-                    get: { replayModeOn && hasPlus },
-                    set: { newValue in
-                        if hasPlus { replayModeOn = newValue } else { requirePlus(.instagramInMivo) {} }
-                    }
-                ))
-                    .labelsHidden()
-                    .tint(MivoColors.accent)
-                    .onChange(of: replayModeOn) { _, _ in HapticsService.selection() }
+        HStack(spacing: 12) {
+            MivoIconTile(systemName: "repeat")
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Replay mode")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(MivoColors.ink)
+                Text(replayModeSubtitle)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(MivoColors.inkBody)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(3)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            Spacer(minLength: 8)
+            Toggle("Replay mode", isOn: Binding(
+                get: { replayModeOn && hasPlus },
+                set: { newValue in
+                    if hasPlus { replayModeOn = newValue } else { requirePlus(.instagramInMivo) {} }
+                }
+            ))
+                .labelsHidden()
+                .tint(MivoColors.accent)
+                .onChange(of: replayModeOn) { _, _ in HapticsService.selection() }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     private var replayModeSubtitle: String {
@@ -490,39 +483,43 @@ struct HomeView: View {
         }
     }
 
-    /// Modes and tools, two to a row. Focus Break (formerly Intent Games) is
-    /// not here: it sits behind its own opt-in toggle on Protect, so it reads
-    /// as an explicit trial someone chooses rather than something advertised
-    /// beside Still.
+    /// Every tool as one row in a single card, so the section stays compact
+    /// under today's usage. Focus Break (formerly Intent Games) is not here:
+    /// it sits behind its own opt-in toggle on Protect, so it reads as an
+    /// explicit trial someone chooses rather than something advertised.
     private var exploreSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             MivoSectionTitle(text: "Tools")
 
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                spacing: 10
-            ) {
-                // The two most used first.
+            MivoListGroup {
                 StudyHomeRow()
 
-                LockInHomeRow()
+                if LockInRules.isReleased || LockInManager.shared.isLocked {
+                    MivoListDivider()
+                    LockInHomeRow()
+                }
 
                 if expansion.isEnabled(.mivoStill) {
-                    MivoStillRow {
+                    MivoListDivider()
+                    MivoStillRow(locked: !hasPlus) {
                         requirePlus(.mivoStill) { showMivoStill = true }
                     }
-                    .plusLockBadge(!hasPlus)
                 }
 
                 // Present while Companion is on; before onboarding it reads "Meet Milo".
                 if companion.isActive || companion.preferences.isAwaitingIntroduction {
+                    MivoListDivider()
                     CompanionHomeRow()
                 }
 
-                MivoAskRow()
-            }
+                if MivoAskRow.isVisible {
+                    MivoListDivider()
+                    MivoAskRow()
+                }
 
-            replayModeRow
+                MivoListDivider()
+                replayModeRow
+            }
         }
     }
 

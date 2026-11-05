@@ -3,6 +3,11 @@ import Foundation
 /// The numbers Lock-in runs on, in one place so the screens, the manager and the
 /// tests agree.
 enum LockInRules {
+    /// Off for 3.1: Milo's proof review (`lockin-milo`) and keyholder email
+    /// (`lockin-keyholder`) are not configured on the server yet, so every way in
+    /// stays hidden. A lock that is already running still shows, so it can end.
+    static let isReleased = false
+
     /// "Check in by" choices. The lock always ends by then, with or without proof.
     static let durationChoicesMinutes = [30, 60, 120, 240, 480]
     static let defaultDurationMinutes = 120
@@ -257,7 +262,7 @@ enum LockInError: Error, Equatable {
 
     var message: String {
         switch self {
-        case .notConfigured: return "Lock-in's online part isn't set up on this build."
+        case .notConfigured: return "The task lock's online part isn't set up on this build."
         case .signedOut: return "Sign in again to continue."
         case .offline: return "Mivo can't reach the internet right now."
         case .rateLimited: return "That was a lot of tries. Give it a little while."

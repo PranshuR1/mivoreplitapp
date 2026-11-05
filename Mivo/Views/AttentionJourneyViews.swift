@@ -1,17 +1,15 @@
 import SwiftUI
 
 private enum AttentionDestination: String, Identifiable {
-    case plan, commitment, wins, recovery, messages, still, lock
+    case plan, commitment, wins, recovery, messages, bedtime, lock
     var id: String { rawValue }
 }
 
 /// One suggested action, with deeper tools available when they're useful.
 struct AttentionHomeSection: View {
     @EnvironmentObject private var appVM: AppViewModel
-    @ObservedObject private var plus = MivoPlusStore.shared
     @ObservedObject private var companion = CompanionStateManager.shared
     @State private var destination: AttentionDestination?
-    @State private var paywall: PlusFeature?
 
     private var problem: AttentionProblem? { appVM.attentionJourney.problem }
     private var commitment: AttentionCommitment? { appVM.attentionJourney.currentCommitment }
@@ -32,7 +30,7 @@ struct AttentionHomeSection: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Text(commitment == nil
                      ? (problem?.startingPoint ?? "Choose what keeps getting in the way. Start with one useful change.")
-                     : (commitment?.status == .locked ? "Your task is protected by Lock-in. Show your progress there." : "One concrete thing to do with your attention. Mark it done when you've actually finished."))
+                     : (commitment?.status == .locked ? "Your apps are locked until this task is done. Show your progress in Task lock." : "One concrete thing to do with your attention. Mark it done when you've actually finished."))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(MivoColors.inkBody)
                     .fixedSize(horizontal: false, vertical: true)
@@ -59,7 +57,11 @@ struct AttentionHomeSection: View {
             case .wins: AttentionWinsView()
             case .recovery: AttentionRecoveryView()
             case .messages: InterventionFlowView {}
-            case .still: MivoStillFlowView(initialMinutes: 15)
+            case .bedtime:
+                NavigationStack {
+                    SettingsView(page: .lateNight)
+                        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { destination = nil } } }
+                }
             case .lock:
                 NavigationStack {
                     LockInEntryView()
@@ -67,7 +69,6 @@ struct AttentionHomeSection: View {
                 }
             }
         }
-        .sheet(item: $paywall) { MivoPlusPaywallView(feature: $0) }
     }
 
     private var primaryTitle: String {
@@ -88,6 +89,9 @@ struct AttentionHomeSection: View {
         return "What would you like to make room for today?"
     }
 
+    /// Every starting point opens something free. Bedtime used to open Mivo
+    /// Still, which is Plus, so the first recommendation could be a paywall;
+    /// it now sets late-night protection, which is free.
     private func openRecommended() {
         if let commitment {
             destination = commitment.status == .locked ? .lock : .commitment
@@ -96,15 +100,9 @@ struct AttentionHomeSection: View {
         switch problem {
         case .none: destination = .plan
         case .study, .automaticScrolling: destination = .commitment
-        case .bedtime: openPaid(.still, feature: .mivoStill)
+        case .bedtime: destination = .bedtime
         case .usefulSocial: destination = .messages
         }
-    }
-
-    private func openPaid(_ target: AttentionDestination, feature: PlusFeature) {
-        if MivoPlusAccess.allows(isPlus: plus.isPlus, isAdmin: appVM.isAdminUser) {
-            destination = target
-        } else { paywall = feature }
     }
 }
 
@@ -186,8 +184,8 @@ struct AttentionCommitmentView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(current.title).font(.system(size: 22, weight: .bold))
                                 if current.status == .locked {
-                                    Text("This task is protected. Review evidence or unlock requests in Lock-in.")
-                                    Button("Open Lock-in") { showLock = true }
+                                    Text("Your apps are locked for this task. Review evidence or unlock requests in Task lock.")
+                                    Button("Open Task lock") { showLock = true }
                                 } else {
                                     MivoPrimaryButton(label: "I finished this") {
                                         appVM.completeAttentionCommitment(current.id)
@@ -196,7 +194,9 @@ struct AttentionCommitmentView: View {
                                     }
                                     Text("Recorded as your own check-in. Mivo hasn't verified the activity.")
                                         .font(.system(size: 12)).foregroundColor(MivoColors.inkMuted)
-                                    Button("Protect this task with Lock-in") { showLock = true }
+                                    if LockInRules.isReleased {
+                                        Button("Lock my apps until this is done") { showLock = true }
+                                    }
                                     Button("Make this smaller") { title = current.title; resize = true }
                                     Button("Set this aside for now") {
                                         appVM.setAsideAttentionCommitment(current.id)
@@ -219,7 +219,7 @@ struct AttentionCommitmentView: View {
                                           disabled: AttentionJourney.cleanTitle(title) == nil) {
                             if resize, let current {
                                 guard appVM.resizeAttentionCommitment(current.id, title: title) else {
-                                    error = "This task may now be protected. Open Lock-in to check it."
+                                    error = "This task may now have a task lock. Open Task lock to check it."
                                     return
                                 }
                                 resize = false
@@ -278,7 +278,10 @@ struct AttentionRecoveryView: View {
                     Text("You don't have to catch up. Choose what would help right now.")
                         .foregroundColor(MivoColors.inkBody)
                     ForEach(AttentionRecovery.Choice.allCases) { option in
-                        MivoPrimaryButton(label: option.title) {
+                        // Still is Plus: say so on the button, not after the tap.
+                        let needsPlus = option == .quietTime
+                            && !MivoPlusAccess.allows(isPlus: plus.isPlus, isAdmin: appVM.isAdminUser)
+                        MivoPrimaryButton(label: needsPlus ? "\(option.title) · Plus" : option.title) {
                             let feature: PlusFeature? = option == .quietTime ? .mivoStill : nil
                             if let feature, !MivoPlusAccess.allows(isPlus: plus.isPlus, isAdmin: appVM.isAdminUser) {
                                 paywall = feature

@@ -1233,9 +1233,9 @@
       ],
       "examples": [
         "How do commitments work?",
-        "How do I protect a commitment with Lock-in?"
+        "How do I lock my apps until a commitment is done?"
       ],
-      "fact": "A commitment is one thing you want to follow through on. You can make an ordinary commitment smaller, set it aside or mark it done yourself. A commitment protected by Lock-in follows that lock's rules; its evidence is labeled Milo-reviewed or keyholder-approved rather than self-reported."
+      "fact": "A commitment is one thing you want to follow through on. You can make an ordinary commitment smaller, set it aside or mark it done yourself. A commitment protected by a task lock follows that lock's rules; its evidence is labeled Milo-reviewed or keyholder-approved rather than self-reported."
     },
     {
       "id": "linked_study",

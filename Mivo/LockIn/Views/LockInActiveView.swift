@@ -28,7 +28,7 @@ struct LockInActiveView: View {
                 }
             }
         }
-        .navigationTitle("Locked in")
+        .navigationTitle("Task lock")
         .navigationBarTitleDisplayMode(.inline)
         .hidesRoamingCompanion()
         .navigationDestination(isPresented: $showChat) {
@@ -61,7 +61,7 @@ struct LockInActiveView: View {
     private func heroCard(_ lock: LockIn) -> some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 0) {
-                MivoEyebrow(text: "Locked in", color: MivoColors.heroText.opacity(0.7))
+                MivoEyebrow(text: "Apps locked for a task", color: MivoColors.heroText.opacity(0.7))
                 Text(lock.task)
                     .font(.system(size: 24, weight: .bold))
                     .tracking(Font.mivoTracking(-0.02, at: 24))

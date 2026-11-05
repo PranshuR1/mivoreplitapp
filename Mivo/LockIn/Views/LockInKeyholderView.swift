@@ -302,7 +302,7 @@ struct LockInScreenTimeGuideContent: View {
                     .foregroundColor(MivoColors.ink)
                 Text(supported
                      ? "You're on \(versionLabel). This lock needs iOS 26.4 or later."
-                     : "You're on \(versionLabel). This lock needs iOS 26.4 or later. Update in Settings → General → Software Update. Until then Lock-in works, but you could switch Mivo's Screen Time access off in Settings.")
+                     : "You're on \(versionLabel). This lock needs iOS 26.4 or later. Update in Settings → General → Software Update. Until then the task lock works, but you could switch Mivo's Screen Time access off in Settings.")
                     .font(.system(size: 13.5, weight: .medium))
                     .foregroundColor(MivoColors.inkBody)
                     .lineSpacing(3)

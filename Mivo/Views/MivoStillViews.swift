@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// Home's entry point for Still: a tile in the Explore grid.
+/// Home's entry point for Still: a row in the Tools list.
 struct MivoStillRow: View {
     @ObservedObject private var store = MivoStillStore.shared
+    /// Marks the row "Plus" for someone without it.
+    var locked = false
     let action: () -> Void
 
     var body: some View {
-        MivoToolTile(icon: "moon", title: "Mivo Still", subtitle: meta, action: action)
+        MivoToolTile(icon: "moon", title: "Mivo Still", subtitle: meta, badge: locked ? "Plus" : nil, action: action)
     }
 
     private var meta: String {
@@ -352,7 +354,7 @@ struct MivoStillFlowView: View {
                         .monospacedDigit()
                         .tracking(Font.mivoTracking(-0.04, at: 52))
                         .foregroundColor(MivoColors.ink)
-                    Text("Locked in")
+                    Text("Holding still")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(MivoColors.deep)
                 }
@@ -972,7 +974,7 @@ struct MivoStillAppStorePreviewView: View {
                         .monospacedDigit()
                         .tracking(Font.mivoTracking(-0.04, at: 52))
                         .foregroundColor(MivoColors.ink)
-                    Text(paused ? "Timer paused" : "Locked in")
+                    Text(paused ? "Timer paused" : "Holding still")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(MivoColors.deep)
                 }

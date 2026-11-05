@@ -69,7 +69,7 @@ struct CompanionPauseAccessory: View {
     }
 }
 
-/// The Home entry point: a tile in the Explore grid. The caller places it while
+/// The Home entry point: a row in the Tools list. The caller places it while
 /// Companion is active, or on but not yet introduced, when it reads "Meet Milo"
 /// and opens the onboarding. One view covers both so finishing onboarding
 /// doesn't tear down the sheet that is showing it.

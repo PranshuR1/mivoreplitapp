@@ -481,7 +481,6 @@ private struct MivoPlusPaywallPreviewHost: View {
 
 struct RootView: View {
     @EnvironmentObject var appVM: AppViewModel
-    @AppStorage("mivo.firstLaunchStoryComplete") private var firstLaunchStoryComplete = false
 
     var body: some View {
         Group {
@@ -565,14 +564,10 @@ struct RootView: View {
 
     @ViewBuilder
     private var defaultRoot: some View {
+        // No story screens before sign-in: the onboarding questions explain
+        // Mivo by asking about the person's own problem instead.
         if appVM.isLoading {
             SplashView()
-        } else if !appVM.isLoggedIn && !firstLaunchStoryComplete {
-            MivoFirstLaunchIntroView {
-                withAnimation(.easeInOut(duration: 0.36)) {
-                    firstLaunchStoryComplete = true
-                }
-            }
         } else if !appVM.isLoggedIn {
             LoginView()
         } else if !appVM.settings.onboardingComplete {

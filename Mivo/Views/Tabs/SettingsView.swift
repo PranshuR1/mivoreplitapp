@@ -173,7 +173,7 @@ struct SettingsView: View {
         .alert("Mivo is locked", isPresented: $showLockedResetAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Resetting would lift the lock. Ask to unlock on Protect ▸ Lock Mivo and wait it out first.")
+            Text("Resetting would lift the lock. Ask to unlock on Protect ▸ Keep Mivo on and wait it out first.")
         }
         .alert("Reset data", isPresented: $showResetAlert) {
             Button("Cancel", role: .cancel) {}
@@ -456,18 +456,20 @@ struct SettingsView: View {
                             SettingsView(page: .lateNight)
                         }
                         rowSeparator()
-                        settingsNavigationRow(
-                            icon: "lock",
-                            title: "Lock in",
-                            subtitle: "Lock apps until the work is done"
-                        ) {
-                            LockInEntryView()
+                        if LockInRules.isReleased || LockInManager.shared.isLocked {
+                            settingsNavigationRow(
+                                icon: "lock",
+                                title: "Task lock",
+                                subtitle: "Lock apps until a task is done"
+                            ) {
+                                LockInEntryView()
+                            }
+                            rowSeparator()
                         }
-                        rowSeparator()
                         settingsNavigationRow(
                             icon: mivoLock.isLocked ? "lock.fill" : "lock.open",
-                            title: "Lock Mivo",
-                            subtitle: mivoLock.isLocked ? "Locked" : "Make Mivo hard to turn off"
+                            title: "Keep Mivo on",
+                            subtitle: mivoLock.isLocked ? "On. Turning Mivo off means asking, then waiting" : "Make Mivo hard to turn off when the urge hits"
                         ) {
                             MivoLockView()
                         }
@@ -497,7 +499,7 @@ struct SettingsView: View {
                         settingsNavigationRow(
                             icon: "hand.raised",
                             title: "Privacy Center",
-                            subtitle: "Permissions, data, export, deletion"
+                            subtitle: "What syncs, what stays on this phone"
                         ) {
                             MivoPrivacyCenterView().environmentObject(appVM)
                         }
@@ -532,8 +534,8 @@ struct SettingsView: View {
                         rowSeparator()
                         settingsActionRow(
                             icon: "play.circle",
-                            title: "Replay app tour",
-                            subtitle: "Practice the newest tools again"
+                            title: "Take the app tour",
+                            subtitle: "A walk through every tool"
                         ) {
                             appVM.restartTutorial()
                         }
@@ -557,11 +559,20 @@ struct SettingsView: View {
 
                     adminSections
 
-                    Text("Mivo \(appVersionText) · Data stays on your device")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(MivoColors.inkBody)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 4)
+                    // Not "data stays on your device": the account, sessions
+                    // and study tasks sync. Privacy Center has the full list.
+                    VStack(spacing: 4) {
+                        Text("Mivo \(appVersionText)")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Study videos and your Screen Time app selection stay on this phone. Your account, sessions and study tasks sync while you're signed in.")
+                            .font(.system(size: 12, weight: .medium))
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .foregroundColor(MivoColors.inkBody)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
                 }
                 .padding(.horizontal, MivoMetrics.tabPadding)
                 .padding(.bottom, MivoMetrics.scrollBottomPadding)
@@ -724,9 +735,9 @@ struct SettingsView: View {
             settingsSection("Lock") {
                 settingsNavigationRow(
                     icon: mivoLock.isLocked ? "lock.fill" : "lock.open",
-                    title: "Lock Mivo",
+                    title: "Keep Mivo on",
                     subtitle: mivoLock.isLocked
-                        ? "Locked. Turning things off waits for the unlock"
+                        ? "On. Turning Mivo off means asking, then waiting"
                         : "Make Mivo hard to turn off when the urge hits"
                 ) {
                     MivoLockView()

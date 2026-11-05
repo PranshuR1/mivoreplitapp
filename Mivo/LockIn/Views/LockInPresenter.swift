@@ -83,15 +83,15 @@ extension View {
 
 // MARK: - Home tile
 
-/// The Home entry point: a tile in the Explore grid.
+/// The Home entry point: a row in the Tools list.
 struct LockInHomeRow: View {
     @ObservedObject private var manager = LockInManager.shared
 
     var body: some View {
         MivoToolTile(
             icon: manager.isLocked ? "lock.fill" : "lock",
-            title: manager.isLocked ? "Locked in" : "Lock in",
-            subtitle: manager.current?.task ?? "Lock your apps until the work is done."
+            title: manager.isLocked ? "Apps locked for a task" : "Task lock",
+            subtitle: manager.current?.task ?? "Lock apps until a task is done."
         ) {
             manager.showRequested = true
         }
@@ -141,7 +141,7 @@ struct LockInWrapUpView: View {
 
             MivoPrimaryButton(label: "Done") { dismiss() }
             if !reason.wasCompleted {
-                MivoTertiaryButton(label: "Lock in again") {
+                MivoTertiaryButton(label: "Start another task lock") {
                     dismiss()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                         LockInManager.shared.showRequested = true

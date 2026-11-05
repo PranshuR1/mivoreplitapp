@@ -23,8 +23,11 @@ enum AttentionProblem: String, Codable, CaseIterable, Identifiable {
     }
     var startingPoint: String {
         switch self {
-        case .study: return "Name one small task. Protect it with Lock-in if you need a firmer boundary."
-        case .bedtime: return "Try 15 quiet minutes before bed, then review whether the routine helped."
+        case .study:
+            return LockInRules.isReleased
+                ? "Name one small task. Protect it with a task lock if you need a firmer boundary."
+                : "Name one small task and start a study session for it."
+        case .bedtime: return "Set when your night starts. After that, protected apps take a longer pause to open and show when you need to be up. It's free."
         case .usefulSocial: return "Open messages inside Mivo, where the feed is out of reach."
         case .automaticScrolling: return "Start with a short pause and one activity you'd rather do."
         }
@@ -32,7 +35,7 @@ enum AttentionProblem: String, Codable, CaseIterable, Identifiable {
     var actionTitle: String {
         switch self {
         case .study: return "Choose one thing to finish"
-        case .bedtime: return "Set up 15 quiet minutes"
+        case .bedtime: return "Set my bedtime"
         case .usefulSocial: return "Open my messages"
         case .automaticScrolling: return "Choose something to do instead"
         }

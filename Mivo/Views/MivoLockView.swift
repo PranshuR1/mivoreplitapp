@@ -42,7 +42,7 @@ struct MivoLockView: View {
                 .padding(.bottom, MivoMetrics.scrollBottomPadding)
             }
         }
-        .navigationTitle("Lock Mivo")
+        .navigationTitle("Keep Mivo on")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: refreshStatus)
         .onChange(of: scenePhase) { _, phase in
@@ -131,7 +131,7 @@ struct MivoLockView: View {
                 .opacity(canLock ? 1 : 0.5)
             } else {
                 notice("This iPhone is on iOS \(UIDevice.current.systemVersion). Before iOS 26.4, anyone can turn off Mivo's Screen Time access in Settings and Mivo can't stop it. The lock below covers Mivo's own switches; update iOS to add the passcode that covers Settings too.")
-                MivoPrimaryButton(label: "Lock Mivo", disabled: !canLock) {
+                MivoPrimaryButton(label: "Keep Mivo on", disabled: !canLock) {
                     startLock(usesPasscode: false)
                 }
             }
